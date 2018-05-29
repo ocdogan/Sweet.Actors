@@ -93,14 +93,16 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    var cts = timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : null;
-                    var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
-                        new TaskCompletionSource<IFutureResponse<T>>();
+					using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
+					{
+						var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
+							new TaskCompletionSource<IFutureResponse<T>>();
 
-					_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header, timeoutMSec));
-                    StartNewProcess();
+						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header, timeoutMSec));
+						StartNewProcess();
 
-                    return tcs.Task;
+						return tcs.Task;
+					}
                 }
                 catch (Exception e)
                 {
