@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Sweet.Actors</AssemblyName>
+    <RootNamespace>Sweet.Actors</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="IMessage.cs" />
+    <Compile Remove="IResponseMessage.cs" />
+  </ItemGroup>
+</Project>

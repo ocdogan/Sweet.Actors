@@ -40,8 +40,16 @@ $RECYCLE.BIN/
 .VolumeIcon.icns
 
 # Directories potentially created on remote AFP share
+.vs
+obj
+bin
 .AppleDB
 .AppleDesktop
 Network Trash Folder
 Temporary Items
 .apdisk
+*.suo
+*.lock
+*.ide
+*.dll
+*.pdb
