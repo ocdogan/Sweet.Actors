@@ -24,7 +24,7 @@
 
 namespace Sweet.Actors
 {
-	public sealed class ContextId : Id<IContext>
+    public sealed class ContextId : Id<IContext>
     {
         public static readonly ContextId Empty = new ContextId(-1L, -1L, -1L, -1L, 0);
 

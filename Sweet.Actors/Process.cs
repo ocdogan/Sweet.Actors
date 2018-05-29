@@ -48,7 +48,7 @@ namespace Sweet.Actors
                        IDictionary<string, object> initialContextData = null)
         {
             Actor = actor;
-			System = system;
+            System = system;
 
             _pid = new Pid(this);
             _ctx = new Context(this, address);
@@ -58,11 +58,11 @@ namespace Sweet.Actors
                     Constants.DefaultSequentialInvokeLimit : _sequentialInvokeLimit;
 
             if (initialContextData != null)
-				foreach (var kv in initialContextData)
-					_ctx.SetData(kv.Key, kv.Value);
+                foreach (var kv in initialContextData)
+                    _ctx.SetData(kv.Key, kv.Value);
         }
 
-		public ActorSystem System { get; } 
+        public ActorSystem System { get; }
 
         public IActor Actor { get; }
 
@@ -70,45 +70,45 @@ namespace Sweet.Actors
 
         public Pid Pid => _pid;
 
-		public Task Send(object message, IDictionary<string, string> header = null)
+        public Task Send(object message, IDictionary<string, string> header = null)
         {
-			if (message != null)
-			{
-				try
-				{
-					_mailbox.Enqueue(new Message(message, _ctx.Address, header));
-					StartNewProcess();
-				}
-				catch (Exception e)
-				{
-					return Task.FromException(e);
-				}
-			}
+            if (message != null)
+            {
+                try
+                {
+                    _mailbox.Enqueue(new Message(message, _ctx.Address, header));
+                    StartNewProcess();
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException(e);
+                }
+            }
             return Sended;
         }
 
-		public Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
-		{
-			if (message != null)
+        public Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        {
+            if (message != null)
             {
-				try
-				{                    
-					var cts = timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : null;
-					var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
-						new TaskCompletionSource<IFutureResponse<T>>();
+                try
+                {
+                    var cts = timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : null;
+                    var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
+                        new TaskCompletionSource<IFutureResponse<T>>();
 
-					_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header));
+                    _mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header));
                     StartNewProcess();
-                    
-    				return tcs.Task;
-				}
+
+                    return tcs.Task;
+                }
                 catch (Exception e)
                 {
-					return Task.FromResult<IFutureResponse<T>>(new FutureError<T>(e, _ctx.Address));
+                    return Task.FromResult<IFutureResponse<T>>(new FutureError<T>(e, _ctx.Address));
                 }
             }
-			return Task.FromResult<IFutureResponse<T>>(new FutureResponse<T>(default(T), _ctx.Address));
-		}
+            return Task.FromResult<IFutureResponse<T>>(new FutureResponse<T>(default(T), _ctx.Address));
+        }
 
         private void StartNewProcess()
         {
@@ -145,7 +145,7 @@ namespace Sweet.Actors
 
                         Actor.OnReceive(_ctx, msg);
 
-                        if (isFutureCall && 
+                        if (isFutureCall &&
                             !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
                             future.Respond(DefaultResponse, _ctx.Address);
                     }

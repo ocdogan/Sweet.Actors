@@ -35,10 +35,10 @@ namespace Sweet.Actors
         Default = 0,
         FutureMessage = 1,
         FutureResponse = 2,
-		FutureError = 3
+        FutureError = 3
     }
 
-	public interface IMessage
+    public interface IMessage
     {
         object Data { get; }
         IReadOnlyDictionary<string, string> Header { get; }
@@ -47,11 +47,11 @@ namespace Sweet.Actors
     }
 
     internal class Message : IMessage
-	{
+    {
         public static readonly Message Empty = new Message(new object(), Address.Unknown);
 
         private IReadOnlyDictionary<string, string> _header;
-        private static readonly IReadOnlyDictionary<string, string> _defaultHeader = 
+        private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
         internal Message(object data, Address from = null, IDictionary<string, string> header = null)
@@ -70,47 +70,47 @@ namespace Sweet.Actors
         public virtual MessageType MessageType => MessageType.Default;
     }
 
-	public interface IFutureResponse<T> : IMessage
+    public interface IFutureResponse<T> : IMessage
     {
-		bool IsEmpty { get; }
+        bool IsEmpty { get; }
     }
 
     internal class FutureResponse<T> : Message, IFutureResponse<T>
     {
-		protected bool _isEmpty;
+        protected bool _isEmpty;
 
-		internal FutureResponse(Address from = null, IDictionary<string, string> header = null)
-			: base(default(T), from, header)
+        internal FutureResponse(Address from = null, IDictionary<string, string> header = null)
+            : base(default(T), from, header)
         {
-			_isEmpty = true;
-		}
+            _isEmpty = true;
+        }
 
-		internal FutureResponse(T data,
+        internal FutureResponse(T data,
                                 Address from = null, IDictionary<string, string> header = null)
             : base(data, from, header)
         { }
 
         public override MessageType MessageType => MessageType.FutureResponse;
 
-		public bool IsEmpty => _isEmpty;
+        public bool IsEmpty => _isEmpty;
     }
 
-	public interface IFutureError
+    public interface IFutureError
     {
         bool IsFaulted { get; }
         Exception Exception { get; }
     }
 
-	internal class FutureError<T> : FutureResponse<T>, IFutureError
+    internal class FutureError<T> : FutureResponse<T>, IFutureError
     {
         private Exception _error;
 
-		internal FutureError(Exception e,
+        internal FutureError(Exception e,
                                 Address from = null, IDictionary<string, string> header = null)
             : base(default(T), from, header)
         {
             _error = e;
-			_isEmpty = true;
+            _isEmpty = true;
         }
 
         public override MessageType MessageType => MessageType.FutureError;
@@ -121,7 +121,7 @@ namespace Sweet.Actors
     }
 
     public interface IFutureMessage : IMessage
-	{
+    {
         Type ResponseType { get; }
 
         bool IsCanceled { get; }
@@ -159,15 +159,15 @@ namespace Sweet.Actors
 
     internal class FutureMessage<T> : FutureMessage, IFutureMessage
     {
-		private CancellationTokenSource _cts;
+        private CancellationTokenSource _cts;
         private TaskCompletionSource<IFutureResponse<T>> _tcs;
 
-		internal FutureMessage(object data, 
-		                       CancellationTokenSource cancellationTokenSource,
+        internal FutureMessage(object data,
+                               CancellationTokenSource cancellationTokenSource,
                                TaskCompletionSource<IFutureResponse<T>> taskCompletionSource,
                                Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
-			: base(data, typeof(T), from, header)
-		{
+            : base(data, typeof(T), from, header)
+        {
             _tcs = taskCompletionSource;
             _cts = cancellationTokenSource;
         }
@@ -184,8 +184,8 @@ namespace Sweet.Actors
         {
             try
             {
-				_tcs.SetResult(response == null ? new FutureResponse<T>(from, header) :
-				               new FutureResponse<T>((T)response, from, header));
+                _tcs.SetResult(response == null ? new FutureResponse<T>(from, header) :
+                               new FutureResponse<T>((T)response, from, header));
             }
             catch (Exception e)
             {
@@ -195,7 +195,7 @@ namespace Sweet.Actors
 
         internal override void RespondToWithError(Exception e, Address from = null, IDictionary<string, string> header = null)
         {
-			_tcs.SetResult(new FutureError<T>(e, from, header));
+            _tcs.SetResult(new FutureError<T>(e, from, header));
         }
 
         public override void Cancel()

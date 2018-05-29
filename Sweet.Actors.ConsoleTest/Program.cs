@@ -42,53 +42,53 @@ namespace Sweet.Actors.ConsoleTest
 
             public Task OnReceive(IContext ctx, IMessage msg)
             {
-				var i = Interlocked.Add(ref _state, 1);
-				if (msg is IFutureMessage futureMessage)
-				{
-					((IFutureContext)ctx).RespondTo(futureMessage, i);
-				}
+                var i = Interlocked.Add(ref _state, 1);
+                if (msg is IFutureMessage futureMessage)
+                {
+                    ((IFutureContext)ctx).RespondTo(futureMessage, i);
+                }
 
-				if (i >= loop)
-				{
-					Interlocked.Exchange(ref _state, 0);
+                if (i >= loop)
+                {
+                    Interlocked.Exchange(ref _state, 0);
 
-					resetEvent.Set();
-					Console.WriteLine("Completed");
-				}
+                    resetEvent.Set();
+                    Console.WriteLine("Completed");
+                }
                 return Receive.Completed;
             }
         }
 
-		static void Main(string[] args)
-		{
-			var sw = new Stopwatch();
+        static void Main(string[] args)
+        {
+            var sw = new Stopwatch();
 
-			var actorSystem = ActorSystem.GetOrAdd(ActorSystemSettings.UsingName("default"));
-			var actorPid = actorSystem.FromType<DummyActor>(ActorSettings.UsingName("dummy").UsingSequentialInvokeLimit(1000));
+            var actorSystem = ActorSystem.GetOrAdd(ActorSystemSettings.UsingName("default"));
+            var actorPid = actorSystem.FromType<DummyActor>(ActorSettings.UsingName("dummy").UsingSequentialInvokeLimit(1000));
 
-			var state = 0;
-			var functionPid = actorSystem.FromFunction((ctx, msg) =>
-			{
-				var i = Interlocked.Add(ref state, 1);
-				if (msg is IFutureMessage futureMessage)
-				{
-					((IFutureContext)ctx).RespondTo(futureMessage, i);
-				}
+            var state = 0;
+            var functionPid = actorSystem.FromFunction((ctx, msg) =>
+            {
+                var i = Interlocked.Add(ref state, 1);
+                if (msg is IFutureMessage futureMessage)
+                {
+                    ((IFutureContext)ctx).RespondTo(futureMessage, i);
+                }
 
-				if (i >= loop)
-				{
-					Interlocked.Exchange(ref state, 0);
+                if (i >= loop)
+                {
+                    Interlocked.Exchange(ref state, 0);
 
-					resetEvent.Set();
-					Console.WriteLine("Completed");
-				}
-				return Receive.Completed;
-			});
+                    resetEvent.Set();
+                    Console.WriteLine("Completed");
+                }
+                return Receive.Completed;
+            });
 
-			do
-			{
-				var t = actorPid.Request<int>("hello");
-				t.ContinueWith((ca) =>
+            do
+            {
+                var t = actorPid.Request<int>("hello");
+                t.ContinueWith((ca) =>
                 {
                     if (ca.IsCompleted)
                     {
@@ -99,30 +99,30 @@ namespace Sweet.Actors.ConsoleTest
                             Console.WriteLine(r.Data);
                     }
                 });
-                
-				resetEvent.Reset();
 
-				sw.Restart();
-				for (var i = 0; i < loop; i++)
-					actorPid.Tell("hello");
+                resetEvent.Reset();
 
-				resetEvent.WaitOne();
-				sw.Stop();
+                sw.Restart();
+                for (var i = 0; i < loop; i++)
+                    actorPid.Tell("hello");
 
-				Console.WriteLine("Ellapsed from actor: " + sw.ElapsedMilliseconds);
+                resetEvent.WaitOne();
+                sw.Stop();
 
-				resetEvent.Reset();
+                Console.WriteLine("Ellapsed from actor: " + sw.ElapsedMilliseconds);
 
-				sw.Restart();
-				for (var i = 0; i < loop; i++)
-					functionPid.Tell(i);
+                resetEvent.Reset();
 
-				resetEvent.WaitOne();
-				sw.Stop();
-                
-				Console.WriteLine("Ellapsed from function: " + sw.ElapsedMilliseconds);
-			}
-			while (Console.ReadKey().Key != ConsoleKey.Escape);
-		}
+                sw.Restart();
+                for (var i = 0; i < loop; i++)
+                    functionPid.Tell(i);
+
+                resetEvent.WaitOne();
+                sw.Stop();
+
+                Console.WriteLine("Ellapsed from function: " + sw.ElapsedMilliseconds);
+            }
+            while (Console.ReadKey().Key != ConsoleKey.Escape);
+        }
     }
 }

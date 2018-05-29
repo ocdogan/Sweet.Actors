@@ -26,8 +26,8 @@ namespace Sweet.Actors
 {
     public static class Constants
     {
-		public const int DefaultPort = 0;
-		public const string DefaultHost = "local";
+        public const int DefaultPort = 0;
+        public const string DefaultHost = "local";
 
         public const string Protocol = "playbook://";
         public const string AddressFormat = "playbook://{0}:{1}/{2}";

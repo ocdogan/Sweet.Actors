@@ -54,11 +54,11 @@ namespace Sweet.Actors
             public static string Next()
             {
                 var buffer = Generate();
-				return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";
+                return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";
             }
         }
 
-        private static readonly ConcurrentDictionary<string, ActorSystem> _systemRegistery = 
+        private static readonly ConcurrentDictionary<string, ActorSystem> _systemRegistery =
             new ConcurrentDictionary<string, ActorSystem>();
 
         private readonly ConcurrentDictionary<Type, ConcurrentDictionary<string, Process>> _actorRegistery =
@@ -80,12 +80,12 @@ namespace Sweet.Actors
         public static ActorSystem GetOrAdd(ActorSystemSettings settings = null)
         {
             settings = (settings ?? ActorSystemSettings.Default);
-            return _systemRegistery.GetOrAdd(settings.Name, 
+            return _systemRegistery.GetOrAdd(settings.Name,
                 (sn) => new ActorSystem(settings));
         }
 
         public Pid FromType<T>(ActorSettings settings = null)
-            where T: class, IActor, new()
+            where T : class, IActor, new()
         {
             var processList =
                 _actorRegistery.GetOrAdd(typeof(T),
@@ -128,8 +128,9 @@ namespace Sweet.Actors
             settings = (settings ?? ActorSettings.Default);
 
             var exists = true;
-            var p = processList.GetOrAdd(GetActorName(settings), 
-                (an) => {
+            var p = processList.GetOrAdd(GetActorName(settings),
+                (an) =>
+                {
                     exists = false;
                     return new Process(this, actor, null, GetSequentialInvokeLimit(settings), settings.InitialContextData);
                 });
@@ -146,7 +147,7 @@ namespace Sweet.Actors
 
             var actorName = settings.Name?.Trim();
             if (String.IsNullOrEmpty(actorName))
-				actorName = AnonymousNameGenerator.Next();
+                actorName = AnonymousNameGenerator.Next();
 
             lock (_actorRegistery)
             {

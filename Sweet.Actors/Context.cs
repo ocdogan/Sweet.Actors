@@ -30,7 +30,7 @@ namespace Sweet.Actors
 {
     public interface IContext
     {
-		ContextId Id { get; }
+        ContextId Id { get; }
         Address Address { get; }
 
         bool HasData(string key);
@@ -39,27 +39,27 @@ namespace Sweet.Actors
         bool TryGetData(string key, out object data);
     }
 
-	public interface IFutureContext : IContext
+    public interface IFutureContext : IContext
     {
-		void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null);
-		void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null);
+        void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null);
+        void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null);
     }
 
-	internal class Context : IContext, IFutureContext
+    internal class Context : IContext, IFutureContext
     {
-		private ContextId _id;
-		private Process _process;
-		private ConcurrentDictionary<string, object> _dataCtx = new ConcurrentDictionary<string, object>();
+        private ContextId _id;
+        private Process _process;
+        private ConcurrentDictionary<string, object> _dataCtx = new ConcurrentDictionary<string, object>();
 
         internal Context(Process process, Address address)
         {
-			_id = ContextId.Next();
+            _id = ContextId.Next();
 
-			_process = process;
-			Address = address ?? Address.Unknown;
+            _process = process;
+            Address = address ?? Address.Unknown;
         }
 
-		public ContextId Id => _id;
+        public ContextId Id => _id;
 
         public Address Address { get; }
 
@@ -69,10 +69,10 @@ namespace Sweet.Actors
         }
 
         public object GetData(string key)
-		{
-			_dataCtx.TryGetValue(key, out object result);
-			return result;
-		}
+        {
+            _dataCtx.TryGetValue(key, out object result);
+            return result;
+        }
 
         public bool TryGetData(string key, out object data)
         {
@@ -85,13 +85,13 @@ namespace Sweet.Actors
         }
 
         public void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null)
-		{
-			((FutureMessage)future).Respond(response, Address, header);
-		}
+        {
+            ((FutureMessage)future).Respond(response, Address, header);
+        }
 
-		public void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null)
-		{
+        public void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null)
+        {
             ((FutureMessage)future).Respond(new FutureError<T>(e, Address, header));
-		}
-	}
+        }
+    }
 }
