@@ -67,47 +67,47 @@ namespace Sweet.Actors
         private readonly ConcurrentDictionary<string, Process> _functionRegistery =
             new ConcurrentDictionary<string, Process>();
 
-        private ActorSystem(ActorSystemSettings settings)
+        private ActorSystem(ActorSystemOptions options)
         {
-            SystemSettings = settings;
-            Name = settings.Name;
+            SystemOptions = options ?? ActorSystemOptions.Default;
+            Name = options.Name;
         }
 
         public string Name { get; }
 
-        public ActorSystemSettings SystemSettings { get; }
+        public ActorSystemOptions SystemOptions { get; }
 
-        public static ActorSystem GetOrAdd(ActorSystemSettings settings = null)
+        public static ActorSystem GetOrAdd(ActorSystemOptions options = null)
         {
-            settings = (settings ?? ActorSystemSettings.Default);
-            return _systemRegistery.GetOrAdd(settings.Name,
-                (sn) => new ActorSystem(settings));
+            options = (options ?? ActorSystemOptions.Default);
+            return _systemRegistery.GetOrAdd(options.Name,
+                (sn) => new ActorSystem(options));
         }
 
-        public Pid FromType<T>(ActorSettings settings = null)
+        public Pid FromType<T>(ActorOptions options = null)
             where T : class, IActor, new()
         {
             var processList =
                 _actorRegistery.GetOrAdd(typeof(T),
                                          (t) => new ConcurrentDictionary<string, Process>());
 
-            settings = (settings ?? ActorSettings.Default);
+            options = (options ?? ActorOptions.Default);
 
-            var p = processList.GetOrAdd(GetActorName(settings),
+            var p = processList.GetOrAdd(GetActorName(options),
                 (an) =>
                 {
-                    var sequentialInvokeLimit = settings.SequentialInvokeLimit;
+                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
                     if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = SystemSettings.SequentialInvokeLimit;
+                        sequentialInvokeLimit = SystemOptions.SequentialInvokeLimit;
 
                     var actor = Activator.CreateInstance<T>();
-                    return new Process(this, actor, null, GetSequentialInvokeLimit(settings), settings.InitialContextData);
+                    return new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
             return p.Pid;
         }
 
-        private static string GetActorName(ActorSettings settings)
+        private static string GetActorName(ActorOptions settings)
         {
             var result = settings.Name?.Trim();
             if (String.IsNullOrEmpty(result))
@@ -116,7 +116,7 @@ namespace Sweet.Actors
             return result;
         }
 
-        public (bool, Pid) FromActor(IActor actor, ActorSettings settings = null)
+        public (bool, Pid) FromActor(IActor actor, ActorOptions options = null)
         {
             if (actor == null)
                 throw new ArgumentNullException(nameof(actor));
@@ -125,27 +125,27 @@ namespace Sweet.Actors
                 _actorRegistery.GetOrAdd(actor.GetType(),
                                          (t) => new ConcurrentDictionary<string, Process>());
 
-            settings = (settings ?? ActorSettings.Default);
+            options = (options ?? ActorOptions.Default);
 
             var exists = true;
-            var p = processList.GetOrAdd(GetActorName(settings),
+            var p = processList.GetOrAdd(GetActorName(options),
                 (an) =>
                 {
                     exists = false;
-                    return new Process(this, actor, null, GetSequentialInvokeLimit(settings), settings.InitialContextData);
+                    return new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
             return (!exists, p.Pid);
         }
 
-        public Pid FromFunction(Func<IContext, IMessage, Task> receiveFunc, ActorSettings settings = null)
+        public Pid FromFunction(Func<IContext, IMessage, Task> receiveFunc, ActorOptions options = null)
         {
             if (receiveFunc == null)
                 throw new ArgumentNullException(nameof(receiveFunc));
 
-            settings = (settings ?? ActorSettings.Default);
+            options = (options ?? ActorOptions.Default);
 
-            var actorName = settings.Name?.Trim();
+            var actorName = options.Name?.Trim();
             if (String.IsNullOrEmpty(actorName))
                 actorName = AnonymousNameGenerator.Next();
 
@@ -155,18 +155,18 @@ namespace Sweet.Actors
                     throw new Exception(String.Format(Errors.ActorAlreadyExsists, actorName));
 
                 var actor = new FunctionCallActor(receiveFunc);
-                var p = new Process(this, actor, null, GetSequentialInvokeLimit(settings), settings.InitialContextData);
+                var p = new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
 
                 _functionRegistery[actorName] = p;
                 return p.Pid;
             }
         }
 
-        private int GetSequentialInvokeLimit(ActorSettings settings)
+        private int GetSequentialInvokeLimit(ActorOptions options)
         {
-            var result = settings.SequentialInvokeLimit;
+            var result = options.SequentialInvokeLimit;
             if (result < 1)
-                result = SystemSettings.SequentialInvokeLimit;
+                result = SystemOptions.SequentialInvokeLimit;
 
             return result;
         }

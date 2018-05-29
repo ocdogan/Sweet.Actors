@@ -23,46 +23,36 @@
 #endregion License
 
 using System;
-using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    public class ActorSettings
+    public sealed class ActorSystemOptions
     {
-        public static readonly ActorSettings Default = new ActorSettings(null);
+        public static readonly ActorSystemOptions Default = new ActorSystemOptions(null);
 
         private string _name;
         private int _sequentialInvokeLimit = -1;
-        private IDictionary<string, object> _initialContextData;
 
-        private ActorSettings(string name)
+        private ActorSystemOptions(string name)
         {
             _name = name?.Trim();
             if (String.IsNullOrEmpty(_name))
                 _name = Constants.DefaultActorSystemName;
         }
 
-        public static ActorSettings UsingName(string name)
+        public static ActorSystemOptions UsingName(string name)
         {
-            return new ActorSettings(name);
+            return new ActorSystemOptions(name);
         }
 
-        public ActorSettings UsingSequentialInvokeLimit(int sequentialInvokeLimit)
+        public ActorSystemOptions UsingSequentialInvokeLimit(int sequentialInvokeLimit)
         {
             _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(sequentialInvokeLimit);
-            return this;
-        }
-
-        public ActorSettings UsingInitialContextData(IDictionary<string, object> initialContextData)
-        {
-            _initialContextData = initialContextData;
             return this;
         }
 
         public string Name => _name;
 
         public int SequentialInvokeLimit => _sequentialInvokeLimit;
-
-        public IDictionary<string, object> InitialContextData => _initialContextData;
     }
 }

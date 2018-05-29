@@ -63,8 +63,8 @@ namespace Sweet.Actors.ConsoleTest
         {
             var sw = new Stopwatch();
 
-            var actorSystem = ActorSystem.GetOrAdd(ActorSystemSettings.UsingName("default"));
-            var actorPid = actorSystem.FromType<DummyActor>(ActorSettings.UsingName("dummy").UsingSequentialInvokeLimit(1000));
+            var actorSystem = ActorSystem.GetOrAdd(ActorSystemOptions.UsingName("default"));
+            var actorPid = actorSystem.FromType<DummyActor>(ActorOptions.UsingName("dummy").UsingSequentialInvokeLimit(1000));
 
             var state = 0;
             var functionPid = actorSystem.FromFunction((ctx, msg) =>

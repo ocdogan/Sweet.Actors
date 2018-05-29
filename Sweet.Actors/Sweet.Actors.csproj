@@ -8,6 +8,5 @@
 
   <ItemGroup>
     <Compile Remove="IMessage.cs" />
-    <Compile Remove="IResponseMessage.cs" />
   </ItemGroup>
 </Project>
