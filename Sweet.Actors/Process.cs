@@ -70,7 +70,7 @@ namespace Sweet.Actors
 
         public Pid Pid => _pid;
 
-        public Task Send(object message, IDictionary<string, string> header = null)
+		public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             if (message != null)
             {
@@ -97,7 +97,7 @@ namespace Sweet.Actors
                     var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
                         new TaskCompletionSource<IFutureResponse<T>>();
 
-                    _mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header));
+					_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header, timeoutMSec));
                     StartNewProcess();
 
                     return tcs.Task;
@@ -124,24 +124,28 @@ namespace Sweet.Actors
             {
                 for (var i = 0; i < _sequentialInvokeLimit; i++)
                 {
-                    if ((Interlocked.Read(ref _inProcess) != Common.True) ||
-                        !_mailbox.TryDequeue(out Message msg))
-                        break;
-
+					var isFutureCall = false;
                     FutureMessage future = null;
-                    var isFutureCall = (msg.MessageType == MessageType.FutureMessage);
-
-                    try
+					try
                     {
+						if ((Interlocked.Read(ref _inProcess) != Common.True) ||
+						    !_mailbox.TryDequeue(out Message msg))
+							break;
+
+						isFutureCall = (msg.MessageType == MessageType.FutureMessage);
+
                         if (isFutureCall)
                         {
                             future = (FutureMessage)msg;
-                            if (future.IsCanceled)
+                            if (future.IsCanceled || msg.Expired)
                             {
                                 future.Cancel();
                                 continue;
                             }
                         }
+
+						if (msg.Expired)
+							throw new Exception(Errors.MessageExpired);
 
                         Actor.OnReceive(_ctx, msg);
 

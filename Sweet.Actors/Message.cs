@@ -44,21 +44,32 @@ namespace Sweet.Actors
         IReadOnlyDictionary<string, string> Header { get; }
         Address From { get; }
         MessageType MessageType { get; }
+		bool Expired { get; }
     }
 
     internal class Message : IMessage
     {
         public static readonly Message Empty = new Message(new object(), Address.Unknown);
 
+		private int _creationTime;
+		private int _timeoutMSec = -1;
         private IReadOnlyDictionary<string, string> _header;
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
-        internal Message(object data, Address from = null, IDictionary<string, string> header = null)
+		internal Message(object data, Address from = null, IDictionary<string, string> header = null, 
+		                 int timeoutMSec = -1)
         {
             Data = data;
             From = from ?? Address.Unknown;
             _header = (header != null) ? new ReadOnlyDictionary<string, string>(header) : _defaultHeader;
+
+			_timeoutMSec = timeoutMSec;
+
+			if (_timeoutMSec < -1)
+                _timeoutMSec = -1;
+			else if (_timeoutMSec > 0)
+				_creationTime = Environment.TickCount;
         }
 
         public object Data { get; }
@@ -68,6 +79,9 @@ namespace Sweet.Actors
         public Address From { get; }
 
         public virtual MessageType MessageType => MessageType.Default;
+
+		public bool Expired => _timeoutMSec > 0 && 
+		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
     }
 
     public interface IFutureResponse<T> : IMessage
@@ -79,15 +93,17 @@ namespace Sweet.Actors
     {
         protected bool _isEmpty;
 
-        internal FutureResponse(Address from = null, IDictionary<string, string> header = null)
-            : base(default(T), from, header)
+		internal FutureResponse(Address from = null, IDictionary<string, string> header = null,
+                         int timeoutMSec = -1)
+			: base(default(T), from, header, timeoutMSec)
         {
             _isEmpty = true;
         }
 
         internal FutureResponse(T data,
-                                Address from = null, IDictionary<string, string> header = null)
-            : base(data, from, header)
+		                        Address from = null, IDictionary<string, string> header = null,
+                                int timeoutMSec = -1)
+			: base(data, from, header, timeoutMSec)
         { }
 
         public override MessageType MessageType => MessageType.FutureResponse;
@@ -135,7 +151,7 @@ namespace Sweet.Actors
     {
         internal FutureMessage(object data, Type responseType,
                                Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
-            : base(data, from, header)
+			: base(data, from, header, timeoutMSec)
         {
             ResponseType = responseType;
         }
@@ -166,7 +182,7 @@ namespace Sweet.Actors
                                CancellationTokenSource cancellationTokenSource,
                                TaskCompletionSource<IFutureResponse<T>> taskCompletionSource,
                                Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
-            : base(data, typeof(T), from, header)
+			: base(data, typeof(T), from, header, timeoutMSec)
         {
             _tcs = taskCompletionSource;
             _cts = cancellationTokenSource;

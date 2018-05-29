@@ -36,9 +36,9 @@ namespace Sweet.Actors
             _process = process;
         }
 
-        public Task Tell(object message, IDictionary<string, string> header = null)
+        public Task Tell(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
-			return _process.Send(message, header);
+			return _process.Send(message, header, timeoutMSec);
         }
 
 		public Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
