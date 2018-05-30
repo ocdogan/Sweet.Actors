@@ -80,7 +80,7 @@ namespace Sweet.Actors
                             if (value >= frameStart)
                             {
                                 head = value;
-                                break;
+                                continue;
                             }
 
                             if (!_ticks.TryDequeue(out value))

@@ -94,6 +94,7 @@ namespace Sweet.Actors.ConsoleTest
             });
 
             // CounterTest();
+            // AverageTest();
 
             do
             {
@@ -150,6 +151,15 @@ namespace Sweet.Actors.ConsoleTest
                 if (rnd.Next(0, 1) != 0)
                     Thread.Sleep(rnd.Next(1, 5) * 1000);
             }
+        }
+
+        private static void AverageTest()
+        {
+            var items = new int[] { 1, 3, 5, 12 };
+
+            var avg = new MetricsAverage();
+            for (var i = 0; i < items.Length; i++)
+                Console.WriteLine(avg.Tick(items[i]));
         }
     }
 }
