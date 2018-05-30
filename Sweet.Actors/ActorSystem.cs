@@ -101,7 +101,9 @@ namespace Sweet.Actors
                         sequentialInvokeLimit = SystemOptions.SequentialInvokeLimit;
 
                     var actor = Activator.CreateInstance<T>();
-                    return new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
+                    return new Process(this, actor, null, 
+                                    options.ErrorHandler ?? SystemOptions.ErrorHandler, 
+                                    GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
             return p.Pid;
@@ -132,7 +134,9 @@ namespace Sweet.Actors
                 (an) =>
                 {
                     exists = false;
-                    return new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
+                    return new Process(this, actor, null, 
+                                    options.ErrorHandler ?? SystemOptions.ErrorHandler,
+                                    GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
             return (!exists, p.Pid);
@@ -155,7 +159,9 @@ namespace Sweet.Actors
                     throw new Exception(String.Format(Errors.ActorAlreadyExsists, actorName));
 
                 var actor = new FunctionCallActor(receiveFunc);
-                var p = new Process(this, actor, null, GetSequentialInvokeLimit(options), options.InitialContextData);
+                var p = new Process(this, actor, null,
+                                options.ErrorHandler ?? SystemOptions.ErrorHandler,
+                                GetSequentialInvokeLimit(options), options.InitialContextData);
 
                 _functionRegistery[actorName] = p;
                 return p.Pid;

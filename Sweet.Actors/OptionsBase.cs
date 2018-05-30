@@ -26,17 +26,36 @@ using System;
 
 namespace Sweet.Actors
 {
-    public sealed class ActorSystemOptions : OptionsBase<ActorSystemOptions>
+    public abstract class OptionsBase<T>
+        where T: OptionsBase<T>
     {
-        public static readonly ActorSystemOptions Default = new ActorSystemOptions(null);
+        private string _name;
+        private IErrorHandler _errorHandler;
+        private int _sequentialInvokeLimit = -1;
 
-        private ActorSystemOptions(string name)
-            : base(name)
-        { }
-
-        public static ActorSystemOptions UsingName(string name)
+        protected OptionsBase(string name)
         {
-            return new ActorSystemOptions(name);
+            _name = name?.Trim();
+            if (String.IsNullOrEmpty(_name))
+                _name = Constants.DefaultActorSystemName;
         }
+
+        public T UsingSequentialInvokeLimit(int sequentialInvokeLimit)
+        {
+            _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(sequentialInvokeLimit);
+            return (T)this;
+        }
+
+        public T UsingErrorHandler(IErrorHandler errorHandler)
+        {
+            _errorHandler = errorHandler;
+            return (T)this;
+        }
+
+        public string Name => _name;
+
+        public IErrorHandler ErrorHandler => _errorHandler;
+
+        public int SequentialInvokeLimit => _sequentialInvokeLimit;
     }
 }

@@ -27,30 +27,19 @@ using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    public sealed class ActorOptions
+    public sealed class ActorOptions : OptionsBase<ActorOptions>
     {
         public static readonly ActorOptions Default = new ActorOptions(null);
 
-        private string _name;
-        private int _sequentialInvokeLimit = -1;
         private IDictionary<string, object> _initialContextData;
 
         private ActorOptions(string name)
-        {
-            _name = name?.Trim();
-            if (String.IsNullOrEmpty(_name))
-                _name = Constants.DefaultActorSystemName;
-        }
+            : base(name)
+        { }
 
         public static ActorOptions UsingName(string name)
         {
             return new ActorOptions(name);
-        }
-
-        public ActorOptions UsingSequentialInvokeLimit(int sequentialInvokeLimit)
-        {
-            _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(sequentialInvokeLimit);
-            return this;
         }
 
         public ActorOptions UsingInitialContextData(IDictionary<string, object> initialContextData)
@@ -58,10 +47,6 @@ namespace Sweet.Actors
             _initialContextData = initialContextData;
             return this;
         }
-
-        public string Name => _name;
-
-        public int SequentialInvokeLimit => _sequentialInvokeLimit;
 
         public IDictionary<string, object> InitialContextData => _initialContextData;
     }

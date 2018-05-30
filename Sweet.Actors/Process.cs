@@ -30,7 +30,15 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    internal class Process
+    public interface IProcess
+    {
+        IActor Actor { get; }
+        IContext Context { get; }
+        Pid Pid { get; }
+        ActorSystem System { get; }
+    }
+
+    internal class Process : IProcess
     {
         private const object DefaultResponse = null;
 
@@ -41,9 +49,12 @@ namespace Sweet.Actors
         private Context _ctx;
         private long _inProcess;
         private int _sequentialInvokeLimit;
+        private IErrorHandler _errorHandler;
+
         private ConcurrentQueue<Message> _mailbox = new ConcurrentQueue<Message>();
 
         public Process(ActorSystem system, IActor actor, Address address,
+                       IErrorHandler errorHandler = null,
                        int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
                        IDictionary<string, object> initialContextData = null)
         {
@@ -52,6 +63,8 @@ namespace Sweet.Actors
 
             _pid = new Pid(this);
             _ctx = new Context(this, address);
+
+            _errorHandler = errorHandler ?? DefaultErrorHandler.Instance;
 
             _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(sequentialInvokeLimit);
             _sequentialInvokeLimit = (_sequentialInvokeLimit < 1) ?
@@ -128,13 +141,14 @@ namespace Sweet.Actors
                 {
 					var isFutureCall = false;
                     FutureMessage future = null;
-					try
-                    {
-						if ((Interlocked.Read(ref _inProcess) != Common.True) ||
-						    !_mailbox.TryDequeue(out Message msg))
-							break;
 
-						isFutureCall = (msg.MessageType == MessageType.FutureMessage);
+                    if ((Interlocked.Read(ref _inProcess) != Common.True) ||
+                        !_mailbox.TryDequeue(out Message msg))
+                        break;
+
+                    try
+                    {
+                        isFutureCall = (msg.MessageType == MessageType.FutureMessage);
 
                         if (isFutureCall)
                         {
@@ -146,10 +160,10 @@ namespace Sweet.Actors
                             }
                         }
 
-						if (msg.Expired)
-							throw new Exception(Errors.MessageExpired);
+                        if (msg.Expired)
+                            throw new Exception(Errors.MessageExpired);
 
-                        Actor.OnReceive(_ctx, msg);
+                        Send(_ctx, msg);
 
                         if (isFutureCall &&
                             !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
@@ -157,6 +171,8 @@ namespace Sweet.Actors
                     }
                     catch (Exception e)
                     {
+                        _errorHandler.HandleError(this, msg, e);
+
                         if (isFutureCall && (future != null))
                             future.RespondToWithError(e, _ctx.Address);
 
@@ -171,6 +187,11 @@ namespace Sweet.Actors
                     StartNewProcess();
             }
             return ProcessCompleted;
+        }
+
+        protected virtual void Send(IContext ctx, Message msg)
+        {
+            Actor.OnReceive(ctx, msg);
         }
     }
 }
