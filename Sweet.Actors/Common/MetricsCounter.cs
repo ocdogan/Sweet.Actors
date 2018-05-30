@@ -7,28 +7,30 @@ namespace Sweet.Actors
 {
     public class MetricsCounter
     {
-        private const int DefaultTimeWindowSec = 60;
+        private const int DefaultTimeFrameSec = 60;
 
         private int _calculating;
         private int _tickedInCalculation;
 
         private long _value;
-        private int _windowStart;
-        private int _timeWindowMSec = DefaultTimeWindowSec;
+        private int _frameStart;
+        private int _timeFrameMSec = DefaultTimeFrameSec;
         private ConcurrentQueue<int> _ticks = new ConcurrentQueue<int>();
 
-        public MetricsCounter(int timeWindowSeconds = DefaultTimeWindowSec)
+        public MetricsCounter(int timeFrameSeconds = DefaultTimeFrameSec)
         {
-            _timeWindowMSec = Math.Max(1, timeWindowSeconds) * 1000;
+            _timeFrameMSec = Math.Max(1, timeFrameSeconds) * 1000;
         }
 
-        public MetricsCounter(string name, int timeWindowSeconds = DefaultTimeWindowSec)
-            : this(timeWindowSeconds)
+        public MetricsCounter(string name, int timeFrameSeconds = DefaultTimeFrameSec)
+            : this(timeFrameSeconds)
         {
             Name = name;
         }
 
         public string Name { get; }
+
+        public int TimeFrameMSec => _timeFrameMSec;
 
         public long Value
         {
@@ -38,10 +40,10 @@ namespace Sweet.Actors
                 if (result > 0)
                 {
                     Interlocked.MemoryBarrier();
-                    var actualStart = Environment.TickCount - _timeWindowMSec;
+                    var actualStart = Environment.TickCount - _timeFrameMSec;
 
                     Interlocked.MemoryBarrier();
-                    if (actualStart > _windowStart)
+                    if (actualStart > _frameStart)
                         Calculate(actualStart);
                 }
                 return result;
@@ -51,20 +53,20 @@ namespace Sweet.Actors
         public long Tick()
         {
             var tick = Environment.TickCount;
-            var windowStart = tick - _timeWindowMSec;
+            var frameStart = tick - _timeFrameMSec;
 
             var result = Interlocked.Increment(ref _value);
             _ticks.Enqueue(tick);
 
             if (result == 1)
-                Interlocked.Exchange(ref _windowStart, tick);
-            else if (!Calculate(windowStart))
+                Interlocked.Exchange(ref _frameStart, tick);
+            else if (!Calculate(frameStart))
                 Interlocked.Exchange(ref _tickedInCalculation, Common.True);
 
             return result;
         }
 
-        private bool Calculate(int windowStart)
+        private bool Calculate(int frameStart)
         {
             if (Common.CompareAndSet(ref _calculating, false, true))
             {
@@ -75,7 +77,7 @@ namespace Sweet.Actors
                     {
                         while (_ticks.TryPeek(out int value))
                         {
-                            if (value >= windowStart)
+                            if (value >= frameStart)
                             {
                                 head = value;
                                 break;
@@ -91,12 +93,12 @@ namespace Sweet.Actors
                     { }
                     finally
                     {
-                        Interlocked.Exchange(ref _windowStart, head);
+                        Interlocked.Exchange(ref _frameStart, head);
 
                         Interlocked.Exchange(ref _calculating, Common.False);
 
                         if (Common.CompareAndSet(ref _tickedInCalculation, true, false))
-                            Calculate(Environment.TickCount - _timeWindowMSec);
+                            Calculate(Environment.TickCount - _timeFrameMSec);
                     }
                 });
                 return true;
