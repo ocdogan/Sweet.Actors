@@ -23,16 +23,57 @@
 #endregion License
 
 using System;
+using System.Collections;
 using System.Threading;
 
 namespace Sweet.Actors
 {
     internal static class Common
     {
+        private static bool? s_IsWinPlatform;
+        private static bool? s_IsLinuxPlatform;
+
         public const int True = 1;
         public const int False = 0;
 
         public static readonly int ProcessId = Environment.TickCount;
+
+        public static bool IsWinPlatform
+        {
+            get
+            {
+                if (!s_IsWinPlatform.HasValue)
+                {
+                    var pid = Environment.OSVersion.Platform;
+                    switch (pid)
+                    {
+                        case PlatformID.Win32NT:
+                        case PlatformID.Win32S:
+                        case PlatformID.Win32Windows:
+                        case PlatformID.WinCE:
+                            s_IsWinPlatform = true;
+                            break;
+                        default:
+                            s_IsWinPlatform = false;
+                            break;
+                    }
+                }
+                return s_IsWinPlatform.Value;
+            }
+        }
+
+        public static bool IsLinuxPlatform
+        {
+            get
+            {
+                if (!s_IsLinuxPlatform.HasValue)
+                {
+                    int p = (int)Environment.OSVersion.Platform;
+                    s_IsLinuxPlatform = (p == 4) || (p == 6) || (p == 128);
+                }
+                return s_IsLinuxPlatform.Value;
+            }
+        }
 
         public static int ValidateSequentialInvokeLimit(int sequentialInvokeLimit)
         {
@@ -57,6 +98,26 @@ namespace Sweet.Actors
             var expected = expectedValue ? Common.True : Common.False;
 
             return Interlocked.CompareExchange(ref value, @new, expected) == expected;
+        }
+
+        internal static bool IsEmpty(this string obj)
+        {
+            return (obj == null || obj.Length == 0);
+        }
+
+        internal static bool IsEmpty(this Array obj)
+        {
+            return (obj == null || obj.Length == 0);
+        }
+
+        internal static bool IsEmpty(this ICollection obj)
+        {
+            return (obj == null || obj.Count == 0);
+        }
+
+        internal static bool IsEmpty(this ExtEndPoint endPoint)
+        {
+            return (ReferenceEquals(endPoint, null) || endPoint.IsEmpty);
         }
     }
 }

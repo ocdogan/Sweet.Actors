@@ -41,5 +41,11 @@ namespace Sweet.Actors
 
         public static readonly int ProtocolLength = Protocol.Length;
         public static readonly int EmptyProtocolLength = "playbook://:0/".Length;
+
+        public const string LocalHost = "localhost";
+        public const string IP4Loopback = "127.0.0.1";
+        public const string IP6Loopback = "::1";
+
+        public const int SIO_LOOPBACK_FAST_PATH = -1744830448;
     }
 }

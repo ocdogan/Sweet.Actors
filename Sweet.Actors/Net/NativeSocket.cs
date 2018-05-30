@@ -23,57 +23,58 @@
 #endregion License
 
 using System;
-using System.Collections.Generic;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 
 namespace Sweet.Actors
 {
-    public class ActorServer : Disposable
+    public class NativeSocket : Socket
     {
-        private Socket _socket;
-        private ServerEndPoint _endPoint;
+        #region Field Members
 
-        public ActorServer(ServerEndPoint endPoint)
+        private int _disposed;
+
+        #endregion Field Members
+
+        #region .Ctors
+
+        public NativeSocket(SocketInformation socketInformation)
+            : base(socketInformation)
+        { }
+
+        public NativeSocket(AddressFamily addressFamily, SocketType socketType, ProtocolType protocolType)
+            : base(addressFamily, socketType, protocolType)
+        { }
+
+        #endregion .Ctors
+
+        #region Destructors
+
+        protected override void Dispose(bool disposing)
         {
-             _endPoint = endPoint ?? throw new ArgumentNullException(nameof(endPoint));
+            Interlocked.Exchange(ref _disposed, Common.True);
+            base.Dispose(disposing);
         }
 
-        public ServerEndPoint EndPoint => _endPoint;
+        #endregion Destructors
 
-        public void Start()
+        #region Properties
+
+        public bool Disposed
         {
-            Stop();
-
-            var socket = new NativeSocket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
-                                { Blocking = false };
-            SetIOLoopbackFastPath(socket);
-
+            get { return _disposed != 0; }
         }
 
-        public void Stop()
+        #endregion Properties
+
+        #region Methods
+
+        public virtual void ThrowIdDisposed()
         {
-            var socket = Interlocked.Exchange(ref _socket, null);
-            if (socket != null)
-            {
-                using (socket)
-                    socket.Close();
-            }
+            if (Disposed)
+                throw new ObjectDisposedException(GetType().Name);
         }
 
-        private void SetIOLoopbackFastPath(Socket socket)
-        {
-            if (Common.IsWinPlatform)
-            {
-                try
-                {
-                    var ops = BitConverter.GetBytes(1);
-                    socket.IOControl(Constants.SIO_LOOPBACK_FAST_PATH, ops, null);
-                }
-                catch (Exception)
-                { }
-            }
-        }
+        #endregion Methods
     }
 }
