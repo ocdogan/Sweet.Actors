@@ -93,6 +93,8 @@ namespace Sweet.Actors.ConsoleTest
                 return Receive.Completed;
             });
 
+            // CounterTest();
+
             do
             {
                 var t = actorPid.Request<int>("hello");
@@ -133,6 +135,21 @@ namespace Sweet.Actors.ConsoleTest
                 Console.WriteLine("Ellapsed, from function: " + sw.ElapsedMilliseconds);
             }
             while (Console.ReadKey().Key != ConsoleKey.Escape);
+        }
+
+        private static void CounterTest()
+        {
+            var rnd = new Random();
+            var counter = new MetricsCounter(1);
+
+            for (var i = 0; i < 1000; i++)
+            {
+                Console.WriteLine(counter.Tick());
+                Thread.Sleep(20);
+
+                if (rnd.Next(0, 1) != 0)
+                    Thread.Sleep(rnd.Next(1, 5) * 1000);
+            }
         }
     }
 }
