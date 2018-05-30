@@ -52,6 +52,12 @@ namespace Sweet.Actors
             return (T)this;
         }
 
+        public T UsingErrorHandler(Action<IProcess, IMessage, Exception> errorHandler)
+        {
+            _errorHandler = (errorHandler == null) ? null : new ErrorHandlerAction(errorHandler);
+            return (T)this;
+        }
+
         public string Name => _name;
 
         public IErrorHandler ErrorHandler => _errorHandler;
