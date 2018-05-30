@@ -13,6 +13,7 @@ namespace Sweet.Actors
         private int _tickedInCalculation;
 
         private long _value;
+        private int _windowStart;
         private int _timeWindowMSec = DefaultTimeWindowSec;
         private ConcurrentQueue<int> _ticks = new ConcurrentQueue<int>();
 
@@ -29,7 +30,23 @@ namespace Sweet.Actors
 
         public string Name { get; }
 
-        public long Value => Interlocked.Read(ref _value);
+        public long Value
+        {
+            get
+            {
+                var result = Interlocked.Read(ref _value);
+                if (result > 0)
+                {
+                    Interlocked.MemoryBarrier();
+                    var actualStart = Environment.TickCount - _timeWindowMSec;
+
+                    Interlocked.MemoryBarrier();
+                    if (actualStart > _windowStart)
+                        Calculate(actualStart);
+                }
+                return result;
+            }
+        }
 
         public long Tick()
         {
@@ -39,7 +56,9 @@ namespace Sweet.Actors
             var result = Interlocked.Increment(ref _value);
             _ticks.Enqueue(tick);
 
-            if ((result > 1) && !Calculate(windowStart))
+            if (result == 1)
+                Interlocked.Exchange(ref _windowStart, tick);
+            else if (!Calculate(windowStart))
                 Interlocked.Exchange(ref _tickedInCalculation, Common.True);
 
             return result;
@@ -51,12 +70,18 @@ namespace Sweet.Actors
             {
                 Task.Factory.StartNew(() =>
                 {
+                    var head = 0;
                     try
                     {
                         while (_ticks.TryPeek(out int value))
                         {
-                            if (value >= windowStart ||
-                                !_ticks.TryDequeue(out value))
+                            if (value >= windowStart)
+                            {
+                                head = value;
+                                break;
+                            }
+
+                            if (!_ticks.TryDequeue(out value))
                                 break;
 
                             Interlocked.Decrement(ref _value);
@@ -66,20 +91,17 @@ namespace Sweet.Actors
                     { }
                     finally
                     {
+                        Interlocked.Exchange(ref _windowStart, head);
+
                         Interlocked.Exchange(ref _calculating, Common.False);
+
                         if (Common.CompareAndSet(ref _tickedInCalculation, true, false))
-                            Recalculate();
+                            Calculate(Environment.TickCount - _timeWindowMSec);
                     }
                 });
                 return true;
             }
             return false;
-        }
-
-        public long Recalculate()
-        {
-            Calculate(Environment.TickCount - _timeWindowMSec);
-            return Interlocked.Read(ref _value);
         }
     }
 }
