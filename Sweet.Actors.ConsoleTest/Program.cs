@@ -119,7 +119,7 @@ namespace Sweet.Actors.ConsoleTest
                 resetEvent.WaitOne();
                 sw.Stop();
 
-                Console.WriteLine("Ellapsed from actor: " + sw.ElapsedMilliseconds);
+                Console.WriteLine("Ellapsed, from actor: " + sw.ElapsedMilliseconds);
 
                 resetEvent.Reset();
 
@@ -130,7 +130,7 @@ namespace Sweet.Actors.ConsoleTest
                 resetEvent.WaitOne();
                 sw.Stop();
 
-                Console.WriteLine("Ellapsed from function: " + sw.ElapsedMilliseconds);
+                Console.WriteLine("Ellapsed, from function: " + sw.ElapsedMilliseconds);
             }
             while (Console.ReadKey().Key != ConsoleKey.Escape);
         }

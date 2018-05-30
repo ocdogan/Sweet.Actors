@@ -163,7 +163,10 @@ namespace Sweet.Actors
                         if (msg.Expired)
                             throw new Exception(Errors.MessageExpired);
 
-                        Send(_ctx, msg);
+                        var t = Send(_ctx, msg);
+
+                        if (t.IsFaulted)
+                            HandleError(msg, t.Exception);
 
                         if (isFutureCall &&
                             !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
@@ -171,7 +174,7 @@ namespace Sweet.Actors
                     }
                     catch (Exception e)
                     {
-                        _errorHandler.HandleError(this, msg, e);
+                        HandleError(msg, e);
 
                         if (isFutureCall && (future != null))
                             future.RespondToWithError(e, _ctx.Address);
@@ -189,9 +192,19 @@ namespace Sweet.Actors
             return ProcessCompleted;
         }
 
-        protected virtual void Send(IContext ctx, Message msg)
+        private void HandleError(Message msg, Exception e)
         {
-            Actor.OnReceive(ctx, msg);
+            try
+            {
+                _errorHandler.HandleError(this, msg, e);
+            }
+            catch (Exception)
+            { }
+        }
+
+        protected virtual Task Send(IContext ctx, Message msg)
+        {
+            return Actor.OnReceive(ctx, msg);
         }
     }
 }
