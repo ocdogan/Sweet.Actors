@@ -30,50 +30,50 @@ namespace Sweet.Actors
     {
         protected sealed class IdPart
         {
-            private long m_Id = 0L;
-            private long m_Initial = 0L;
+            private long _id = 0L;
+            private long _initial = 0L;
 
-            private IdPart m_Next;
-            private int m_Position;
+            private IdPart _next;
+            private int _position;
 
-            private object m_Lock = new object();
+            private object _lock = new object();
 
             public IdPart(IdPart next, int position, long initialId = 0L)
             {
-                m_Id = initialId;
-                m_Initial = initialId;
-                m_Next = next;
-                m_Position = position;
+                _id = initialId;
+                _initial = initialId;
+                _next = next;
+                _position = position;
             }
 
             public void SetNext(IdPart next)
             {
-                m_Next = next;
+                _next = next;
             }
 
             public void SetSeed(long id)
             {
-                m_Id = id;
+                _id = id;
             }
 
             public void Generate(long[] buffer)
             {
-                var id = Interlocked.Add(ref m_Id, 1L);
+                var id = Interlocked.Add(ref _id, 1L);
 
                 Interlocked.MemoryBarrier();
-                if (id < 0 && m_Next != null)
+                if (id < 0 && _next != null)
                 {
-                    lock (m_Lock)
+                    lock (_lock)
                     {
-                        var original = Interlocked.CompareExchange(ref m_Id, m_Initial, id);
+                        var original = Interlocked.CompareExchange(ref _id, _initial, id);
                         if (original < 0)
                         {
                             id = 0L;
-                            m_Next.Generate(buffer);
+                            _next.Generate(buffer);
                         }
                     }
                 }
-                buffer[m_Position] = id;
+                buffer[_position] = id;
             }
         }
 

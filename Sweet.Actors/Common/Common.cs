@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Threading;
 
 namespace Sweet.Actors
 {
@@ -40,6 +41,22 @@ namespace Sweet.Actors
 
             return Math.Min(Constants.MaxSequentialInvokeLimit,
                         Math.Max(Constants.MinSequentialInvokeLimit, sequentialInvokeLimit));
+        }
+
+        public static bool CompareAndSet(ref int value, bool expectedValue, bool newValue)
+        {
+            var @new = newValue ? Common.True : Common.False;
+            var expected = expectedValue ? Common.True : Common.False;
+
+            return Interlocked.CompareExchange(ref value, @new, expected) == expected;
+       }
+
+        public static bool CompareAndSet(ref long value, bool expectedValue, bool newValue)
+        {
+            var @new = newValue ? Common.True : Common.False;
+            var expected = expectedValue ? Common.True : Common.False;
+
+            return Interlocked.CompareExchange(ref value, @new, expected) == expected;
         }
     }
 }

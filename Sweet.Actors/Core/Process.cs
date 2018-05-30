@@ -127,7 +127,7 @@ namespace Sweet.Actors
 
         private void StartNewProcess()
         {
-            if (Interlocked.CompareExchange(ref _inProcess, Common.True, Common.False) == Common.False)
+            if (Common.CompareAndSet(ref _inProcess, false, true))
             {
                 Task.Factory.StartNew(ProcessMailbox);
             }
