@@ -26,18 +26,21 @@ using System;
 
 namespace Sweet.Actors
 {
-    public class ServerEndPoint : ExtEndPoint
+    internal class RemoteMessageBuffer
     {
-		private const int MinConcurrentConnectionsCount = 10;
-		private const int DefaultConcurrentConnectionsCount = 1024;
+		public RemoteMessageBuffer()
+        { }
 
-		public ServerEndPoint(string host, int port, int concurrentConnections = DefaultConcurrentConnectionsCount)
-            : base(host, port)
-        {
-			ConcurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
-				Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
-        }
+		public void Reset()
+		{ }
 
-        public int ConcurrentConnections { get; }
-    }
+		public void OnReceiveData(byte[] buffer, int bytesTransferred)
+		{ }
+
+		internal bool TryDecodeMessage(out Message msg)
+		{
+			msg = null;
+			return false;
+		}
+	}
 }

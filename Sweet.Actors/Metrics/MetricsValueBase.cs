@@ -101,7 +101,7 @@ namespace Sweet.Actors
             if (count == 1)
                 Interlocked.Exchange(ref _frameStart, tick);
             else if (!Calculate(frameStart))
-                Interlocked.Exchange(ref _tickedInCalculation, Common.True);
+				Interlocked.Exchange(ref _tickedInCalculation, Constants.True);
 
             return result;
         }
@@ -166,7 +166,7 @@ namespace Sweet.Actors
                             Interlocked.Exchange(ref _count, count);
                         }
 
-                        Interlocked.Exchange(ref _calculating, Common.False);
+						Interlocked.Exchange(ref _calculating, Constants.False);
 
                         if (Common.CompareAndSet(ref _tickedInCalculation, true, false))
                             Calculate(Environment.TickCount - _timeFrameMSec);

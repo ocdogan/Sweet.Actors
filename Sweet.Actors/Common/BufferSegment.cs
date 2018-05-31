@@ -26,18 +26,50 @@ using System;
 
 namespace Sweet.Actors
 {
-    public class ServerEndPoint : ExtEndPoint
+	public class BufferSegment : IDisposable
     {
-		private const int MinConcurrentConnectionsCount = 10;
-		private const int DefaultConcurrentConnectionsCount = 1024;
+		internal BufferSegment(int size)
+		{
+			Size = size;
+			Buffer = new byte[size];
+		}
 
-		public ServerEndPoint(string host, int port, int concurrentConnections = DefaultConcurrentConnectionsCount)
-            : base(host, port)
-        {
-			ConcurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
-				Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
-        }
+		public int Size { get; private set; }
 
-        public int ConcurrentConnections { get; }
-    }
+		public int Offset { get; private set; }
+
+		public byte[] Buffer { get; private set; }
+
+        public int Write(byte[] data)
+		{
+			if (data != null)
+			{
+				var dataLen = data.Length;
+				if (dataLen == 0)
+					return 0;
+
+				var appendLen = Math.Min(dataLen, Size - Offset);
+				if (appendLen > 0)
+				{
+					Array.Copy(data, Buffer, appendLen);
+					Offset += appendLen;
+				}
+
+				return dataLen - appendLen;
+			}
+			return -1;
+		}
+
+		public void Reset()
+		{
+			Offset = 0;
+		}
+        
+		public void Dispose()
+		{
+			Size = 0;
+			Offset = 0;
+			Buffer = null;
+		}
+	}
 }

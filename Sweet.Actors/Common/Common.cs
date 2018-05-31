@@ -25,18 +25,18 @@
 using System;
 using System.Collections;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
     internal static class Common
     {
+		private static readonly Action<Task> IgnoreTaskContinuation = t => { var ignored = t.Exception; };
+
+		public static readonly int ProcessId = Environment.TickCount;
+
         private static bool? s_IsWinPlatform;
         private static bool? s_IsLinuxPlatform;
-
-        public const int True = 1;
-        public const int False = 0;
-
-        public static readonly int ProcessId = Environment.TickCount;
 
         public static bool IsWinPlatform
         {
@@ -86,16 +86,16 @@ namespace Sweet.Actors
 
         public static bool CompareAndSet(ref int value, bool expectedValue, bool newValue)
         {
-            var @new = newValue ? Common.True : Common.False;
-            var expected = expectedValue ? Common.True : Common.False;
+            var @new = newValue ? Constants.True : Constants.False;
+            var expected = expectedValue ? Constants.True : Constants.False;
 
             return Interlocked.CompareExchange(ref value, @new, expected) == expected;
        }
 
         public static bool CompareAndSet(ref long value, bool expectedValue, bool newValue)
         {
-            var @new = newValue ? Common.True : Common.False;
-            var expected = expectedValue ? Common.True : Common.False;
+            var @new = newValue ? Constants.True : Constants.False;
+            var expected = expectedValue ? Constants.True : Constants.False;
 
             return Interlocked.CompareExchange(ref value, @new, expected) == expected;
         }
@@ -118,6 +118,22 @@ namespace Sweet.Actors
         internal static bool IsEmpty(this ExtEndPoint endPoint)
         {
             return (ReferenceEquals(endPoint, null) || endPoint.IsEmpty);
+        }
+
+		internal static void Ignore(this Task task)
+        {
+            if (task.IsCompleted)
+            {
+                var ignored = task.Exception;
+            }
+            else
+            {
+                task.ContinueWith(
+                    IgnoreTaskContinuation,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
         }
     }
 }

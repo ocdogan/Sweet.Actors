@@ -52,7 +52,7 @@ namespace Sweet.Actors
 
         protected override void Dispose(bool disposing)
         {
-            Interlocked.Exchange(ref _disposed, Common.True);
+			Interlocked.Exchange(ref _disposed, Constants.True);
             base.Dispose(disposing);
         }
 

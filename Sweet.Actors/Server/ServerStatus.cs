@@ -22,22 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-
 namespace Sweet.Actors
 {
-    public class ServerEndPoint : ExtEndPoint
+	public static class ServerStatus
     {
-		private const int MinConcurrentConnectionsCount = 10;
-		private const int DefaultConcurrentConnectionsCount = 1024;
-
-		public ServerEndPoint(string host, int port, int concurrentConnections = DefaultConcurrentConnectionsCount)
-            : base(host, port)
-        {
-			ConcurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
-				Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
-        }
-
-        public int ConcurrentConnections { get; }
+        public const long Stopped = 0L;
+		public const long Stopping = 1L;
+		public const long Starting = 2L;
+		public const long Started = 3L;
+		public const long Accepting = 4L;
     }
 }

@@ -12,7 +12,7 @@ namespace Sweet.Actors
             Dispose(false);
         }
 
-        public bool Disposed => _disposed != Common.False;
+		public bool Disposed => (_disposed != Constants.False);
 
         protected virtual void ThrowIfDisposed(string name = null)
         {
