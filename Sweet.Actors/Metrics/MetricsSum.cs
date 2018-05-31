@@ -29,24 +29,24 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-	public sealed class MetricsAverage : MetricsValueBase
+    public sealed class MetricsSum : MetricsValueBase
     {
-        public MetricsAverage(int timeFrameSeconds = DefaultTimeFrameSec)
-			: base(timeFrameSeconds)
+		public MetricsSum(int timeFrameSeconds = DefaultTimeFrameSec)
+            : base(timeFrameSeconds)
         { }
 
-        public MetricsAverage(string name, int timeFrameSeconds = DefaultTimeFrameSec)
+		public MetricsSum(string name, int timeFrameSeconds = DefaultTimeFrameSec)
             : base(name, timeFrameSeconds)
         { }
 
-		protected override double Tick(double value, int count, double current)
-		{
-			return Increment((value - current) / count);
-		}
+        protected override double Tick(double value, int count, double current)
+        {
+            return Increment(value);
+        }
 
-		protected override double Calculate(int count, double newValue, BucketItem item)
-		{
-			return newValue + ((item.Value - newValue) / count);
-		}
-	}
+        protected override double Calculate(int count, double newValue, BucketItem item)
+        {
+            return (item.Value + newValue);
+        }
+    }
 }
