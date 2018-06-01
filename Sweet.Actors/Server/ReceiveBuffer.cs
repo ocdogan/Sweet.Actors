@@ -26,9 +26,9 @@ using System;
 
 namespace Sweet.Actors
 {
-    internal class RemoteMessageBuffer
+    internal class ReceiveBuffer
     {
-		public RemoteMessageBuffer()
+		public ReceiveBuffer()
         { }
 
 		public void Reset()

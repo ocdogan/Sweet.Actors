@@ -127,6 +127,14 @@ namespace Sweet.Actors
             _port = port;
         }
 
+        public ExtEndPoint(IPAddress ipAddress, int port)
+        {
+            _addressFamily = ipAddress?.AddressFamily ?? AddressFamily.Unknown;
+
+            _host = ipAddress?.ToString() ?? String.Empty;
+            _port = port;
+        }
+
         #endregion .Ctors
 
         #region Properties
@@ -156,9 +164,11 @@ namespace Sweet.Actors
                 {
                     var entry = GetEntry(_host);
 
-                    if (entry == null || entry.IPAddresses.IsEmpty())
-                        _addressFamily = AddressFamily.Unspecified;
-                    else _addressFamily = entry.IPAddresses[0].AddressFamily;
+                    if ((entry != null) && !entry.IPAddresses.IsEmpty())
+                        _addressFamily = entry.IPAddresses[0].AddressFamily;
+                    else if (Socket.OSSupportsIPv4)
+                        _addressFamily = AddressFamily.InterNetwork;
+                    else _addressFamily = AddressFamily.InterNetworkV6;
                 }
                 return _addressFamily;
             }
@@ -185,24 +195,24 @@ namespace Sweet.Actors
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(obj, null))
+            if (obj is null)
                 return false;
 
             if (ReferenceEquals(obj, this))
                 return true;
 
             var other = obj as ExtEndPoint;
-            if (!ReferenceEquals(other, null))
+            if (!(other is null))
                 return _port == other._port &&
                      String.Equals(_host, other._host, StringComparison.OrdinalIgnoreCase);
 
             var ipEP = obj as IPEndPoint;
-            if (!ReferenceEquals(ipEP, null))
+            if (!(ipEP is null))
                 return _port == ipEP.Port &&
                      String.Equals(_host, ipEP.Address.ToString(), StringComparison.OrdinalIgnoreCase);
 
             var dnsEP = obj as DnsEndPoint;
-            if (!ReferenceEquals(dnsEP, null))
+            if (!(dnsEP is null))
                 return _port == dnsEP.Port &&
                      String.Equals(_host, dnsEP.Host, StringComparison.OrdinalIgnoreCase);
 
@@ -211,7 +221,7 @@ namespace Sweet.Actors
 
         public bool Equals(ExtEndPoint other)
         {
-            if (ReferenceEquals(other, null))
+            if (other is null)
                 return false;
 
             if (ReferenceEquals(other, this))
@@ -235,97 +245,93 @@ namespace Sweet.Actors
 
         private static IPAddressEntry GetEntry(string host)
         {
-            if (!host.IsEmpty())
+            if (host.IsEmpty())
+                return null;
+
+            if (s_DnsEntries.TryGetValue(host, out IPAddressEntry entry) && !entry.Expired)
+                return entry;
+
+            lock (((ICollection)s_DnsEntries).SyncRoot)
             {
-                IPAddressEntry entry;
-                if (!s_DnsEntries.TryGetValue(host, out entry) || entry.Expired)
+                if (s_DnsEntries.TryGetValue(host, out entry) && !entry.Expired)
+                    return entry;
+
+                var isIp = false;
+
+                IPAddress[] ipAddresses = null;
+                if (host.Equals(Constants.LocalHost, StringComparison.OrdinalIgnoreCase))
                 {
-                    lock (((ICollection)s_DnsEntries).SyncRoot)
+                    if (Socket.OSSupportsIPv4)
                     {
-                        if (!s_DnsEntries.TryGetValue(host, out entry) || entry.Expired)
+                        isIp = true;
+                        ipAddresses = new[] { IPAddress.Parse(Constants.IP4Loopback) };
+                    }
+                    else if (Socket.OSSupportsIPv6)
+                    {
+                        isIp = true;
+                        ipAddresses = new[] { IPAddress.Parse(Constants.IP6Loopback) };
+                    }
+                }
+
+                if (!isIp)
+                {
+                    isIp = IPAddress.TryParse(host, out IPAddress ipAddress);
+
+                    ipAddresses = isIp ? new[] { ipAddress } :
+                        AsyncEx.GetHostAddressesAsync(host).Result;
+
+                    if (!ipAddresses.IsEmpty())
+                    {
+                        isIp = isIp ||
+                            ipAddresses.All(ip => IPAddress.IsLoopback(ip) || LocalIPs.Contains(ip));
+
+                        if (ipAddresses.Length > 1)
                         {
-                            var isIp = false;
-
-                            IPAddress[] ipAddresses = null;
-                            if (host.Equals(Constants.LocalHost, StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (Socket.OSSupportsIPv4)
-                                {
-                                    isIp = true;
-                                    ipAddresses = new[] { IPAddress.Parse(Constants.IP4Loopback) };
-                                }
-                                else if (Socket.OSSupportsIPv6)
-                                {
-                                    isIp = true;
-                                    ipAddresses = new[] { IPAddress.Parse(Constants.IP6Loopback) };
-                                }
-                            }
-
-                            if (!isIp)
-                            {
-                                IPAddress ipAddress;
-                                isIp = IPAddress.TryParse(host, out ipAddress);
-
-                                ipAddresses = isIp ? new[] { ipAddress } :
-                                    AsyncEx.GetHostAddressesAsync(host).Result;
-
-                                if (!ipAddresses.IsEmpty())
-                                {
-                                    isIp = isIp ||
-                                        ipAddresses.All(ip => IPAddress.IsLoopback(ip) || LocalIPs.Contains(ip));
-
-                                    if (ipAddresses.Length > 1)
-                                    {
-                                        ipAddresses = ipAddresses
-                                            .OrderBy((addr) =>
-                                            { return addr.AddressFamily == AddressFamily.InterNetwork ? -1 : 1; })
-                                            .ToArray();
-                                    }
-                                }
-                            }
-
-                            if (entry != null)
-                                entry.SetIPAddresses(ipAddresses ?? EmptyAddresses, isIp);
-                            else
-                                s_DnsEntries[host] = entry = new IPAddressEntry(host, ipAddresses ?? EmptyAddresses, isIp);
+                            ipAddresses = ipAddresses
+                                .OrderBy((addr) =>
+                                { return addr.AddressFamily == AddressFamily.InterNetwork ? -1 : 1; })
+                                .ToArray();
                         }
                     }
                 }
-                return entry;
+
+                if (entry != null)
+                    entry.SetIPAddresses(ipAddresses ?? EmptyAddresses, isIp);
+                else
+                    s_DnsEntries[host] = entry = new IPAddressEntry(host, ipAddresses ?? EmptyAddresses, isIp);
             }
-            return null;
+            return entry;
         }
 
         public static HashSet<IPEndPoint> ToIPEndPoints(ExtEndPoint[] endPoints)
         {
-            if (!endPoints.IsEmpty())
+            if (endPoints.IsEmpty())
+                return null;
+
+            var ipEPList = new HashSet<IPEndPoint>();
+            foreach (var ep in endPoints)
             {
-                var ipEPList = new HashSet<IPEndPoint>();
-                foreach (var ep in endPoints)
+                if (!ep.IsEmpty())
                 {
-                    if (!ep.IsEmpty())
+                    try
                     {
-                        try
+                        var ipAddresses = ep.ResolveHost();
+                        if (ipAddresses != null)
                         {
-                            var ipAddresses = ep.ResolveHost();
-                            if (ipAddresses != null)
+                            var length = ipAddresses.Length;
+                            if (length > 0)
                             {
-                                var length = ipAddresses.Length;
-                                if (length > 0)
-                                {
-                                    for (var i = 0; i < length; i++)
-                                        ipEPList.Add(new IPEndPoint(ipAddresses[i], ep.Port));
-                                }
+                                for (var i = 0; i < length; i++)
+                                    ipEPList.Add(new IPEndPoint(ipAddresses[i], ep.Port));
                             }
                         }
-                        catch (Exception)
-                        { }
                     }
+                    catch (Exception)
+                    { }
                 }
-
-                return ipEPList;
             }
-            return null;
+
+            return ipEPList;
         }
 
         public object Clone()
@@ -341,8 +347,8 @@ namespace Sweet.Actors
 
         public static bool operator ==(ExtEndPoint a, ExtEndPoint b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return b is null;
 
             return a.Equals(b);
         }
@@ -354,8 +360,8 @@ namespace Sweet.Actors
 
         public static bool operator ==(ExtEndPoint a, IPEndPoint b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return b is null;
 
             return a.Equals(b);
         }
@@ -377,8 +383,8 @@ namespace Sweet.Actors
 
         public static bool operator ==(ExtEndPoint a, DnsEndPoint b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return b is null;
 
             return a.Equals(b);
         }

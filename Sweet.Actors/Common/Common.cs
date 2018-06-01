@@ -117,7 +117,7 @@ namespace Sweet.Actors
 
         internal static bool IsEmpty(this ExtEndPoint endPoint)
         {
-            return (ReferenceEquals(endPoint, null) || endPoint.IsEmpty);
+            return (endPoint is null || endPoint.IsEmpty);
         }
 
 		internal static void Ignore(this Task task)

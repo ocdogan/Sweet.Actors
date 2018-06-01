@@ -23,25 +23,26 @@
 #endregion License
 
 using System;
+using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public sealed class BufferCache : ObjectCacheBase<BufferSegment>
+    public class SocketAsyncEventArgsCache : ObjectCacheBase<SocketAsyncEventArgs>
     {
-        public static readonly BufferCache Default = new BufferCache(10);
+        public static readonly SocketAsyncEventArgsCache Default = new SocketAsyncEventArgsCache(10);
 
         private const int MinSegmentSize = 512;
         private const int DefaultSegmentSize = 4 * 1024;
 
         private int _segmentSize;
 
-        private static readonly Func<ObjectCacheBase<BufferSegment>, BufferSegment> SegmentProvider = 
+        private static readonly Func<ObjectCacheBase<SocketAsyncEventArgs>, SocketAsyncEventArgs> EventArgsProvider =
             (owner) => {
-                return new BufferSegment(((BufferCache)owner)._segmentSize);
+                return new SocketAsyncEventArgs();
             };
 
-        internal BufferCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
-            : base(SegmentProvider, 0, limit)
+        internal SocketAsyncEventArgsCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
+            : base(EventArgsProvider, 0, limit)
         {
             if (segmentSize < 1)
                 _segmentSize = DefaultSegmentSize;
@@ -50,17 +51,19 @@ namespace Sweet.Actors
             initialCount = Math.Max(0, initialCount);
             if (initialCount > 0)
                 for (var i = 0; i < initialCount; i++)
-                    Enqueue(SegmentProvider(this));
+                    Enqueue(EventArgsProvider(this));
         }
 
-        protected override void OnDispose(BufferSegment item)
+        protected override void OnDispose(SocketAsyncEventArgs item)
         {
             item.Dispose();
         }
 
-        protected override void OnEnqueue(BufferSegment item)
+        protected override void OnEnqueue(SocketAsyncEventArgs item)
         {
-            item.Reset();
+            item.UserToken = null;
+            item.AcceptSocket = null;
+            item.SocketError = SocketError.Success;
         }
     }
 }

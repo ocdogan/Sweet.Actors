@@ -24,6 +24,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -61,6 +63,34 @@ namespace Sweet.Actors.ConsoleTest
 
         static void Main(string[] args)
         {
+            // CounterTest();
+            // AverageTest();
+
+            // ServerTest();
+
+            ActorTest();
+        }
+
+        private static void ServerTest()
+        {
+            var server = new Server();
+            server.Start();
+
+            Console.WriteLine("Press any key to connect to server");
+            Console.ReadKey(true);
+
+            var addresses = server.EndPoint.ResolveHost();
+            var serverEP = new IPEndPoint(addresses[0], server.EndPoint.Port);
+
+            var client = new TcpClient(serverEP.AddressFamily);
+            client.Connect(serverEP);
+
+            Console.WriteLine("Press any key to exit");
+            Console.ReadKey();
+        }
+
+        private static void ActorTest()
+        {
             var sw = new Stopwatch();
 
             var sysOptions = ActorSystemOptions
@@ -92,9 +122,6 @@ namespace Sweet.Actors.ConsoleTest
                 }
                 return Receive.Completed;
             });
-
-            // CounterTest();
-            // AverageTest();
 
             do
             {

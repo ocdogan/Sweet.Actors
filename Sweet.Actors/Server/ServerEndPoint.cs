@@ -23,19 +23,30 @@
 #endregion License
 
 using System;
+using System.Net;
 
 namespace Sweet.Actors
 {
     public class ServerEndPoint : ExtEndPoint
     {
-		private const int MinConcurrentConnectionsCount = 10;
+        private const int AutoPort = 0;
+        private const string AnyIP = null;
+
+        private const int MinConcurrentConnectionsCount = 10;
 		private const int DefaultConcurrentConnectionsCount = 1024;
 
-		public ServerEndPoint(string host, int port, int concurrentConnections = DefaultConcurrentConnectionsCount)
+		public ServerEndPoint(string host = AnyIP, int port = AutoPort, int concurrentConnections = DefaultConcurrentConnectionsCount)
             : base(host, port)
         {
 			ConcurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
 				Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
+        }
+
+        public ServerEndPoint(IPAddress ipAddress, int port = AutoPort, int concurrentConnections = DefaultConcurrentConnectionsCount)
+            : base(ipAddress, port)
+        {
+            ConcurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount :
+                Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
         }
 
         public int ConcurrentConnections { get; }
