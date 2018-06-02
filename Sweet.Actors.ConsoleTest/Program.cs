@@ -26,6 +26,7 @@ using System;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -82,10 +83,21 @@ namespace Sweet.Actors.ConsoleTest
 
 			Console.WriteLine(serverEP);
 
-            var client = new TcpClient(serverEP.AddressFamily);
-            client.Connect(serverEP);
+            Task.Factory.StartNew(() => {
+                using (var client = new TcpClient(serverEP.AddressFamily))
+                {
+                    client.Connect(serverEP);
 
-            Thread.Sleep(10000);
+                    var bytes = Encoding.UTF8.GetBytes("hello");
+                    using( var stream = client.GetStream())
+                    {
+                        stream.Write(bytes, 0, bytes.Length);
+                    }
+                }
+            }, TaskCreationOptions.LongRunning);
+
+            while (true)
+                Thread.Sleep(1000);
         }
 
         private static void ActorTest()

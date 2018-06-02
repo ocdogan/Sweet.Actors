@@ -57,7 +57,14 @@ namespace Sweet.Actors
             protected override void OnDispose(bool disposing)
             {
                 _server = null;
-                _connection = null;                
+
+                var connection = Interlocked.Exchange(ref _connection, null);
+                if (connection != null)
+                    using (connection)
+                    {
+                        connection.Shutdown(SocketShutdown.Both);
+                        connection.Close();
+                    }                
             }
 
             public void ProcessReceived(SocketAsyncEventArgs eventArgs)
@@ -66,23 +73,19 @@ namespace Sweet.Actors
                 {
                     _buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred);
 
-                    while (true)
+                    Message msg = null;
+                    try
                     {
-                        Message msg = null;
-                        try
-                        {
-                            if (!_buffer.TryDecodeMessage(out msg))
-                                break;
+                        if (_buffer.TryDecodeMessage(out msg))
                             Server.HandleMessage(msg, Connection);
-                        }
-                        catch (Exception e)
-                        {
-                            if ((msg == null) || msg.MessageType != MessageType.FutureMessage)
-                                throw;
+                    }
+                    catch (Exception e)
+                    {
+                        if (msg == null || msg.MessageType != MessageType.FutureMessage)
+                            throw;
 
-                            var response = CreateResponseError(msg, e);
-                            Server.SendMessage(response);
-                        }
+                        var response = CreateResponseError(msg, e);
+                        Server.SendMessage(response);
                     }
                 }
                 catch (Exception)
@@ -165,6 +168,8 @@ namespace Sweet.Actors
                         family = IPAddress.Any.AddressFamily;
 
                     listener = new NativeSocket(family, SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
+                    listener.NoDelay = true;
+
                     SetIOLoopbackFastPath(listener);
                 }
                 catch (Exception)
