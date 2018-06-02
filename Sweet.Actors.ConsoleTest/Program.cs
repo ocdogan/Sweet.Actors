@@ -66,9 +66,9 @@ namespace Sweet.Actors.ConsoleTest
             // CounterTest();
             // AverageTest();
 
-            // ServerTest();
+            ServerTest();
 
-            ActorTest();
+            // ActorTest();
         }
 
         private static void ServerTest()
@@ -76,17 +76,16 @@ namespace Sweet.Actors.ConsoleTest
             var server = new Server();
             server.Start();
 
-            Console.WriteLine("Press any key to connect to server");
-            Console.ReadKey(true);
+            Thread.Sleep(2000);
 
-            var addresses = server.EndPoint.ResolveHost();
-            var serverEP = new IPEndPoint(addresses[0], server.EndPoint.Port);
+            var serverEP = server.EndPoint;
+
+			Console.WriteLine(serverEP);
 
             var client = new TcpClient(serverEP.AddressFamily);
             client.Connect(serverEP);
 
-            Console.WriteLine("Press any key to exit");
-            Console.ReadKey();
+            Thread.Sleep(10000);
         }
 
         private static void ActorTest()

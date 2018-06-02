@@ -115,7 +115,7 @@ namespace Sweet.Actors
             return (obj == null || obj.Count == 0);
         }
 
-        internal static bool IsEmpty(this ExtEndPoint endPoint)
+        internal static bool IsEmpty(this ServerEndPoint endPoint)
         {
             return (endPoint is null || endPoint.IsEmpty);
         }

@@ -31,7 +31,7 @@ using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public class ExtEndPoint : EndPoint, IEquatable<ExtEndPoint>, ICloneable
+    public class ServerEndPoint : EndPoint, IEquatable<ServerEndPoint>, ICloneable
     {
         #region IPAddressEntry
 
@@ -82,11 +82,11 @@ namespace Sweet.Actors
 
         #region Static Members
 
-        public static readonly ExtEndPoint Empty = new ExtEndPoint("", -1);
+        public static readonly ServerEndPoint Empty = new ServerEndPoint("", -1);
 
-        public static readonly ExtEndPoint LocalHostEndPoint = new ExtEndPoint(Constants.LocalHost, Constants.DefaultPort);
-        public static readonly ExtEndPoint IP4LoopbackEndPoint = new ExtEndPoint(Constants.IP4Loopback, Constants.DefaultPort);
-        public static readonly ExtEndPoint IP6LoopbackEndPoint = new ExtEndPoint(Constants.IP6Loopback, Constants.DefaultPort);
+        public static readonly ServerEndPoint LocalHostEndPoint = new ServerEndPoint(Constants.LocalHost, Constants.DefaultPort);
+        public static readonly ServerEndPoint IP4LoopbackEndPoint = new ServerEndPoint(Constants.IP4Loopback, Constants.DefaultPort);
+        public static readonly ServerEndPoint IP6LoopbackEndPoint = new ServerEndPoint(Constants.IP6Loopback, Constants.DefaultPort);
 
         public static readonly HashSet<IPAddress> LocalIPs = new HashSet<IPAddress>(new[] { IPAddress.Loopback, IPAddress.IPv6Loopback });
 
@@ -109,7 +109,7 @@ namespace Sweet.Actors
 
         #region .Ctors
 
-        static ExtEndPoint()
+        static ServerEndPoint()
         {
             try
             {
@@ -121,13 +121,13 @@ namespace Sweet.Actors
             { }
         }
 
-        public ExtEndPoint(string host, int port)
+        public ServerEndPoint(string host, int port)
         {
             _host = host ?? String.Empty;
             _port = port;
         }
 
-        public ExtEndPoint(IPAddress ipAddress, int port)
+        public ServerEndPoint(IPAddress ipAddress, int port)
         {
             _addressFamily = ipAddress?.AddressFamily ?? AddressFamily.Unknown;
 
@@ -201,7 +201,7 @@ namespace Sweet.Actors
             if (ReferenceEquals(obj, this))
                 return true;
 
-            var other = obj as ExtEndPoint;
+            var other = obj as ServerEndPoint;
             if (!(other is null))
                 return _port == other._port &&
                      String.Equals(_host, other._host, StringComparison.OrdinalIgnoreCase);
@@ -219,7 +219,7 @@ namespace Sweet.Actors
             return false;
         }
 
-        public bool Equals(ExtEndPoint other)
+        public bool Equals(ServerEndPoint other)
         {
             if (other is null)
                 return false;
@@ -303,7 +303,7 @@ namespace Sweet.Actors
             return entry;
         }
 
-        public static HashSet<IPEndPoint> ToIPEndPoints(ExtEndPoint[] endPoints)
+        public static HashSet<IPEndPoint> ToIPEndPoints(ServerEndPoint[] endPoints)
         {
             if (endPoints.IsEmpty())
                 return null;
@@ -338,14 +338,14 @@ namespace Sweet.Actors
         {
             if (ReferenceEquals(this, Empty))
                 return this;
-            return new ExtEndPoint(Host, Port);
+            return new ServerEndPoint(Host, Port);
         }
 
         #endregion Methods
 
         #region Operator Overloads
 
-        public static bool operator ==(ExtEndPoint a, ExtEndPoint b)
+        public static bool operator ==(ServerEndPoint a, ServerEndPoint b)
         {
             if (a is null)
                 return b is null;
@@ -353,12 +353,12 @@ namespace Sweet.Actors
             return a.Equals(b);
         }
 
-        public static bool operator !=(ExtEndPoint a, ExtEndPoint b)
+        public static bool operator !=(ServerEndPoint a, ServerEndPoint b)
         {
             return !(a == b);
         }
 
-        public static bool operator ==(ExtEndPoint a, IPEndPoint b)
+        public static bool operator ==(ServerEndPoint a, IPEndPoint b)
         {
             if (a is null)
                 return b is null;
@@ -366,22 +366,22 @@ namespace Sweet.Actors
             return a.Equals(b);
         }
 
-        public static bool operator !=(ExtEndPoint a, IPEndPoint b)
+        public static bool operator !=(ServerEndPoint a, IPEndPoint b)
         {
             return !(a == b);
         }
 
-        public static bool operator ==(IPEndPoint a, ExtEndPoint b)
+        public static bool operator ==(IPEndPoint a, ServerEndPoint b)
         {
             return (b == a);
         }
 
-        public static bool operator !=(IPEndPoint a, ExtEndPoint b)
+        public static bool operator !=(IPEndPoint a, ServerEndPoint b)
         {
             return !(b == a);
         }
 
-        public static bool operator ==(ExtEndPoint a, DnsEndPoint b)
+        public static bool operator ==(ServerEndPoint a, DnsEndPoint b)
         {
             if (a is null)
                 return b is null;
@@ -389,17 +389,17 @@ namespace Sweet.Actors
             return a.Equals(b);
         }
 
-        public static bool operator !=(ExtEndPoint a, DnsEndPoint b)
+        public static bool operator !=(ServerEndPoint a, DnsEndPoint b)
         {
             return !(a == b);
         }
 
-        public static bool operator ==(DnsEndPoint a, ExtEndPoint b)
+        public static bool operator ==(DnsEndPoint a, ServerEndPoint b)
         {
             return (b == a);
         }
 
-        public static bool operator !=(DnsEndPoint a, ExtEndPoint b)
+        public static bool operator !=(DnsEndPoint a, ServerEndPoint b)
         {
             return !(b == a);
         }

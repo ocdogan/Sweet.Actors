@@ -29,7 +29,7 @@ namespace Sweet.Actors
 		public const int True = 1;
         public const int False = 0;
 
-        public const int DefaultPort = 0;
+        public const int DefaultPort = 6663;
         public const string DefaultHost = "local";
 
         public const string Protocol = "playbook://";

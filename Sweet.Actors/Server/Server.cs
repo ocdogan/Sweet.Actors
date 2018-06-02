@@ -108,7 +108,8 @@ namespace Sweet.Actors
         private readonly LingerOption _lingerState = new LingerOption(true, 0);
 
         private Socket _listener;
-        private ServerEndPoint _endPoint;
+		private IPEndPoint _localEndPoint;
+        private ServerSettings _serverSettings;
 
         private ConcurrentQueue<SocketAsyncEventArgs> _socketAsyncEventArgsPool =
             new ConcurrentQueue<SocketAsyncEventArgs>();
@@ -120,12 +121,12 @@ namespace Sweet.Actors
         private int _accepting;
         private long _status = ServerStatus.Stopped;
 
-        public Server(ServerEndPoint endPoint = null)
+        public Server(ServerSettings serverSettings = null)
         {
-            _endPoint = endPoint ?? new ServerEndPoint();
+            _serverSettings = serverSettings?.Clone() ?? new ServerSettings();
         }
 
-        public ServerEndPoint EndPoint => _endPoint;
+        public IPEndPoint EndPoint => _localEndPoint ?? _serverSettings?.EndPoint;
 
         public long Status
         {
@@ -158,10 +159,12 @@ namespace Sweet.Actors
             {
                 Interlocked.Exchange(ref _status, ServerStatus.Starting);
 
+                var serverEP = _serverSettings.EndPoint;
+
                 Socket listener = null;
                 try
                 {
-                    var family = _endPoint.AddressFamily;
+                    var family = serverEP.AddressFamily;
                     if (family == AddressFamily.Unknown || family == AddressFamily.Unspecified)
                         family = IPAddress.Any.AddressFamily;
 
@@ -179,15 +182,13 @@ namespace Sweet.Actors
                 Interlocked.Exchange(ref _listener, listener);
                 try
                 {
-                    var ep = GetIPEndPoint(_endPoint);
+                    listener.Bind(serverEP);
+                    listener.Listen(_serverSettings.ConcurrentConnections);
 
-                    listener.Bind(ep);
-                    listener.Listen(_endPoint.ConcurrentConnections);
-
-                    var lep = (listener.LocalEndPoint as IPEndPoint) ?? 
+                    var localEP = (listener.LocalEndPoint as IPEndPoint) ?? 
                         (IPEndPoint)listener.LocalEndPoint;
 
-                    Interlocked.Exchange(ref _endPoint, new ServerEndPoint(ep.Address, lep.Port));
+                    Interlocked.Exchange(ref _localEndPoint, localEP);
                 }
                 catch (Exception)
                 {
@@ -234,6 +235,8 @@ namespace Sweet.Actors
                     var listener = Interlocked.Exchange(ref _listener, null);
                     CloseSocket(listener);
 
+					Interlocked.Exchange(ref _localEndPoint, null);
+
                     Interlocked.Exchange(ref _accepting, Constants.False);
                     Interlocked.Exchange(ref _status, ServerStatus.Stopped);
                 }
@@ -268,18 +271,6 @@ namespace Sweet.Actors
                 }
             }
             return true;
-        }
-
-        private IPEndPoint GetIPEndPoint(ExtEndPoint endPoint)
-        {
-            var addresses = endPoint?.ResolveHost();
-            if ((addresses != null) && !addresses.IsEmpty())
-                new IPEndPoint(addresses[0], _endPoint.Port); 
-
-            if (Socket.OSSupportsIPv4)
-                return new IPEndPoint(IPAddress.Any, _endPoint.Port);
-
-            return new IPEndPoint(IPAddress.IPv6Any, _endPoint.Port);
         }
 
         private void SetIOLoopbackFastPath(Socket socket)

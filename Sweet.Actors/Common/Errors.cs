@@ -27,6 +27,7 @@ namespace Sweet.Actors
     public static class Errors
     {
 		public const string MessageExpired = "Message expired";
+        public const string InvalidPort = "Invalid port";
         public const string InvalidAddress = "Invalid address";
         public const string InvalidResponseType = "Invalid response type";
         public const string ActorAlreadyExsists = "Actor with name {0} already exists";
