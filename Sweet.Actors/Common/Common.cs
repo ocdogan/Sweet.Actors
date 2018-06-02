@@ -31,7 +31,7 @@ namespace Sweet.Actors
 {
     internal static class Common
     {
-		private static readonly Action<Task> IgnoreTaskContinuation = t => { var ignored = t.Exception; };
+		private static readonly Action<Task> IgnoreTaskContinuation = (task) => { var ignored = task.Exception; };
 
 		public static readonly int ProcessId = Environment.TickCount;
 
@@ -123,9 +123,7 @@ namespace Sweet.Actors
 		internal static void Ignore(this Task task)
         {
             if (task.IsCompleted)
-            {
-                var ignored = task.Exception;
-            }
+                IgnoreTaskContinuation(task);
             else
             {
                 task.ContinueWith(

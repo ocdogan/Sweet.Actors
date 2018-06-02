@@ -308,7 +308,7 @@ namespace Sweet.Actors
             }
         }
 
-        private void OnAcceptCompleted(object sender, SocketAsyncEventArgs eventArgs)
+        private static void OnAcceptCompleted(object sender, SocketAsyncEventArgs eventArgs)
         {
             ((Server)eventArgs.UserToken).HandleAccept(eventArgs, false);
         }
