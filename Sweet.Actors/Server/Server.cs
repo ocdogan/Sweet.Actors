@@ -33,33 +33,32 @@ namespace Sweet.Actors
 {
     public class Server : Disposable
     {
-        private class ReceiveContext
+        private class ReceiveContext : Disposable
         {
+            private Server _server;
             private Socket _connection;
+            private IPEndPoint _remoteEndPoint;
             private readonly ReceiveBuffer _buffer;
 
-            public ReceiveContext(Socket connection)
+            public ReceiveContext(Server server, Socket connection)
             {
+                _server = server;
                 _connection = connection;
+                _remoteEndPoint = (_connection?.RemoteEndPoint as IPEndPoint);
                 _buffer = new ReceiveBuffer();
             }
 
-            public Socket Connection
+            public Socket Connection => _connection;
+
+            public IPEndPoint RemoteEndPoint => _remoteEndPoint;
+
+            public Server Server => _server;
+
+            protected override void OnDispose(bool disposing)
             {
-                get
-                {
-                    return _connection;
-                }
-                internal set
-                {
-                    _connection = value;
-                    RemoteEndPoint = _connection?.RemoteEndPoint;
-                }
+                _server = null;
+                _connection = null;                
             }
-
-            public EndPoint RemoteEndPoint { get; private set; }
-
-            public Server Server { get; internal set; }
 
             public void ProcessReceived(SocketAsyncEventArgs eventArgs)
             {
@@ -110,9 +109,6 @@ namespace Sweet.Actors
         private Socket _listener;
 		private IPEndPoint _localEndPoint;
         private ServerSettings _serverSettings;
-
-        private ConcurrentQueue<SocketAsyncEventArgs> _socketAsyncEventArgsPool =
-            new ConcurrentQueue<SocketAsyncEventArgs>();
 
         private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
 
@@ -337,8 +333,8 @@ namespace Sweet.Actors
                             server.CloseConnection(connection);
                         else
                         {
-                            var readEventArgs = GetSocketReceiveAsyncEventArgs(connection);
-                            StartReceiveAsync(connection, readEventArgs, server);
+                            var readEventArgs = AcquireSocketAsyncEventArgs(connection);
+                            StartReceiveAsync(server, connection, readEventArgs);
                         }
                     }).Ignore();
                 }
@@ -354,31 +350,75 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartReceiveAsync(Socket connection, SocketAsyncEventArgs eventArgs, Server server)
-        { }
-
-        private SocketAsyncEventArgs AcquireSocketAsyncEventArgs()
+        private void StartReceiveAsync(Server server, Socket connection, SocketAsyncEventArgs eventArgs)
         {
-            if (!_socketAsyncEventArgsPool.TryDequeue(out SocketAsyncEventArgs result))
-                result = new SocketAsyncEventArgs();
+            try
+            {
+                if (!connection.ReceiveAsync(eventArgs))
+                    ProcessReceived(eventArgs);
+            }
+            catch (Exception)
+            {
+                CloseSocket(connection);
+                ReleaseSocketAsyncEventArgs(eventArgs);
+            }
+        }
+
+        private SocketAsyncEventArgs AcquireSocketAsyncEventArgs(Socket connection)
+        {
+            var result = SocketAsyncEventArgsCache.Default.Acquire();
+
+            result.Completed += OnReceiveCompleted;
+            result.UserToken = new ReceiveContext(this, connection);
+
             return result;
         }
 
         private void ReleaseSocketAsyncEventArgs(SocketAsyncEventArgs eventArgs)
         {
             if (eventArgs != null)
-                _socketAsyncEventArgsPool.Enqueue(eventArgs);
+            {
+                eventArgs.Completed -= OnReceiveCompleted;
+                using (eventArgs.UserToken as ReceiveContext)
+                    eventArgs.UserToken = null;
+
+                SocketAsyncEventArgsCache.Default.Release(eventArgs);
+            }
         }
 
-        private SocketAsyncEventArgs GetSocketReceiveAsyncEventArgs(Socket connection)
+        private static void OnReceiveCompleted(object sender, SocketAsyncEventArgs eventArgs)
         {
-            var result = AcquireSocketAsyncEventArgs();
+            if (eventArgs.LastOperation != SocketAsyncOperation.Receive)
+                throw new ArgumentException(Errors.ExpectingReceiveCompletedOperation);
 
-            var token = ((ReceiveContext)result.UserToken);
-            token.Server = this;
-            token.Connection = connection;
+            ((ReceiveContext)eventArgs.UserToken).Server.ProcessReceived(eventArgs);
+        }
 
-            return result;
+        private void ProcessReceived(SocketAsyncEventArgs eventArgs)
+        {
+            var receiveContext = (ReceiveContext)eventArgs.UserToken;
+
+            var continueReceiving = false;
+            var connection = receiveContext.Connection;
+
+            if (eventArgs.BytesTransferred > 0 &&
+                eventArgs.SocketError == SocketError.Success)
+            {
+                try
+                {
+                    receiveContext.ProcessReceived(eventArgs);
+                    continueReceiving = true;
+                }
+                catch (Exception)
+                { }
+            }
+            
+            if (continueReceiving)
+                StartReceiveAsync(receiveContext.Server, connection, eventArgs);
+            else {
+                CloseSocket(connection);
+                ReleaseSocketAsyncEventArgs(eventArgs);
+            }
         }
 
         private void CloseConnection(Socket connection)

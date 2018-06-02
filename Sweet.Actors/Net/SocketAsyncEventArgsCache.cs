@@ -29,16 +29,22 @@ namespace Sweet.Actors
 {
     public class SocketAsyncEventArgsCache : ObjectCacheBase<SocketAsyncEventArgs>
     {
-        public static readonly SocketAsyncEventArgsCache Default = new SocketAsyncEventArgsCache(10);
+        public static readonly SocketAsyncEventArgsCache Default = new SocketAsyncEventArgsCache(10, 100);
 
         private const int MinSegmentSize = 512;
         private const int DefaultSegmentSize = 4 * 1024;
 
-        private int _segmentSize;
+        private int _segmentSize = DefaultSegmentSize;
 
         private static readonly Func<ObjectCacheBase<SocketAsyncEventArgs>, SocketAsyncEventArgs> EventArgsProvider =
             (owner) => {
-                return new SocketAsyncEventArgs();
+                var cache = (SocketAsyncEventArgsCache)owner;
+
+                var result = new SocketAsyncEventArgs();
+                var buffer = new byte[cache._segmentSize];
+                result.SetBuffer(buffer, 0, buffer.Length);
+            
+                return result;
             };
 
         internal SocketAsyncEventArgsCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
@@ -56,7 +62,8 @@ namespace Sweet.Actors
 
         protected override void OnDispose(SocketAsyncEventArgs item)
         {
-            item.Dispose();
+            if (item != null)
+                item.Dispose();
         }
 
         protected override void OnEnqueue(SocketAsyncEventArgs item)
