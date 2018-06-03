@@ -120,6 +120,12 @@ namespace Sweet.Actors
         private int _accepting;
         private long _status = ServerStatus.Stopped;
 
+        static RpcServer()
+        {
+            RpcSerializerRegistry.Register<DefaultRpcSerializer>("default");
+            RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
+        }
+        
         public RpcServer(ServerSettings serverSettings = null)
         {
             _serverSettings = serverSettings?.Clone() ?? new ServerSettings();

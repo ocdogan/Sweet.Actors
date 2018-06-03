@@ -34,10 +34,12 @@ namespace Sweet.Actors
         Completed = 2,
         Empty = 4,
         Faulted = 8
-
     }
+
     public class RpcMessage
     {
+        public string Id { get; set; }
+
         public RpcMessageState State { get; set; }
         
         public MessageType MessageType { get; set; }

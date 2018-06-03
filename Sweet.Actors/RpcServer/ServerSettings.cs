@@ -39,6 +39,15 @@ namespace Sweet.Actors
 
         private int _concurrentConnections = DefaultConcurrentConnectionsCount;
 
+        private string _serializer = "default";
+
+        public ServerSettings()
+        {
+            if (Socket.OSSupportsIPv4)
+                _endPoint = new IPEndPoint(IPAddress.Any, AutoPort);
+            else _endPoint = new IPEndPoint(IPAddress.IPv6Any, AutoPort);
+        }
+
         public IPEndPoint EndPoint => _endPoint;
 
         public IPAddress Address => _endPoint?.Address ?? (Socket.OSSupportsIPv4 ? IPAddress.Any : IPAddress.IPv6Any);
@@ -47,12 +56,7 @@ namespace Sweet.Actors
 
         public int ConcurrentConnections => _concurrentConnections; 
 
-        public ServerSettings()
-        {
-            if (Socket.OSSupportsIPv4)
-                _endPoint = new IPEndPoint(IPAddress.Any, AutoPort);
-            else _endPoint = new IPEndPoint(IPAddress.IPv6Any, AutoPort);
-        }
+        public string Serializer => _serializer;
 
         public ServerSettings UsingIPAddress(IPAddress ipAddress)
         {
@@ -90,11 +94,21 @@ namespace Sweet.Actors
             return this;
         }
 
+        public ServerSettings UsingSerializer(string serializer)
+        {
+            serializer = serializer?.Trim();
+            _serializer = String.IsNullOrEmpty(serializer) ? "default" : serializer;
+            return this;
+        }
+
         public ServerSettings Clone()
         {
             var result = new ServerSettings();
+            
             result._endPoint = new IPEndPoint(_endPoint.Address, _endPoint.Port);
             result._concurrentConnections = _concurrentConnections;
+            result._serializer = _serializer;
+
             return result;
         }
     }

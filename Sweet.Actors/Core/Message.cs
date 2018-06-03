@@ -85,61 +85,6 @@ namespace Sweet.Actors
 		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
     }
 
-    public interface IFutureResponse : IMessage
-    {
-        bool IsEmpty { get; }
-    }
-
-    public interface IFutureResponse<T> : IFutureResponse
-    { }
-
-    internal class FutureResponse<T> : Message, IFutureResponse<T>, IFutureResponse
-    {
-        protected bool _isEmpty;
-
-		internal FutureResponse(Address from = null, IDictionary<string, string> header = null,
-                         int timeoutMSec = -1)
-			: base(default(T), from, header, timeoutMSec)
-        {
-            _isEmpty = true;
-        }
-
-        internal FutureResponse(T data,
-		                        Address from = null, IDictionary<string, string> header = null,
-                                int timeoutMSec = -1)
-			: base(data, from, header, timeoutMSec)
-        { }
-
-        public override MessageType MessageType => MessageType.FutureResponse;
-
-        public bool IsEmpty => _isEmpty;
-    }
-
-    public interface IFutureError : IMessage
-    {
-        bool IsFaulted { get; }
-        Exception Exception { get; }
-    }
-
-    internal class FutureError<T> : FutureResponse<T>, IFutureError
-    {
-        private Exception _error;
-
-        internal FutureError(Exception e,
-                                Address from = null, IDictionary<string, string> header = null)
-            : base(default(T), from, header)
-        {
-            _error = e;
-            _isEmpty = true;
-        }
-
-        public override MessageType MessageType => MessageType.FutureError;
-
-        public Exception Exception => _error;
-
-        public bool IsFaulted => _error != null;
-    }
-
     public interface IFutureMessage : IMessage
     {
         Type ResponseType { get; }
@@ -229,5 +174,60 @@ namespace Sweet.Actors
                 _tcs.TrySetCanceled(_cts.Token);
             else _tcs.TrySetCanceled();
         }
+    }
+    
+    public interface IFutureResponse : IMessage
+    {
+        bool IsEmpty { get; }
+    }
+
+    public interface IFutureResponse<T> : IFutureResponse
+    { }
+
+    internal class FutureResponse<T> : Message, IFutureResponse<T>, IFutureResponse
+    {
+        protected bool _isEmpty;
+
+		internal FutureResponse(Address from = null, IDictionary<string, string> header = null,
+                         int timeoutMSec = -1)
+			: base(default(T), from, header, timeoutMSec)
+        {
+            _isEmpty = true;
+        }
+
+        internal FutureResponse(T data,
+		                        Address from = null, IDictionary<string, string> header = null,
+                                int timeoutMSec = -1)
+			: base(data, from, header, timeoutMSec)
+        { }
+
+        public override MessageType MessageType => MessageType.FutureResponse;
+
+        public bool IsEmpty => _isEmpty;
+    }
+
+    public interface IFutureError : IMessage
+    {
+        bool IsFaulted { get; }
+        Exception Exception { get; }
+    }
+
+    internal class FutureError<T> : FutureResponse<T>, IFutureError
+    {
+        private Exception _error;
+
+        internal FutureError(Exception e,
+                                Address from = null, IDictionary<string, string> header = null)
+            : base(default(T), from, header)
+        {
+            _error = e;
+            _isEmpty = true;
+        }
+
+        public override MessageType MessageType => MessageType.FutureError;
+
+        public Exception Exception => _error;
+
+        public bool IsFaulted => _error != null;
     }
 }
