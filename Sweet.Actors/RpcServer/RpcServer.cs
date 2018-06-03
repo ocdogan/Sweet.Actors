@@ -106,7 +106,7 @@ namespace Sweet.Actors
             }
         }
 
-        private const int MaxBufferSize = 4 * 1024;
+        private const int MaxBufferSize = 4 * Constants.KB;
         private readonly LingerOption _lingerState = new LingerOption(true, 0);
 
         private Socket _listener;
@@ -125,7 +125,7 @@ namespace Sweet.Actors
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("default");
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
-        
+
         public RpcServer(ServerSettings serverSettings = null)
         {
             _serverSettings = serverSettings?.Clone() ?? new ServerSettings();

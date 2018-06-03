@@ -31,7 +31,7 @@ namespace Sweet.Actors
         public static readonly BufferCache Default = new BufferCache(10);
 
         private const int MinSegmentSize = 512;
-        private const int DefaultSegmentSize = 4 * 1024;
+        private const int DefaultSegmentSize = 4 * Constants.KB;
 
         private int _segmentSize;
 

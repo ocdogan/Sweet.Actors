@@ -33,7 +33,7 @@ namespace Sweet.Actors
         public const int AutoPort = 0;
 
         public const int MinConcurrentConnectionsCount = 10;
-		public const int DefaultConcurrentConnectionsCount = 1024;
+		public const int DefaultConcurrentConnectionsCount = Constants.KB;
 
         private IPEndPoint _endPoint;
 
