@@ -9,4 +9,8 @@
   <ItemGroup>
     <Compile Remove="IMessage.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Wire" Version="0.8.2" />
+  </ItemGroup>
 </Project>

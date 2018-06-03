@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
@@ -84,12 +85,15 @@ namespace Sweet.Actors
 		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
     }
 
-    public interface IFutureResponse<T> : IMessage
+    public interface IFutureResponse : IMessage
     {
         bool IsEmpty { get; }
     }
 
-    internal class FutureResponse<T> : Message, IFutureResponse<T>
+    public interface IFutureResponse<T> : IFutureResponse
+    { }
+
+    internal class FutureResponse<T> : Message, IFutureResponse<T>, IFutureResponse
     {
         protected bool _isEmpty;
 
@@ -111,7 +115,7 @@ namespace Sweet.Actors
         public bool IsEmpty => _isEmpty;
     }
 
-    public interface IFutureError
+    public interface IFutureError : IMessage
     {
         bool IsFaulted { get; }
         Exception Exception { get; }
@@ -144,6 +148,8 @@ namespace Sweet.Actors
         bool IsCompleted { get; }
         bool IsFaulted { get; }
 
+        int TimeoutMSec { get; }
+
         void Cancel();
     }
 
@@ -154,7 +160,10 @@ namespace Sweet.Actors
 			: base(data, from, header, timeoutMSec)
         {
             ResponseType = responseType;
+            TimeoutMSec = timeoutMSec;
         }
+
+        public int TimeoutMSec { get; }
 
         public Type ResponseType { get; }
 
@@ -184,8 +193,8 @@ namespace Sweet.Actors
                                Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, typeof(T), from, header, timeoutMSec)
         {
-            _tcs = taskCompletionSource;
-            _cts = cancellationTokenSource;
+            _cts = cancellationTokenSource ?? (timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : new CancellationTokenSource());
+            _tcs = taskCompletionSource ?? new TaskCompletionSource<IFutureResponse<T>>(_cts);
         }
 
         public override MessageType MessageType => MessageType.FutureMessage;
