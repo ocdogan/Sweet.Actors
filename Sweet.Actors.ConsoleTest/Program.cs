@@ -74,7 +74,7 @@ namespace Sweet.Actors.ConsoleTest
 
         private static void ServerTest()
         {
-            var server = new Server();
+            var server = new RpcServer();
             server.Start();
 
             Thread.Sleep(2000);

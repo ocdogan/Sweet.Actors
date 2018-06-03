@@ -31,16 +31,16 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public class Server : Disposable
+    public class RpcServer : Disposable
     {
         private class ReceiveContext : Disposable
         {
-            private Server _server;
+            private RpcServer _server;
             private Socket _connection;
             private IPEndPoint _remoteEndPoint;
             private readonly ReceiveBuffer _buffer;
 
-            public ReceiveContext(Server server, Socket connection)
+            public ReceiveContext(RpcServer server, Socket connection)
             {
                 _server = server;
                 _connection = connection;
@@ -52,7 +52,7 @@ namespace Sweet.Actors
 
             public IPEndPoint RemoteEndPoint => _remoteEndPoint;
 
-            public Server Server => _server;
+            public RpcServer Server => _server;
 
             protected override void OnDispose(bool disposing)
             {
@@ -120,7 +120,7 @@ namespace Sweet.Actors
         private int _accepting;
         private long _status = ServerStatus.Stopped;
 
-        public Server(ServerSettings serverSettings = null)
+        public RpcServer(ServerSettings serverSettings = null)
         {
             _serverSettings = serverSettings?.Clone() ?? new ServerSettings();
         }
@@ -310,7 +310,7 @@ namespace Sweet.Actors
 
         private static void OnAcceptCompleted(object sender, SocketAsyncEventArgs eventArgs)
         {
-            ((Server)eventArgs.UserToken).HandleAccept(eventArgs, false);
+            ((RpcServer)eventArgs.UserToken).HandleAccept(eventArgs, false);
         }
 
         private void HandleAccept(SocketAsyncEventArgs eventArgs, bool completedSynchronously)
@@ -324,7 +324,7 @@ namespace Sweet.Actors
                     return;
                 }
 
-                if (!(eventArgs.UserToken is Server server))
+                if (!(eventArgs.UserToken is RpcServer server))
                     return;
 
                 var connection = eventArgs.AcceptSocket;
@@ -355,7 +355,7 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartReceiveAsync(Server server, Socket connection, SocketAsyncEventArgs eventArgs)
+        private void StartReceiveAsync(RpcServer server, Socket connection, SocketAsyncEventArgs eventArgs)
         {
             try
             {
