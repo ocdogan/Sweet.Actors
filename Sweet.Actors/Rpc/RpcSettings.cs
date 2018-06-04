@@ -28,37 +28,54 @@ using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public class ServerSettings
+    public abstract class RpcSettings<T>
+        where T : RpcSettings<T>
     {
-        public const int AutoPort = 0;
-
-        public const int MinConcurrentConnectionsCount = 10;
-		public const int DefaultConcurrentConnectionsCount = Constants.KB;
-
         private IPEndPoint _endPoint;
 
-        private int _concurrentConnections = DefaultConcurrentConnectionsCount;
+        private int _sendTimeoutMSec = Constants.DefaultSendTimeout;
+        private int _receiveTimeoutMSec = Constants.DefaultReceiveTimeout;
 
         private string _serializer = "default";
 
-        public ServerSettings()
+        protected RpcSettings()
         {
             if (Socket.OSSupportsIPv4)
-                _endPoint = new IPEndPoint(IPAddress.Any, AutoPort);
-            else _endPoint = new IPEndPoint(IPAddress.IPv6Any, AutoPort);
+                _endPoint = new IPEndPoint(IPAddress.Any, Constants.DefaultPort);
+            else _endPoint = new IPEndPoint(IPAddress.IPv6Any, Constants.DefaultPort);
         }
 
         public IPEndPoint EndPoint => _endPoint;
 
         public IPAddress Address => _endPoint?.Address ?? (Socket.OSSupportsIPv4 ? IPAddress.Any : IPAddress.IPv6Any);
 
-        public int Port => _endPoint?.Port ?? AutoPort;
-
-        public int ConcurrentConnections => _concurrentConnections; 
+        public int Port => _endPoint?.Port ?? Constants.DefaultPort;
 
         public string Serializer => _serializer;
 
-        public ServerSettings UsingIPAddress(IPAddress ipAddress)
+        public int SendTimeoutMSec => _sendTimeoutMSec;
+
+        public int ReceiveTimeoutMSec => _receiveTimeoutMSec;
+
+        public T UsingEndPoint(IPEndPoint ipEndPoint)
+        {
+            var ipAddress = ipEndPoint?.Address;
+            var port = ipEndPoint?.Port ?? Constants.DefaultPort;
+
+            if (ipAddress == null)
+            {
+                if (Socket.OSSupportsIPv4)
+                    ipAddress = IPAddress.Any;
+                else if (Socket.OSSupportsIPv6)
+                    ipAddress = IPAddress.IPv6Any;
+                else
+                    throw new Exception(Errors.InvalidAddress);
+            }
+            _endPoint = new IPEndPoint(ipAddress, port);
+            return (T)this;
+        }
+
+        public T UsingIPAddress(IPAddress ipAddress)
         {
             if (ipAddress == null)
             {
@@ -66,47 +83,59 @@ namespace Sweet.Actors
                     ipAddress = IPAddress.Any;
                 else if (Socket.OSSupportsIPv6)
                     ipAddress = IPAddress.IPv6Any;
-                else 
+                else
                     throw new Exception(Errors.InvalidAddress);
             }
             _endPoint = new IPEndPoint(ipAddress, _endPoint.Port);
-            return this;
+            return (T)this;
         }
 
-        public ServerSettings UsingIPAddress(string ipAddress)
+        public T UsingIPAddress(string ipAddress)
         {
             return UsingIPAddress(!String.IsNullOrEmpty(ipAddress) ? IPAddress.Parse(ipAddress) : null);
         }
 
-        public ServerSettings UsingPort(int port)
+        public T UsingPort(int port)
         {
             port = Math.Max(0, port);
             if (port > IPEndPoint.MaxPort)
                 throw new ArgumentOutOfRangeException(nameof(Port));
             _endPoint = new IPEndPoint(_endPoint.Address, port);
-            return this;
+            return (T)this;
         }
 
-        public ServerSettings UsingConcurrentConnections(int concurrentConnections)
-        {
-            _concurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
-                Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
-            return this;
-        }
-
-        public ServerSettings UsingSerializer(string serializer)
+        public T UsingSerializer(string serializer)
         {
             serializer = serializer?.Trim();
             _serializer = String.IsNullOrEmpty(serializer) ? "default" : serializer;
-            return this;
+            return (T)this;
         }
 
-        public ServerSettings Clone()
+        public T UsingReceiveTimeoutMSec(int receiveTimeoutMSec)
         {
-            var result = new ServerSettings();
-            
+            if (receiveTimeoutMSec < 1)
+                _receiveTimeoutMSec = Constants.DefaultReceiveTimeout;
+            else _receiveTimeoutMSec = Math.Min(Constants.MaxReceiveTimeout, Math.Max(Constants.MinReceiveTimeout, receiveTimeoutMSec));
+
+            return (T)this;
+        }
+
+        public T UsingSendTimeoutMSec(int sendTimeoutMSec)
+        {
+            if (sendTimeoutMSec < 1)
+                _sendTimeoutMSec = Constants.DefaultSendTimeout;
+            else _sendTimeoutMSec = Math.Min(Constants.MaxSendTimeout, Math.Max(Constants.MinSendTimeout, sendTimeoutMSec));
+
+            return (T)this;
+        }
+
+        protected abstract T NewInstance();
+
+        public virtual T Clone()
+        {
+            var result = NewInstance();
+
             result._endPoint = new IPEndPoint(_endPoint.Address, _endPoint.Port);
-            result._concurrentConnections = _concurrentConnections;
             result._serializer = _serializer;
 
             return result;

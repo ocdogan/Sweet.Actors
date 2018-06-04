@@ -111,14 +111,14 @@ namespace Sweet.Actors
 
         private Socket _listener;
 		private IPEndPoint _localEndPoint;
-        private ServerSettings _serverSettings;
+        private RpcServerSettings _settings;
 
         private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
 
         // States
         private int _stopping;
         private int _accepting;
-        private long _status = ServerStatus.Stopped;
+        private long _status = RpcServerStatus.Stopped;
 
         static RpcServer()
         {
@@ -126,12 +126,12 @@ namespace Sweet.Actors
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
-        public RpcServer(ServerSettings serverSettings = null)
+        public RpcServer(RpcServerSettings settings = null)
         {
-            _serverSettings = serverSettings?.Clone() ?? new ServerSettings();
+            _settings = ((RpcServerSettings)settings?.Clone()) ?? new RpcServerSettings();
         }
 
-        public IPEndPoint EndPoint => _localEndPoint ?? _serverSettings?.EndPoint;
+        public IPEndPoint EndPoint => _localEndPoint ?? _settings?.EndPoint;
 
         public long Status
         {
@@ -139,7 +139,7 @@ namespace Sweet.Actors
             {
                 Interlocked.MemoryBarrier();
                 if (_stopping == Constants.True)
-                    return ServerStatus.Stopping;
+                    return RpcServerStatus.Stopping;
                 return Interlocked.Read(ref _status);
             }
         }
@@ -160,37 +160,34 @@ namespace Sweet.Actors
 
         private void StartListening()
         {
-            if (Status != ServerStatus.Stopping)
+            if ((_stopping != Constants.True) &&
+                Common.CompareAndSet(ref _status, RpcServerStatus.Stopped, RpcServerStatus.Starting))
             {
-                Interlocked.Exchange(ref _status, ServerStatus.Starting);
-
-                var serverEP = _serverSettings.EndPoint;
+                var servingEP = _settings.EndPoint;
 
                 Socket listener = null;
                 try
                 {
-                    var family = serverEP.AddressFamily;
+                    var family = servingEP.AddressFamily;
                     if (family == AddressFamily.Unknown || family == AddressFamily.Unspecified)
                         family = IPAddress.Any.AddressFamily;
 
                     listener = new NativeSocket(family, SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
-                    listener.NoDelay = true;
-
-                    SetIOLoopbackFastPath(listener);
+                    Configure(listener);
                 }
                 catch (Exception)
                 {
-                    Interlocked.Exchange(ref _status, ServerStatus.Stopped);
+                    Interlocked.Exchange(ref _status, RpcServerStatus.Stopped);
 
-                    listener.Dispose();
+                    using (listener) { }
                     throw;
                 }
 
                 Interlocked.Exchange(ref _listener, listener);
                 try
                 {
-                    listener.Bind(serverEP);
-                    listener.Listen(_serverSettings.ConcurrentConnections);
+                    listener.Bind(servingEP);
+                    listener.Listen(_settings.ConcurrentConnections);
 
                     var localEP = (listener.LocalEndPoint as IPEndPoint) ?? 
                         (IPEndPoint)listener.LocalEndPoint;
@@ -199,17 +196,42 @@ namespace Sweet.Actors
                 }
                 catch (Exception)
                 {
-                    Interlocked.Exchange(ref _status, ServerStatus.Stopped);
+                    Interlocked.Exchange(ref _status, RpcServerStatus.Stopped);
 
                     TryToCloseSocket(listener);
                     throw;
                 }
 
-                Interlocked.Exchange(ref _status, ServerStatus.Started);
+                Interlocked.Exchange(ref _status, RpcServerStatus.Started);
 
                 StartAccepting(NewSocketAsyncEventArgs());
             }
         }
+
+        private void Configure(Socket socket)
+        {
+            socket.SetIOLoopbackFastPath();
+
+            if (_settings.SendTimeoutMSec > 0)
+            {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
+                                        _settings.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.SendTimeoutMSec);
+            }
+
+            if (_settings.ReceiveTimeoutMSec > 0)
+            {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
+                                        _settings.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.ReceiveTimeoutMSec);
+            }
+
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+            socket.LingerState.Enabled = false;
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+
+            socket.NoDelay = true;
+        }
+
 
         private SocketAsyncEventArgs NewSocketAsyncEventArgs()
         {
@@ -245,7 +267,7 @@ namespace Sweet.Actors
 					Interlocked.Exchange(ref _localEndPoint, null);
 
                     Interlocked.Exchange(ref _accepting, Constants.False);
-                    Interlocked.Exchange(ref _status, ServerStatus.Stopped);
+                    Interlocked.Exchange(ref _status, RpcServerStatus.Stopped);
                 }
                 finally
                 {
@@ -278,20 +300,6 @@ namespace Sweet.Actors
                 }
             }
             return true;
-        }
-
-        private void SetIOLoopbackFastPath(Socket socket)
-        {
-            if (Common.IsWinPlatform)
-            {
-                try
-                {
-                    var ops = BitConverter.GetBytes(1);
-                    socket.IOControl(Constants.SIO_LOOPBACK_FAST_PATH, ops, null);
-                }
-                catch (Exception)
-                { }
-            }
         }
 
         private void StartAccepting(SocketAsyncEventArgs eventArgs)

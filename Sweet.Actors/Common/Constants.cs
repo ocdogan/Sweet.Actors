@@ -22,6 +22,8 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System.Globalization;
+
 namespace Sweet.Actors
 {
     public static class Constants
@@ -33,6 +35,7 @@ namespace Sweet.Actors
         public const int MB = KB * KB;
         public const int GB = KB * MB;
 
+        public const int AnyAvailablePort = 0;
         public const int DefaultPort = 6663;
         public const string DefaultHost = "local";
 
@@ -54,5 +57,17 @@ namespace Sweet.Actors
         public const string IP6Loopback = "::1";
 
         public const int SIO_LOOPBACK_FAST_PATH = -1744830448;
+
+        public const int DefaultSendTimeout = 15000;
+        public const int MinSendTimeout = 100;
+        public const int MaxSendTimeout = 60000;
+
+        public const int DefaultReceiveTimeout = 15000;
+        public const int MinReceiveTimeout = 100;
+        public const int MaxReceiveTimeout = 60000;
+
+        public const int WriteBufferSize = 64 * KB;
+
+        public static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
     }
 }

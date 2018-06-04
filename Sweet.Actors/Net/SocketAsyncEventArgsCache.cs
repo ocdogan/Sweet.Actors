@@ -29,7 +29,7 @@ namespace Sweet.Actors
 {
     public class SocketAsyncEventArgsCache : ObjectCacheBase<SocketAsyncEventArgs>
     {
-        public static readonly SocketAsyncEventArgsCache Default = new SocketAsyncEventArgsCache(10, 100);
+        public static readonly SocketAsyncEventArgsCache Default = new SocketAsyncEventArgsCache(16, 100);
 
         private const int MinSegmentSize = 512;
         private const int DefaultSegmentSize = 4 * Constants.KB;

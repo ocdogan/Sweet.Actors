@@ -74,26 +74,23 @@ namespace Sweet.Actors.ConsoleTest
 
         private static void ServerTest()
         {
-            var server = new RpcServer();
+            var serverSettings = (new RpcServerSettings()).UsingIPAddress("127.0.0.1");
+
+            var server = new RpcServer(serverSettings);
             server.Start();
 
             Thread.Sleep(2000);
 
             var serverEP = server.EndPoint;
+            var clientSettings = (new RpcClientSettings()).UsingEndPoint(serverEP);
 
-			Console.WriteLine(serverEP);
+            Console.WriteLine(serverEP);
+
+            var client = new RpcClient(clientSettings);
 
             Task.Factory.StartNew(() => {
-                using (var client = new TcpClient(serverEP.AddressFamily))
-                {
-                    client.Connect(serverEP);
-
-                    var bytes = Encoding.UTF8.GetBytes("hello");
-                    using( var stream = client.GetStream())
-                    {
-                        stream.Write(bytes, 0, bytes.Length);
-                    }
-                }
+                client.Connect();
+                // client.Send(Message.Empty, Address.Unknown);
             }, TaskCreationOptions.LongRunning);
 
             while (true)

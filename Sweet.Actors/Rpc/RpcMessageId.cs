@@ -34,10 +34,16 @@ namespace Sweet.Actors
             : base(major, majorRevision, minor, minorRevision, processId)
         { }
 
-        public static string Next()
+        public static RpcMessageId Next()
         {
             var buffer = Generate();
-            return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";;
+            return new RpcMessageId(buffer[0], buffer[1], buffer[2], buffer[3], -1);
+        }
+
+        public static string NextAsString()
+        {
+            var buffer = Generate();
+            return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";
         }
 
         public static bool TryParse(string sid, out RpcMessageId id)

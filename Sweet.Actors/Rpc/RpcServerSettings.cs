@@ -22,14 +22,41 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+
 namespace Sweet.Actors
 {
-	public static class ServerStatus
+    public class RpcServerSettings : RpcSettings<RpcServerSettings>
     {
-        public const long Stopped = 0L;
-		public const long Stopping = 1L;
-		public const long Starting = 2L;
-		public const long Started = 3L;
-		public const long Accepting = 4L;
+        public const int MinConcurrentConnectionsCount = 10;
+		public const int DefaultConcurrentConnectionsCount = Constants.KB;
+
+        private int _concurrentConnections = DefaultConcurrentConnectionsCount;
+
+        public RpcServerSettings()
+            : base()
+        { }
+
+        public int ConcurrentConnections => _concurrentConnections; 
+
+        public RpcServerSettings UsingConcurrentConnections(int concurrentConnections)
+        {
+            _concurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
+                Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
+            return this;
+        }
+
+        protected override RpcServerSettings NewInstance()
+        {
+            return new RpcServerSettings();
+        }
+
+        public override RpcServerSettings Clone()
+        {
+            var result = (RpcServerSettings)base.Clone();
+            result._concurrentConnections = _concurrentConnections;
+
+            return result;
+        }
     }
 }

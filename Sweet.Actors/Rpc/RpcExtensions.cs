@@ -56,9 +56,9 @@ namespace Sweet.Actors
             return (msg ?? Message.Empty, rpcMsg?.To ?? Address.Unknown);
         }
 
-        public static RpcMessage ActualMessageToRpc(this IMessage msg, Address to)
+        public static RpcMessage ActualMessageToRpc(this IMessage msg, Address to, RpcMessageId id = null)
         {
-            var result = new RpcMessage{ To = to, Id = RpcMessageId.Next() };
+            var result = new RpcMessage{ To = to, Id = id?.ToString() ?? RpcMessageId.NextAsString() };
             if (msg != null)
             {
                 result.Data = msg.Data;
