@@ -28,48 +28,72 @@ namespace Sweet.Actors
 {
 	public class BufferSegment : IDisposable
     {
-		internal BufferSegment(int size)
+        private int _capacity;
+        private int _length;
+
+        private byte[] _buffer;
+
+        internal BufferSegment(int capacity)
 		{
-			Size = size;
-			Buffer = new byte[size];
+			_capacity = Math.Max(0, capacity);
+			_buffer = new byte[_capacity];
 		}
 
-		public int Size { get; private set; }
+        internal BufferSegment(byte[] buffer, int length = -1)
+        {
+            _buffer = buffer;
+            _capacity = buffer?.Length ?? 0;
+            _length = (length > -1) ? Math.Min(length, _capacity) : _capacity;
+        }
 
-		public int Offset { get; private set; }
+        public int Available => _capacity - _length;
 
-		public byte[] Buffer { get; private set; }
+        public int Capacity => _capacity;
+
+        public int Length => _length;
+
+        public byte[] Buffer => _buffer;
 
         public int Write(byte[] data)
 		{
 			if (data != null)
-			{
-				var dataLen = data.Length;
-				if (dataLen == 0)
-					return 0;
-
-				var appendLen = Math.Min(dataLen, Size - Offset);
-				if (appendLen > 0)
-				{
-					Array.Copy(data, Buffer, appendLen);
-					Offset += appendLen;
-				}
-
-				return dataLen - appendLen;
-			}
-			return -1;
+                return Write(data, 0, data.Length);
+			return 0;
 		}
 
-		public void Reset()
+        public int Write(byte[] data, int offset, int length)
+        {
+            if (offset >= 0)
+            {
+                if (length <= 0 || _buffer == null)
+                    return 0;
+
+                var dataLen = data?.Length ?? 0;
+                if (dataLen == 0 || dataLen <= offset)
+                    return 0;
+
+                var appendLen = Math.Min(dataLen, Math.Max(0, _capacity - _length));
+                if (appendLen > 0)
+                {
+                    Array.Copy(data, offset, _buffer, _length, appendLen);
+                    _length += appendLen;
+                }
+
+                return dataLen;
+            }
+            return -1;
+        }
+
+        public void Reset()
 		{
-			Offset = 0;
+			_length = 0;
 		}
         
 		public void Dispose()
 		{
-			Size = 0;
-			Offset = 0;
-			Buffer = null;
+			_capacity = 0;
+			_length = 0;
+			_buffer = null;
 		}
 	}
 }

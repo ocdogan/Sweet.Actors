@@ -44,13 +44,10 @@ namespace Sweet.Actors
             public TaskCompletionSource<object> TaskCompletionSource;
         }
 
-        private const byte FrameSign = (byte)'~';
-        private const byte HeaderSign = (byte)'*';
-
         private const object DefaultResponse = null;
         private const int SequentialSendLimit = 100;
 
-        private const int FrameDataSize = (64 * Constants.KB) - 13;
+        private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
 
         private static readonly Task ProcessCompleted = Task.FromResult(0);
 
@@ -67,9 +64,10 @@ namespace Sweet.Actors
 
         private byte[] _serializerKey;
         private byte[] _serializerKeyLen;
-        private IRpcSerializer _serializer;
 
         private int _remoteMessageId;
+
+        private IRpcSerializer _serializer;
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<Request> _requestQueue = new ConcurrentQueue<Request>();
@@ -436,50 +434,58 @@ namespace Sweet.Actors
                     if (data != null)
                     {
                         var dataLen = data.Length;
-                        var msgId = Interlocked.Increment(ref _remoteMessageId).ToBytes();
+                        if (dataLen > Constants.MaxDataSize)
+                            throw new Exception(Errors.MaxAllowedDataSizeExceeded);
 
-                        var frameCount = (int)(dataLen / FrameDataSize) + 1;
-
-                        // Header
+                        /* Header */
                         // Header sign
-                        stream.WriteByte(HeaderSign);
+                        stream.WriteByte(Constants.HeaderSign);
 
+                        // Process Id
+                        stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
+                        
                         // Message Id
-                        stream.Write(msgId, 0, msgId.Length);
+                        var msgIdBytes = Interlocked.Increment(ref _remoteMessageId).ToBytes();
+                        stream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                         // Serialization type
                         stream.Write(_serializerKeyLen, 0, _serializerKeyLen.Length);
                         stream.Write(_serializerKey, 0, _serializerKey.Length);
 
                         // Frame count
+                        var frameCount = (ushort)(dataLen > 0 ? ((dataLen / Constants.FrameDataSize) + 1) : 0);
+
                         var frameCntBytes = frameCount.ToBytes();
                         stream.Write(frameCntBytes, 0, frameCntBytes.Length);
 
                         var offset = 0;
 
-                        // Frames
-                        for (var i = 0; i < frameCount; i++)
+                        /* Frames */
+                        for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
                         {
                             // Frame sign
-                            stream.WriteByte(FrameSign);
+                            stream.WriteByte(Constants.FrameSign);
+
+                            // Process Id
+                            stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
 
                             // Message Id
-                            stream.Write(msgId, 0, msgId.Length);
+                            stream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                             // Frame Id
-                            var frameId = i.ToBytes();
-                            stream.Write(frameId, 0, frameId.Length);
+                            var frameIdBytes = frameIndex.ToBytes();
+                            stream.Write(frameIdBytes, 0, frameIdBytes.Length);
 
                             // Frame length
-                            var frameLen = Math.Min(FrameDataSize, dataLen - offset);
+                            var frameDataSize = (ushort)Math.Min(Constants.FrameDataSize, dataLen - offset);
 
-                            var frameLenBytes = frameLen.ToBytes();
-                            stream.Write(frameLenBytes, 0, frameLenBytes.Length);
+                            var frameDataSizeBytes = frameDataSize.ToBytes();
+                            stream.Write(frameDataSizeBytes, 0, frameDataSizeBytes.Length);
 
-                            if (frameLen > 0)
+                            if (frameDataSize > 0)
                             {
-                                stream.Write(data, offset, frameLen);
-                                offset += frameLen;
+                                stream.Write(data, offset, frameDataSize);
+                                offset += frameDataSize;
                             }
                         }
 

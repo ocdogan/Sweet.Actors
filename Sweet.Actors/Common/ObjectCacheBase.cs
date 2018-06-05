@@ -31,8 +31,8 @@ namespace Sweet.Actors
 {
     public abstract class ObjectCacheBase<T> : Disposable
     {
-        protected const int MinLimit = 1000;
-        protected const int DefaultLimit = 1000;
+        protected const int MinLimit = 64;
+        protected const int DefaultLimit = 1024;
 
         private int _limit = -1;
         private readonly Func<ObjectCacheBase<T>, T> _provider;
@@ -73,6 +73,22 @@ namespace Sweet.Actors
             return result;
         }
 
+        public IList<T> Acquire(int count)
+        {
+            if (count > 0)
+            {
+                var result = new List<T>(count);
+                while (count-- > 0)
+                {
+                    T item;
+                    if (!_cache.TryDequeue(out item))
+                        result.Add(_provider(this));
+                }
+                return result;
+            }
+            return null;
+        }
+
         public void Release(T item)
         {
             if (item != null)
@@ -81,6 +97,15 @@ namespace Sweet.Actors
                     OnDispose(item);
                 else
                     Enqueue(item);
+            }
+        }
+
+        public void Release(IList<T> items)
+        {
+            if (items != null)
+            {
+                foreach (var item in items)
+                    Release(item);
             }
         }
 

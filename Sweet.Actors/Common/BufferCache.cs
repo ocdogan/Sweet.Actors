@@ -31,16 +31,11 @@ namespace Sweet.Actors
         public static readonly BufferCache Default = new BufferCache(10);
 
         private const int MinSegmentSize = 512;
-        private const int DefaultSegmentSize = 4 * Constants.KB;
+        private const int DefaultSegmentSize = Constants.FrameSize;
 
         private int _segmentSize;
 
-        private static readonly Func<ObjectCacheBase<BufferSegment>, BufferSegment> SegmentProvider = 
-            (owner) => {
-                return new BufferSegment(((BufferCache)owner)._segmentSize);
-            };
-
-        internal BufferCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
+        public BufferCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
             : base(SegmentProvider, 0, limit)
         {
             if (segmentSize < 1)
@@ -51,6 +46,13 @@ namespace Sweet.Actors
             if (initialCount > 0)
                 for (var i = 0; i < initialCount; i++)
                     Enqueue(SegmentProvider(this));
+        }
+
+        public int SegmentSize => _segmentSize;
+
+        private static BufferSegment SegmentProvider(ObjectCacheBase<BufferSegment> owner)
+        {
+            return new BufferSegment(((BufferCache)owner)._segmentSize);
         }
 
         protected override void OnDispose(BufferSegment item)

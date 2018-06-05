@@ -41,9 +41,6 @@ namespace Sweet.Actors
 
 		public static readonly int ProcessId = Environment.TickCount;
 
-        private static readonly byte Minus = (byte)'-';
-        private static readonly byte ZeroBase = (byte)'0';
-
         private static readonly byte[] ShortMinValue = UTF8.GetBytes("-32768");
         private static readonly byte[] ShortMaxValue = UTF8.GetBytes("32767");
 
@@ -238,255 +235,80 @@ namespace Sweet.Actors
 
         #region ToBytes
 
-        internal static byte[] ToBytes(this string obj)
+        internal static byte[] ToBytes(this string value)
         {
-            return (obj != null) ? UTF8.GetBytes(obj) : null;
+            return (value != null) ? UTF8.GetBytes(value) : null;
         }
 
-        internal static byte[] ToBytes(this byte[] obj)
+        internal static byte[] ToBytes(this byte[] value)
         {
-            return obj;
+            return value;
         }
 
         internal static byte[] ToBytes(this short value)
         {
-            var minus = (value < 0);
-            if (minus)
-            {
-                if (value == short.MinValue)
-                    return (byte[])ShortMinValue.Clone();
-
-                value = (short)-value;
-
-                if (value < 10)
-                    return new byte[] { Minus, (byte)(value + ZeroBase) };
-
-                if (value < 100)
-                    return new byte[] { Minus, (byte)((value / 10) + ZeroBase), (byte)((value % 10) + ZeroBase) };
-
-                if (value < 1000)
-                    return new byte[] { (byte)((value / 100) + ZeroBase), (byte)(((value / 10) + ZeroBase) % 10), (byte)((value % 10) + ZeroBase) };
-            }
-            else
-            {
-                if (value < 10)
-                    return new byte[] { (byte)(value + ZeroBase) };
-
-                if (value < 100)
-                    return new byte[] { (byte)((value / 10) + ZeroBase), (byte)((value % 10) + ZeroBase) };
-
-                if (value < 1000)
-                    return new byte[] { (byte)((value / 100) + ZeroBase), (byte)(((value / 10) + ZeroBase) % 10), (byte)((value % 10) + ZeroBase) };
-
-                if (value == short.MaxValue)
-                    return (byte[])ShortMaxValue.Clone();
-            }
-
-            var bytes = BytesCache.Acquire(ShortStringLen);
-
-            byte mod;
-            var index = IntStringLen;
-
-            do
-            {
-                mod = (byte)((value % 10) + ZeroBase);
-                value /= 10;
-
-                bytes[--index] = mod;
-            } while (value > 0);
-
-            if (minus)
-                bytes[--index] = Minus;
-
-            var result = (byte[])bytes.Clone(index, IntStringLen - index);
-            BytesCache.Release(bytes);
-
-            return result;
+            return BitConverter.GetBytes(value);
         }
 
         internal static byte[] ToBytes(this int value)
         {
-            var minus = (value < 0);
-            if (minus)
-            {
-                if (value == int.MinValue)
-                    return (byte[])IntMinValue.Clone();
-
-                value = -value;
-
-                if (value < 10)
-                    return new byte[] { Minus, (byte)(value + ZeroBase) };
-
-                if (value < 100)
-                    return new byte[] { Minus, (byte)((value / 10) + ZeroBase), (byte)((value % 10) + ZeroBase) };
-
-                if (value < 1000)
-                    return new byte[] { (byte)((value / 100) + ZeroBase), (byte)(((value / 10) + ZeroBase) % 10), (byte)((value % 10) + ZeroBase) };
-            }
-            else
-            {
-                if (value < 10)
-                    return new byte[] { (byte)(value + ZeroBase) };
-
-                if (value < 100)
-                    return new byte[] { (byte)((value / 10) + ZeroBase), (byte)((value % 10) + ZeroBase) };
-
-                if (value < 1000)
-                    return new byte[] { (byte)((value / 100) + ZeroBase), (byte)(((value / 10) + ZeroBase) % 10), (byte)((value % 10) + ZeroBase) };
-
-                if (value == int.MaxValue)
-                    return (byte[])IntMaxValue.Clone();
-            }
-
-            var bytes = BytesCache.Acquire(IntStringLen);
-
-            byte mod;
-            var index = IntStringLen;
-
-            do
-            {
-                mod = (byte)((value % 10) + ZeroBase);
-                value /= 10;
-
-                bytes[--index] = mod;
-            } while (value > 0);
-
-            if (minus)
-                bytes[--index] = Minus;
-
-            var result = (byte[])bytes.Clone(index, IntStringLen - index);
-            BytesCache.Release(bytes);
-
-            return result;
+            return BitConverter.GetBytes(value);
         }
 
         internal static byte[] ToBytes(this long value)
         {
-            var minus = (value < 0);
-            if (minus)
-            {
-                if (value == long.MinValue)
-                    return (byte[])LongMinValue.Clone();
-
-                value = -value;
-
-                if (value < 10L)
-                    return new byte[] { Minus, (byte)(value + ZeroBase) };
-
-                if (value < 100L)
-                    return new byte[] { Minus, (byte)((value / 10L) + ZeroBase), (byte)((value % 10L) + ZeroBase) };
-
-                if (value < 1000L)
-                    return new byte[] { (byte)((value / 100L) + ZeroBase), (byte)(((value / 10L) + ZeroBase) % 10L), (byte)((value % 10L) + ZeroBase) };
-            }
-            else
-            {
-                if (value < 10L)
-                    return new byte[] { (byte)(value + ZeroBase) };
-
-                if (value < 100L)
-                    return new byte[] { (byte)((value / 10L) + ZeroBase), (byte)((value % 10L) + ZeroBase) };
-
-                if (value < 1000L)
-                    return new byte[] { (byte)((value / 100L) + ZeroBase), (byte)(((value / 10L) + ZeroBase) % 10L), (byte)((value % 10L) + ZeroBase) };
-
-                if (value == long.MaxValue)
-                    return (byte[])LongMaxValue.Clone();
-            }
-
-            var bytes = BytesCache.Acquire(LongStringLen);
-
-            byte mod;
-            var index = LongStringLen;
-
-            do
-            {
-                mod = (byte)((value % 10L) + ZeroBase);
-                value /= 10L;
-
-                bytes[--index] = mod;
-            } while (value > 0);
-
-            if (minus)
-                bytes[--index] = Minus;
-
-            var result = (byte[])bytes.Clone(index, IntStringLen - index);
-            BytesCache.Release(bytes);
-
-            return result;
+            return BitConverter.GetBytes(value);
         }
 
         internal static byte[] ToBytes(this ulong value)
         {
-            if (value < 10UL)
-                return new byte[] { (byte)(value + ZeroBase) };
+            return BitConverter.GetBytes(value);
+        }
 
-            if (value < 100UL)
-                return new byte[] { (byte)(value / 10UL + ZeroBase), (byte)(value % 10UL + ZeroBase) };
+        internal static byte[] ToBytes(this ushort value)
+        {
+            return BitConverter.GetBytes(value);
+        }
 
-            if (value < 1000UL)
-                return new byte[] { (byte)(value / 100UL + ZeroBase), (byte)((value / 10UL + ZeroBase) % 10UL), (byte)(value % 10UL + ZeroBase) };
+        internal static byte[] ToBytes(this uint value)
+        {
+            return BitConverter.GetBytes(value);
+        }
 
-            if (value == ulong.MaxValue)
-                return (byte[])ULongMaxValue.Clone();
+        internal static byte[] ToBytes(this byte value)
+        {
+            return new byte[] { value };
+        }
 
-            var bytes = BytesCache.Acquire(LongStringLen);
+        internal static byte[] ToBytes(this decimal value)
+        {
+            return BitConverter.GetBytes(Convert.ToDouble(value));
+        }
 
-            byte mod;
-            var index = LongStringLen;
+        internal static byte[] ToBytes(this double value)
+        {
+            return BitConverter.GetBytes(value);
+        }
 
-            do
-            {
-                mod = (byte)((value % 10L) + ZeroBase);
-                value /= 10L;
+        internal static byte[] ToBytes(this float value)
+        {
+            return BitConverter.GetBytes(value);
+        }
 
-                bytes[--index] = mod;
-            } while (value > 0);
+        internal static byte[] ToBytes(this DateTime value)
+        {
+            var ticks = BitConverter.GetBytes(value.Ticks);
 
-            var result = (byte[])bytes.Clone(index, IntStringLen - index);
-            BytesCache.Release(bytes);
-
+            var result = new byte[ticks.Length + 1];
+            Array.Copy(ticks, result, ticks.Length);
+            
+            result[result.Length -1] = (byte)value.Kind;
             return result;
         }
 
-        internal static byte[] ToBytes(this ushort obj)
+        internal static byte[] ToBytes(this char value)
         {
-            return ToBytes((int)obj);
-        }
-
-        internal static byte[] ToBytes(this uint obj)
-        {
-            return ToBytes((long)obj);
-        }
-
-        internal static byte[] ToBytes(this byte obj)
-        {
-            return new byte[] { obj };
-        }
-
-        internal static byte[] ToBytes(this decimal obj)
-        {
-            return UTF8.GetBytes(obj.ToString(Constants.InvariantCulture));
-        }
-
-        internal static byte[] ToBytes(this double obj)
-        {
-            return UTF8.GetBytes(obj.ToString(Constants.InvariantCulture));
-        }
-
-        internal static byte[] ToBytes(this float obj)
-        {
-            return UTF8.GetBytes(obj.ToString(Constants.InvariantCulture));
-        }
-
-        internal static byte[] ToBytes(this DateTime obj)
-        {
-            return UTF8.GetBytes(obj.Ticks.ToString(Constants.InvariantCulture));
-        }
-
-        internal static byte[] ToBytes(this char obj)
-        {
-            return UTF8.GetBytes(new char[] { obj });
+            return BitConverter.GetBytes(value);
         }
 
         internal static byte[] ToBytes(this object obj)
@@ -503,29 +325,29 @@ namespace Sweet.Actors
                     case TypeCode.String:
                         return UTF8.GetBytes((string)obj);
                     case TypeCode.Int32:
-                        return UTF8.GetBytes(((int)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((int)obj);
                     case TypeCode.Int64:
-                        return UTF8.GetBytes(((long)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((long)obj);
                     case TypeCode.Decimal:
-                        return UTF8.GetBytes(((decimal)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes(Convert.ToDouble((decimal)obj));
                     case TypeCode.Double:
-                        return UTF8.GetBytes(((double)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((double)obj);
                     case TypeCode.Boolean:
-                        return UTF8.GetBytes((bool)obj ? Boolean.TrueString : Boolean.FalseString);
+                        return BitConverter.GetBytes((bool)obj);
                     case TypeCode.Single:
-                        return UTF8.GetBytes(((float)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((float)obj);
                     case TypeCode.Int16:
-                        return UTF8.GetBytes(((short)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((short)obj);
                     case TypeCode.UInt32:
-                        return UTF8.GetBytes(((uint)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((uint)obj);
                     case TypeCode.UInt64:
-                        return UTF8.GetBytes(((ulong)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((ulong)obj);
                     case TypeCode.UInt16:
-                        return UTF8.GetBytes(((ushort)obj).ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes((ushort)obj);
                     case TypeCode.DateTime:
-                        return UTF8.GetBytes(((DateTime)obj).Ticks.ToString(Constants.InvariantCulture));
+                        return BitConverter.GetBytes(((DateTime)obj).Ticks);
                     case TypeCode.Char:
-                        return UTF8.GetBytes(new char[] { (char)obj });
+                        return BitConverter.GetBytes((char)obj);
                     case TypeCode.Byte:
                         return new byte[] { (byte)obj };
                     default:
@@ -536,5 +358,76 @@ namespace Sweet.Actors
         }
 
         #endregion ToBytes
+
+        #region FromBytes
+
+        internal static string ToString(this byte[] value, int index, int count)
+        {
+            return (value != null) ? UTF8.GetString(value, index, count) : null;
+        }
+
+        internal static short ToShort(this byte[] value, int index)
+        {
+            return BitConverter.ToInt16(value, index);
+        }
+
+        internal static int ToInt(this byte[] value, int index)
+        {
+            return BitConverter.ToInt32(value, index);
+        }
+
+        internal static long ToLong(this byte[] value, int index)
+        {
+            return BitConverter.ToInt64(value, index);
+        }
+
+        internal static ulong ToULong(this byte[] value, int index)
+        {
+            return BitConverter.ToUInt64(value, index);
+        }
+
+        internal static ushort ToUShort(this byte[] value, int index)
+        {
+            return BitConverter.ToUInt16(value, index);
+        }
+
+        internal static uint ToUInt(this byte[] value, int index)
+        {
+            return BitConverter.ToUInt32(value, index);
+        }
+
+        internal static decimal ToDecimal(this byte[] value, int index)
+        {
+            var dbl = BitConverter.ToDouble(value, index);
+            return Convert.ToDecimal(dbl);
+        }
+
+        internal static double ToDouble(this byte[] value, int index)
+        {
+            return BitConverter.ToDouble(value, index);
+        }
+
+        internal static float ToFloat(this byte[] value, int index)
+        {
+            return BitConverter.ToSingle(value, index);
+        }
+
+        internal static DateTime? ToDateTime(this byte[] value, int index)
+        {
+            var ticks = BitConverter.ToInt64(value, index);
+            if (value.Length >= index + 9)
+            {
+                var kind = (DateTimeKind)((int)value[index + 8]);
+                return new DateTime(ticks, kind);
+            }
+            return null;
+        }
+
+        internal static char ToChar(this byte[] value, int index)
+        {
+            return BitConverter.ToChar(value, index);
+        }
+
+        #endregion FromBytes
     }
 }

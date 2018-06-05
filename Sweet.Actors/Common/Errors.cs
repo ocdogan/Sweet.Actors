@@ -27,8 +27,10 @@ namespace Sweet.Actors
     public static class Errors
     {
 		public const string MessageExpired = "Message expired";
+        public const string MaxAllowedDataSizeExceeded = "Max allowed data size exceeded";
         public const string InvalidPort = "Invalid port";
         public const string InvalidAddress = "Invalid address";
+        public const string InvalidMessageType = "Invalid message type";
         public const string InvalidResponseType = "Invalid response type";
         public const string ActorAlreadyExsists = "Actor with name {0} already exists";
         public const string ActorSystemAlreadyExsists = "Actor system with name {0} already exists";
