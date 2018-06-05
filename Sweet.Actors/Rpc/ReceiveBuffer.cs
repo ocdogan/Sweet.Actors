@@ -67,18 +67,16 @@ namespace Sweet.Actors
             public ReceivedMessage() { }
         }
 
-        private int _readSegmentOffset;
-        private int _receivedDataSize;
-
         private int _segmentSize;
         private BufferCache _cache;
-        private BufferSegment _tail;
+        private BuffserSegmentReader _reader;
         private IList<BufferSegment> _segments = new List<BufferSegment>();
 
 		public ReceiveBuffer()
         {
             _cache = BufferCache.Default;
             _segmentSize = _cache.SegmentSize;
+            _reader = new BuffserSegmentReader(_segments, _cache);
         }
 
 		public void Reset()
@@ -86,14 +84,16 @@ namespace Sweet.Actors
             Reset(true);
         }
 
-        private void Reset(bool reInitSegments)
+        private void Reset(bool reInit)
         {
-            _tail = null;
-            _receivedDataSize = 0;
-            _readSegmentOffset = 0;
+            var newSegments = reInit ? new List<BufferSegment>() : null;
+            var newReader = reInit ? new BuffserSegmentReader(newSegments, _cache) : null;
 
-            var segments = Interlocked.Exchange(ref _segments, reInitSegments ? new List<BufferSegment>() : null);
+            var segments = Interlocked.Exchange(ref _segments, newSegments);
+            var reader = Interlocked.Exchange(ref _reader, newReader);
+
             Release(segments);
+            using (reader) { }
         }
 
         public void OnReceiveData(byte[] buffer, int bytesTransferred)
@@ -101,40 +101,20 @@ namespace Sweet.Actors
             if ((buffer != null) && (bytesTransferred > 0))
             {
                 var offset = 0;
-                if (_tail != null)
+                var requiredSegmentCnt = 1 + (bytesTransferred / _segmentSize);
+
+                var acquiredSegments = _cache.Acquire(requiredSegmentCnt);
+
+                var segmentCnt = acquiredSegments?.Count ?? 0;
+                for (var i = 0; i < segmentCnt; i++)
                 {
-                    var written = _tail.Write(buffer, offset, bytesTransferred);
+                    var written = acquiredSegments[i].Write(buffer, offset, bytesTransferred);
 
                     offset += written;
                     bytesTransferred -= written;
-                    _receivedDataSize += written;
 
-                    if (_tail.Available <= 0)
-                        _tail = null;
-                }
-
-                if (bytesTransferred > 0)
-                {
-                    var requiredSegmentCnt = 1 + (bytesTransferred / _segmentSize);
-
-                    var acquiredSegments = _cache.Acquire(requiredSegmentCnt);
-
-                    var segmentCnt = acquiredSegments?.Count ?? 0;
-                    for (var i = 0; i < segmentCnt; i++)
-                    {
-                        var written = acquiredSegments[i].Write(buffer, offset, bytesTransferred);
-
-                        offset += written;
-                        bytesTransferred -= written;
-                        _receivedDataSize += written;
-
-                        if (bytesTransferred <= 0)
-                            break;
-                    }
-
-                    var tail = acquiredSegments[segmentCnt - 1];
-                    if (tail.Available > 0)
-                        _tail = tail;
+                    if (bytesTransferred <= 0)
+                        break;
                 }
             }
         }
@@ -142,35 +122,32 @@ namespace Sweet.Actors
 		internal bool TryDecodeMessage(out Message msg)
 		{
 			msg = null;
-            if (_receivedDataSize > Constants.HeaderSize)
+            var segments = _segments;
+
+            var segmentCnt = segments?.Count ?? 0;
+            if (segmentCnt > 0)
             {
-                var segments = _segments;
+                var offset = 0;
 
-                var segmentCnt = segments?.Count ?? 0;
-                if (segmentCnt > 0)
+                var headSegment = segments[0];
+
+                var available = headSegment.Available;
+                if (headSegment.Buffer[offset++] != Constants.HeaderSign)
+                    throw new Exception(Errors.InvalidMessageType);
+
+                var receivedMsg = new ReceivedMessage();
+
+                for (var i = 0; i < segmentCnt; i++)
                 {
-                    var offset = _readSegmentOffset;
-
-                    var headSegment = segments[0];
-
-                    var available = headSegment.Available;
-                    if (headSegment.Buffer[offset++] != Constants.HeaderSign)
-                        throw new Exception(Errors.InvalidMessageType);
-
-                    var receivedMsg = new ReceivedMessage();
-
-                    for (var i = 0; i < segmentCnt; i++)
+                    var segment = segments[i];
+                    if (segment.Available > 0)
                     {
-                        var segment = segments[i];
-                        if (segment.Available > 0)
-                        {
 
-                        }
                     }
                 }
             }
 			return false;
-		}
+        }
 
         protected override void OnDispose(bool disposing)
         {

@@ -34,54 +34,74 @@ namespace Sweet.Actors
 
         private int _index;
         private int _offset;
+        private int _start;
 
+        private BufferCache _cache;
         private IList<BufferSegment> _segments;
 
-        public BuffserSegmentReader(IList<BufferSegment> segments)
+        public BuffserSegmentReader(IList<BufferSegment> segments, BufferCache cache)
         {
-            _segments = segments;
+            _cache = cache;
+            _segments = segments ?? EmptySegments;
         }
 
         protected override void OnDispose(bool disposing)
         {
             _segments = EmptySegments;
+            _cache = BufferCache.Default;
         }
 
-        public void SetOffset(int offset)
+        public void TrimStart()
+        {
+            if (_index == 0)
+                _start = _offset;
+            else if (_index > 0)
+            {
+                _start = _offset;
+
+                var trimCnt = _index; 
+                while (trimCnt-- > 0)
+                {
+                    var segment = _segments[0];
+
+                    _segments.RemoveAt(0);
+                    _cache.Release(segment);
+                }
+            }
+        }
+
+        public void SetStart(int start)
         {
             var index = -1;
-            offset = Math.Max(0, offset);
+            start = Math.Max(0, start);
             try
             {
-                if (offset > 0)
+                var count = (_segments?.Count ?? 0);
+                if (count == 0)
+                    start = 0;
+                else if (start > 0)
                 {
-                    var count = _segments.Count;
-                    if (count == 0)
-                        offset = -1;
-                    else
+                    for (index = 0; index < count; index++)
                     {
-                        for (index = 0; index < count; index++)
+                        var segment = _segments[index];
+
+                        var segmentLen = segment.Length;
+                        if (segmentLen > 0)
                         {
-                            var segment = _segments[index];
-
-                            var segmentLen = segment.Length;
-                            if (segmentLen > 0)
-                            {
-                                offset -= segmentLen;
-                                if (offset <= 0)
-                                    break;
-                            }
+                            start -= segmentLen;
+                            if (start <= 0)
+                                break;
                         }
-
-                        if (offset > 0)
-                            offset = _segments[count-1].Length;
                     }
+
+                    if (start > 0)
+                        start = _segments[count-1].Length;
                 }
             }
             finally
             {
                 _index = index;
-                _offset = offset;
+                _offset = (_start = start);
             }
         }
 
@@ -93,49 +113,48 @@ namespace Sweet.Actors
             for (var i = 0; i < count; i++)
                 result += _segments[i]?.Length ?? 0;
 
-            return result;
+            return (_start == 0) ? result : Math.Max(0, result - _start);                
         }
 
         public byte[] ReadBytes(int length)
         {
-            if (length < 0)
-                return null;
-
-            var size = CalculateLength();
-            if (size - _offset < length)
-                return null;
+            if (length <= 0)
+                return EmptyBytes;
 
             var count = _segments?.Count ?? 0;
-            if (count > 0)
+            if (count <= 0 || _index > count)
+                return EmptyBytes;
+
+            var size = CalculateLength() + _start;
+            if (size - _offset < length)
+                return EmptyBytes;
+
+            var cursor = 0;
+            var result = new byte[length];
+
+            for (var i = _index; i < count; i++)
             {
-                var cursor = 0;
-                var result = new byte[length];
+                var segment = _segments[i];
 
-                for (var i = _index; i < count; i++)
+                var segmentLen = segment?.Length ?? 0;
+                if (segmentLen > 0)
                 {
-                    var segment = _segments[i];
+                    var copyLen = Math.Min((segmentLen - _offset), length);
 
-                    var segmentLen = segment?.Length ?? 0;
-                    if (segmentLen > 0)
+                    Array.Copy(segment.Buffer, _offset, result, cursor, copyLen);
+
+                    length -= copyLen;
+                    cursor += copyLen;
+
+                    _offset += copyLen;
+                    if (_offset >= segmentLen)
                     {
-                        var copyLen = Math.Min((segmentLen - _offset), length);
-
-                        Array.Copy(segment.Buffer, _offset, result, cursor, copyLen);
-
-                        length -= copyLen;
-                        cursor += copyLen;
-
-                        _offset += copyLen;
-                        if (_offset >= segmentLen)
-                        {
-                            _index++;
-                            _offset = 0;
-                        }
+                        _index++;
+                        _offset = 0;
                     }
                 }
-                return result;
             }
-            return EmptyBytes;
+            return result;
         }
     }
 }
