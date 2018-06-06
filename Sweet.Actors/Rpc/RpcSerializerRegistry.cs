@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Text;
 
 namespace Sweet.Actors
 {
@@ -35,13 +36,27 @@ namespace Sweet.Actors
             public IRpcSerializer Instance;
         }
 
+        private const int MaxTypeLength = 10;
+
         private static readonly ConcurrentDictionary<string, Registry> _registry =
             new ConcurrentDictionary<string, Registry>();
 
-        public static IRpcSerializer Get(string type)
+        private static void ValidateRegistryName(string registryName)
         {
-            Registry reg;
-            if (!_registry.TryGetValue(type, out reg))
+            var len = registryName?.Length ?? 0;
+            if (len == 0)
+                throw new ArgumentNullException(nameof(registryName));
+
+            len = Encoding.UTF8.GetByteCount(registryName);
+            if (len > MaxTypeLength)
+                throw new ArgumentOutOfRangeException(nameof(registryName));
+        }
+
+        public static IRpcSerializer Get(string registryName)
+        {
+            ValidateRegistryName(registryName);
+
+            if (!_registry.TryGetValue(registryName, out Registry reg))
                 return null;
 
             if (reg.Instance == null)
@@ -55,10 +70,17 @@ namespace Sweet.Actors
             return reg.Instance;
         }
 
-        public static void Register<T>(string type)
+        public static void Register<T>(string registryName)
             where T : class, IRpcSerializer, new()
         {
-            _registry.GetOrAdd(type, (t) => new Registry { SerializerType = typeof(T)});
+            ValidateRegistryName(registryName);
+            _registry.GetOrAdd(registryName, NewRegistry<T>);
+        }
+
+        private static Registry NewRegistry<T>(string registryName) 
+            where T : class, IRpcSerializer, new()
+        {
+            return new Registry { SerializerType = typeof(T) };
         }
     }
 }

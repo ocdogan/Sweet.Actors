@@ -90,14 +90,9 @@ namespace Sweet.Actors
                 }
                 catch (Exception)
                 {
-                    _buffer.Reset();
+                    _buffer.Dispose();
                     throw;
                 }
-            }
-
-            public void Reset()
-            {
-                _buffer.Reset();
             }
 
             private Message CreateResponseError(Message msg, Exception exception)

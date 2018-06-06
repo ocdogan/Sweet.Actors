@@ -26,7 +26,9 @@ namespace Sweet.Actors
 {
     public static class Errors
     {
-		public const string MessageExpired = "Message expired";
+        public const string StreamIsClosed = "Stream is closed";
+
+        public const string MessageExpired = "Message expired";
         public const string MaxAllowedDataSizeExceeded = "Max allowed data size exceeded";
         public const string InvalidPort = "Invalid port";
         public const string InvalidAddress = "Invalid address";

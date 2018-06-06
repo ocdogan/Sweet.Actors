@@ -330,15 +330,14 @@ namespace Sweet.Actors
 
                 for (var i = 0; i < SequentialSendLimit; i++)
                 {
-                    Request request;
-                    var isFutureCall = false;
-                    FutureMessage future = null;
-
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_requestQueue.TryDequeue(out request))
+                        !_requestQueue.TryDequeue(out Request request))
                         break;
 
                     var tcs = request.TaskCompletionSource;
+
+                    var isFutureCall = false;
+                    FutureMessage future = null;
                     try
                     {
                         var msg = request.Message;
@@ -407,8 +406,7 @@ namespace Sweet.Actors
                 var ids = responses.Keys.ToList();
                 foreach (var id in ids)
                 {
-                    Request request;
-                    if (_responseList.TryGetValue(id, out request))
+                    if (_responseList.TryGetValue(id, out Request request))
                     {
                         try
                         {

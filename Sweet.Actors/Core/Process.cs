@@ -139,12 +139,11 @@ namespace Sweet.Actors
             {
                 for (var i = 0; i < _sequentialInvokeLimit; i++)
                 {
-					Message msg = null;
-					var isFutureCall = false;
+                    var isFutureCall = false;
                     FutureMessage future = null;
 
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_mailbox.TryDequeue(out msg))
+                        !_mailbox.TryDequeue(out Message msg))
                         break;
                     
                     try

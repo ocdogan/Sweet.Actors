@@ -27,7 +27,7 @@ using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    public class BuffserSegmentReader : Disposable
+    public class BufferSegmentReader : Disposable
     {
         private static readonly byte[] EmptyBytes = new byte[0];
         private static readonly IList<BufferSegment> EmptySegments = new List<BufferSegment>();
@@ -39,7 +39,7 @@ namespace Sweet.Actors
         private BufferCache _cache;
         private IList<BufferSegment> _segments;
 
-        public BuffserSegmentReader(IList<BufferSegment> segments, BufferCache cache)
+        public BufferSegmentReader(IList<BufferSegment> segments, BufferCache cache)
         {
             _cache = cache;
             _segments = segments ?? EmptySegments;

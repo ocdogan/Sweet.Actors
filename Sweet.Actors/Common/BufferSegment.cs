@@ -54,10 +54,22 @@ namespace Sweet.Actors
 
         public byte[] Buffer => _buffer;
 
+        public int Write(byte value)
+        {
+            if (_buffer == null)
+                return 0;
+
+            var appendLen = Math.Min(1, Math.Max(0, _capacity - _length));
+            if (appendLen > 0)
+                _buffer[_length++] = value;
+
+            return appendLen;
+        }
+
         public int Write(byte[] data)
 		{
 			if (data != null)
-                return Write(data, 0, data.Length);
+                return Write(data, _length, data.Length);
 			return 0;
 		}
 
@@ -79,7 +91,7 @@ namespace Sweet.Actors
                     _length += appendLen;
                 }
 
-                return dataLen;
+                return appendLen;
             }
             return -1;
         }
