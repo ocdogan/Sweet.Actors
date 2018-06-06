@@ -62,8 +62,7 @@ namespace Sweet.Actors
         private long _inProcess;
         private long _status = RpcClientStatus.Closed;
 
-        private byte[] _serializerKey;
-        private byte[] _serializerKeyLen;
+        private byte[] _serializerKey = new byte[RpcConstants.SerializerRegistryNameLength];
 
         private int _remoteMessageId;
 
@@ -83,15 +82,19 @@ namespace Sweet.Actors
         {
             _settings = ((RpcClientSettings)settings?.Clone()) ?? new RpcClientSettings();
 
-            _serializer = RpcSerializerRegistry.Get(_settings.Serializer);
-            if (_serializer != null)
-                _serializerKey = Encoding.UTF8.GetBytes(_settings.Serializer);
-            else {
-                _serializerKey = Encoding.UTF8.GetBytes("default");
-                _serializer = RpcSerializerRegistry.Get("default");
+            var serializerName = _settings.Serializer;
+            _serializer = RpcSerializerRegistry.Get(serializerName);
+            if (_serializer == null)
+            {
+                serializerName = "default";
+                _serializer = RpcSerializerRegistry.Get(serializerName);
             }
 
-            _serializerKeyLen = _serializerKey.Length.ToBytes();
+            if (_serializer != null)
+            {
+                var sn = Encoding.UTF8.GetBytes(serializerName);
+                Buffer.BlockCopy(_serializerKey, 0, sn, 0, Math.Min(_serializerKey.Length, sn.Length));
+            }
         }
 
         public long Status
@@ -263,7 +266,7 @@ namespace Sweet.Actors
         private void UpdateStreams(Socket socket)
         {
             var netStream = new NetworkStream(socket, false);
-            var outStream = new BufferedStream(netStream, Constants.WriteBufferSize);
+            var outStream = new BufferedStream(netStream, RpcConstants.WriteBufferSize);
 
             SetStream(ref _outStream, outStream);
             SetStream(ref _netStream, netStream);
@@ -432,12 +435,12 @@ namespace Sweet.Actors
                     if (data != null)
                     {
                         var dataLen = data.Length;
-                        if (dataLen > Constants.MaxDataSize)
+                        if (dataLen > RpcConstants.MaxDataSize)
                             throw new Exception(Errors.MaxAllowedDataSizeExceeded);
 
                         /* Header */
                         // Header sign
-                        stream.WriteByte(Constants.HeaderSign);
+                        stream.WriteByte(RpcConstants.HeaderSign);
 
                         // Process Id
                         stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
@@ -447,11 +450,10 @@ namespace Sweet.Actors
                         stream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                         // Serialization type
-                        stream.Write(_serializerKeyLen, 0, _serializerKeyLen.Length);
                         stream.Write(_serializerKey, 0, _serializerKey.Length);
 
                         // Frame count
-                        var frameCount = (ushort)(dataLen > 0 ? ((dataLen / Constants.FrameDataSize) + 1) : 0);
+                        var frameCount = (ushort)(dataLen > 0 ? ((dataLen / RpcConstants.FrameDataSize) + 1) : 0);
 
                         var frameCntBytes = frameCount.ToBytes();
                         stream.Write(frameCntBytes, 0, frameCntBytes.Length);
@@ -462,7 +464,7 @@ namespace Sweet.Actors
                         for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
                         {
                             // Frame sign
-                            stream.WriteByte(Constants.FrameSign);
+                            stream.WriteByte(RpcConstants.FrameSign);
 
                             // Process Id
                             stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
@@ -475,7 +477,7 @@ namespace Sweet.Actors
                             stream.Write(frameIdBytes, 0, frameIdBytes.Length);
 
                             // Frame length
-                            var frameDataSize = (ushort)Math.Min(Constants.FrameDataSize, dataLen - offset);
+                            var frameDataSize = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
 
                             var frameDataSizeBytes = frameDataSize.ToBytes();
                             stream.Write(frameDataSizeBytes, 0, frameDataSizeBytes.Length);

@@ -1,4 +1,4 @@
-﻿#region License
+#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -23,46 +23,39 @@
 #endregion License
 
 using System;
+using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public sealed class BufferCache : ObjectCacheBase<BufferSegment>
+    internal static class NetCommon
     {
-        public static readonly BufferCache Default = new BufferCache(10);
+        #region Sockets
 
-        private const int MinSegmentSize = 512;
-        private const int DefaultSegmentSize = 8 * Constants.KB;
-
-        private int _segmentSize;
-
-        public BufferCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
-            : base(SegmentProvider, 0, limit)
+        internal static void SetIOLoopbackFastPath(this Socket socket)
         {
-            if (segmentSize < 1)
-                _segmentSize = DefaultSegmentSize;
-            else _segmentSize = Math.Max(MinSegmentSize, segmentSize);
-
-            initialCount = Math.Max(0, initialCount);
-            if (initialCount > 0)
-                for (var i = 0; i < initialCount; i++)
-                    Enqueue(SegmentProvider(this));
+            if (Common.IsWinPlatform)
+            {
+                try
+                {
+                    var ops = BitConverter.GetBytes(1);
+                    socket.IOControl(NetConstants.SIO_LOOPBACK_FAST_PATH, ops, null);
+                }
+                catch (Exception)
+                { }
+            }
         }
 
-        public int SegmentSize => _segmentSize;
-
-        private static BufferSegment SegmentProvider(ObjectCacheBase<BufferSegment> owner)
+        internal static bool IsConnected(this Socket socket, int poll = -1)
         {
-            return new BufferSegment(((BufferCache)owner)._segmentSize);
+            if (socket != null && socket.Connected)
+            {
+                if (poll > -1)
+                    return !(socket.Poll(poll, SelectMode.SelectRead) && (socket.Available == 0));
+                return true;
+            }
+            return false;
         }
 
-        protected override void OnDispose(BufferSegment item)
-        {
-            item.Dispose();
-        }
-
-        protected override void OnEnqueue(BufferSegment item)
-        {
-            item.Reset();
-        }
+        #endregion Sockets
     }
 }

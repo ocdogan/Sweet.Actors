@@ -84,9 +84,9 @@ namespace Sweet.Actors
 
         public static readonly ServerEndPoint Empty = new ServerEndPoint("", -1);
 
-        public static readonly ServerEndPoint LocalHostEndPoint = new ServerEndPoint(Constants.LocalHost, Constants.DefaultPort);
-        public static readonly ServerEndPoint IP4LoopbackEndPoint = new ServerEndPoint(Constants.IP4Loopback, Constants.DefaultPort);
-        public static readonly ServerEndPoint IP6LoopbackEndPoint = new ServerEndPoint(Constants.IP6Loopback, Constants.DefaultPort);
+        public static readonly ServerEndPoint LocalHostEndPoint = new ServerEndPoint(NetConstants.LocalHost, Constants.DefaultPort);
+        public static readonly ServerEndPoint IP4LoopbackEndPoint = new ServerEndPoint(NetConstants.IP4Loopback, Constants.DefaultPort);
+        public static readonly ServerEndPoint IP6LoopbackEndPoint = new ServerEndPoint(NetConstants.IP6Loopback, Constants.DefaultPort);
 
         public static readonly HashSet<IPAddress> LocalIPs = new HashSet<IPAddress>(new[] { IPAddress.Loopback, IPAddress.IPv6Loopback });
 
@@ -259,17 +259,17 @@ namespace Sweet.Actors
                 var isIp = false;
 
                 IPAddress[] ipAddresses = null;
-                if (host.Equals(Constants.LocalHost, StringComparison.OrdinalIgnoreCase))
+                if (host.Equals(NetConstants.LocalHost, StringComparison.OrdinalIgnoreCase))
                 {
                     if (Socket.OSSupportsIPv4)
                     {
                         isIp = true;
-                        ipAddresses = new[] { IPAddress.Parse(Constants.IP4Loopback) };
+                        ipAddresses = new[] { IPAddress.Parse(NetConstants.IP4Loopback) };
                     }
                     else if (Socket.OSSupportsIPv6)
                     {
                         isIp = true;
-                        ipAddresses = new[] { IPAddress.Parse(Constants.IP6Loopback) };
+                        ipAddresses = new[] { IPAddress.Parse(NetConstants.IP6Loopback) };
                     }
                 }
 

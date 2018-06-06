@@ -23,7 +23,9 @@
 #endregion License
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
+using System.Text;
 
 using Microsoft.IO;
 
@@ -38,6 +40,11 @@ namespace Sweet.Actors
         private static readonly RecyclableMemoryStreamManager StreamManager = 
             new RecyclableMemoryStreamManager(BlockSize, LargeBufferMultiple, MaximumBufferSize);
 
+        private ConcurrentQueue<ReceivedMessage> _messageQueue = new ConcurrentQueue<ReceivedMessage>();
+
+        private byte[] _mainHeaderBuffer = new byte[RpcConstants.HeaderSize];
+        private byte[] _frameHeaderBuffer = new byte[RpcConstants.FrameHeaderSize];
+
         private RecyclableMemoryStream _stream;
 
         public ReceiveBuffer()
@@ -47,6 +54,7 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
+            Interlocked.Exchange(ref _messageQueue, null);
             using (Interlocked.Exchange(ref _stream, null))
             { }
         }
@@ -54,24 +62,75 @@ namespace Sweet.Actors
         public void OnReceiveData(byte[] buffer, int bytesTransferred)
 		{
             if ((buffer != null) && (bytesTransferred > 0))
+            {
                 _stream.Write(buffer, 0, bytesTransferred);
+                TryParse();
+            }
         }
 
-		internal bool TryDecodeMessage(out Message msg)
-		{
-			msg = null;
+        private void TryParse()
+        {
             var stream = _stream;
 
-            var segmentLen = stream?.Length ?? 0;
-            if (segmentLen >= Constants.HeaderSize)
+            var streamLen = stream?.Length ?? 0;
+            var positionSnapshot = stream?.Position ?? 0;
+
+            var bufferSize = streamLen - positionSnapshot;
+            if (bufferSize >= RpcConstants.HeaderSize)
             {
-                if (stream.ReadByte() != Constants.HeaderSign)
+                stream.Read(_mainHeaderBuffer, 0, RpcConstants.HeaderSize);
+
+                if (_mainHeaderBuffer[0] != RpcConstants.HeaderSign)
                     throw new Exception(Errors.InvalidMessageType);
+
+                var headerIndex = 1;
 
                 var receivedMsg = new ReceivedMessage();
 
-                stream.Position = 0;
+                receivedMsg.Header.ProcessId = _mainHeaderBuffer.ToInt(headerIndex);
+                headerIndex += 4;
+
+                receivedMsg.Header.MessageId = _mainHeaderBuffer.ToUShort(headerIndex);
+                headerIndex += 2;
+
+                receivedMsg.Header.SerializerKey = 
+                    Encoding.UTF8.GetString(_mainHeaderBuffer, headerIndex, RpcConstants.SerializerRegistryNameLength);
+                headerIndex += 2;
+
+                var frameCount = (receivedMsg.Header.FrameCount = _mainHeaderBuffer.ToUShort(headerIndex));
+                
+                var completed = frameCount == 0;
+                if (!completed)
+                {
+                    bufferSize -= RpcConstants.HeaderSize;
+
+                    for (var i = (ushort)0; i < frameCount; i++)
+                    {
+                        if (bufferSize >= RpcConstants.FrameHeaderSize)
+                        {
+                            stream.Read(_frameHeaderBuffer, 0, RpcConstants.FrameHeaderSize);
+
+                            if (_frameHeaderBuffer[0] != RpcConstants.FrameSign)
+                                throw new Exception(Errors.InvalidMessageType);
+
+                            var frame = new ReceivedFrame();
+                        }
+                    }
+                }
+
+                if (!completed)
+                    stream.Position = positionSnapshot;
+                else {
+                    _messageQueue.Enqueue(receivedMsg);
+                }
             }
+        }
+
+		public bool TryGetMessage(out ReceivedMessage msg)
+		{
+			msg = null;
+            if (!Disposed)
+                return _messageQueue.TryDequeue(out msg);
 			return false;
         }
     }

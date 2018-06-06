@@ -1,4 +1,4 @@
-﻿#region License
+#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,35 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System.Globalization;
-
 namespace Sweet.Actors
 {
-    public static class Constants
+    public static class NetConstants
     {
-		public const int True = 1;
-        public const int False = 0;
+        public const string LocalHost = "localhost";
+        public const string IP4Loopback = "127.0.0.1";
+        public const string IP6Loopback = "::1";
 
-        public const int KB = 1024;
-        public const int MB = KB * KB;
-        public const int GB = KB * MB;
-
-        public const int AnyAvailablePort = 0;
-        public const int DefaultPort = 6663;
-        public const string DefaultHost = "local";
-
-        public const string Protocol = "playbook://";
-        public const string AddressFormat = "playbook://{0}:{1}/{2}";
-        public static readonly int ProtocolLength = Protocol.Length;
-        public static readonly int EmptyProtocolLength = "playbook://:0/".Length;
-
-        public const string EmptyActorName = "[FAE04EC0-301F-11D3-BF4B-00C04F79EFBC]";
-        public const string DefaultActorSystemName = "[EDF53DA8-5449-4489-BDFC-CF165071362A]";
-
-        public const int MinSequentialInvokeLimit = 50;
-        public const int MaxSequentialInvokeLimit = 2000;
-        public const int DefaultSequentialInvokeLimit = 240;
-
-        public static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
+        public const int SIO_LOOPBACK_FAST_PATH = -1744830448;
     }
 }

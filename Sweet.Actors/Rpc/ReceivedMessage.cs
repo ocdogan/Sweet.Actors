@@ -26,66 +26,31 @@ using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    internal struct ReceivedHeader
+    internal class ReceivedHeader
     {
-        private int _processId;
-        private int _messageId;
-        private ushort _frameCount;
+        public int ProcessId { get; set; }
 
-        public int ProcessId
-        {
-            get { return _processId; }
-            set { _processId = value; }
-        }
+        public int MessageId { get; set; }
 
-        public int MessageId
-        {
-            get { return _messageId; }
-            set { _messageId = value; }
-        }
+        public string SerializerKey { get; set; }
 
-        public ushort FrameCount
-        {
-            get { return _frameCount; }
-            set { _frameCount = value; }
-        }
+        public ushort FrameCount { get; set; }
     }
 
-    internal struct ReceivedFrame
+    internal class ReceivedFrame
     {
-        private int _processId;
-        private int _messageId;
-        private ushort _frameId;
-        private byte[] _frameData;
+        public int ProcessId { get; set; }
 
-        public int ProcessId
-        {
-            get { return _processId; }
-            set { _processId = value; }
-        }
+        public int MessageId { get; set; }
 
-        public int MessageId
-        {
-            get { return _messageId; }
-            set { _messageId = value; }
-        }
+        public ushort FrameId { get; set; }
 
-        public ushort FrameId
-        {
-            get { return _frameId; }
-            set { _frameId = value; }
-        }
-
-        public byte[] FrameData
-        {
-            get { return _frameData; }
-            set { _frameData = value; }
-        }
+        public byte[] FrameData { get; set; }
     }
 
     internal class ReceivedMessage
     {
-        public ReceivedHeader Header { get; }
+        public ReceivedHeader Header { get; } = new ReceivedHeader();
 
         public IList<ReceivedFrame> Frames { get; } = new List<ReceivedFrame>();
 

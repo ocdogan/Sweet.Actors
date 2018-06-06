@@ -204,35 +204,6 @@ namespace Sweet.Actors
             return null;
         }
 
-        #region Sockets
-
-        internal static void SetIOLoopbackFastPath(this Socket socket)
-        {
-            if (Common.IsWinPlatform)
-            {
-                try
-                {
-                    var ops = BitConverter.GetBytes(1);
-                    socket.IOControl(Constants.SIO_LOOPBACK_FAST_PATH, ops, null);
-                }
-                catch (Exception)
-                { }
-            }
-        }
-
-        internal static bool IsConnected(this Socket socket, int poll = -1)
-        {
-            if (socket != null && socket.Connected)
-            {
-                if (poll > -1)
-                    return !(socket.Poll(poll, SelectMode.SelectRead) && (socket.Available == 0));
-                return true;
-            }
-            return false;
-        }
-
-        #endregion Sockets
-
         #region ToBytes
 
         internal static byte[] ToBytes(this string value)

@@ -33,8 +33,8 @@ namespace Sweet.Actors
     {
         private IPEndPoint _endPoint;
 
-        private int _sendTimeoutMSec = Constants.DefaultSendTimeout;
-        private int _receiveTimeoutMSec = Constants.DefaultReceiveTimeout;
+        private int _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
+        private int _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
 
         private string _serializer = "default";
 
@@ -114,8 +114,8 @@ namespace Sweet.Actors
         public T UsingReceiveTimeoutMSec(int receiveTimeoutMSec)
         {
             if (receiveTimeoutMSec < 1)
-                _receiveTimeoutMSec = Constants.DefaultReceiveTimeout;
-            else _receiveTimeoutMSec = Math.Min(Constants.MaxReceiveTimeout, Math.Max(Constants.MinReceiveTimeout, receiveTimeoutMSec));
+                _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
+            else _receiveTimeoutMSec = Math.Min(RpcConstants.MaxReceiveTimeout, Math.Max(RpcConstants.MinReceiveTimeout, receiveTimeoutMSec));
 
             return (T)this;
         }
@@ -123,8 +123,8 @@ namespace Sweet.Actors
         public T UsingSendTimeoutMSec(int sendTimeoutMSec)
         {
             if (sendTimeoutMSec < 1)
-                _sendTimeoutMSec = Constants.DefaultSendTimeout;
-            else _sendTimeoutMSec = Math.Min(Constants.MaxSendTimeout, Math.Max(Constants.MinSendTimeout, sendTimeoutMSec));
+                _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
+            else _sendTimeoutMSec = Math.Min(RpcConstants.MaxSendTimeout, Math.Max(RpcConstants.MinSendTimeout, sendTimeoutMSec));
 
             return (T)this;
         }

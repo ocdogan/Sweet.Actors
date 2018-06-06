@@ -76,7 +76,7 @@ namespace Sweet.Actors
                     Message msg = null;
                     try
                     {
-                        if (_buffer.TryDecodeMessage(out msg))
+                        if (_buffer.TryGetMessage(out ReceivedMessage receivedMsg))
                             Server.HandleMessage(msg, Connection);
                     }
                     catch (Exception e)

@@ -36,8 +36,6 @@ namespace Sweet.Actors
             public IRpcSerializer Instance;
         }
 
-        private const int MaxTypeLength = 10;
-
         private static readonly ConcurrentDictionary<string, Registry> _registry =
             new ConcurrentDictionary<string, Registry>();
 
@@ -48,7 +46,7 @@ namespace Sweet.Actors
                 throw new ArgumentNullException(nameof(registryName));
 
             len = Encoding.UTF8.GetByteCount(registryName);
-            if (len > MaxTypeLength)
+            if (len > RpcConstants.SerializerRegistryNameLength)
                 throw new ArgumentOutOfRangeException(nameof(registryName));
         }
 
