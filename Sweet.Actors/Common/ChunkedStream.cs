@@ -10,10 +10,10 @@ namespace Sweet.Actors
 
         private bool _isClosed;
 
-        private int _origin = 0;
+        protected int _origin = 0;
 
-        private long _length;
-        private long _position;
+        protected long _length;
+        protected long _position;
 
         private int _chunkSize = ByteArrayCache.Default.ArraySize;
         private List<byte[]> _chunks = new List<byte[]>();
@@ -99,7 +99,15 @@ namespace Sweet.Actors
             set { if (!_isClosed) _position = Math.Max(0L, value); }
         }
 
-        private void InitializeCache(int chunkSize)
+        private int ChunkSize => _chunkSize;
+
+        protected bool IsClosed => _isClosed;
+
+        protected bool OwnsCache => _ownsCache;
+
+        protected ByteArrayCache Cache => _cache;
+
+        protected void InitializeCache(int chunkSize)
         {
             if (chunkSize > 0)
             {
@@ -116,7 +124,7 @@ namespace Sweet.Actors
             }
         }
 
-        private byte[] GetCurrentChunk()
+        protected byte[] GetCurrentChunk()
         {
             if (!_isClosed)
             {
@@ -128,7 +136,7 @@ namespace Sweet.Actors
             return EmptyChunk;
         }
 
-        private void ValidateChunks()
+        protected void ValidateChunks()
         {
             var index = (int)(_position + _origin) / _chunkSize;
 
@@ -139,7 +147,7 @@ namespace Sweet.Actors
                 _chunks.AddRange(_cache.Acquire(requiredCnt));
         }
 
-        private long GetChunkOffset()
+        protected long GetChunkOffset()
         {
             return (_position + _origin) % _chunkSize;
         }
@@ -147,7 +155,7 @@ namespace Sweet.Actors
         public override void Flush()
         { }
 
-        private void ThrowIfDisposed()
+        protected void ThrowIfDisposed()
         {
             if (_isClosed)
                 throw new ObjectDisposedException("stream");
@@ -291,10 +299,10 @@ namespace Sweet.Actors
             }
         }
 
-        private void EnsureCapacity(long capacity)
+        protected void EnsureCapacity(long value)
         {
-            if (capacity > _length)
-                _length = capacity;
+            if (value > _length)
+                _length = value;
         }
 
         public override int ReadByte()
@@ -325,7 +333,7 @@ namespace Sweet.Actors
             _position++;
         }
 
-        private void ReleaseChunks(bool reinit)
+        protected void ReleaseChunks(bool reinit)
         {
             var chunks = _chunks;
             _chunks = reinit ? new List<byte[]>() : null;
