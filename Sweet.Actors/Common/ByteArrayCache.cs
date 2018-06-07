@@ -26,43 +26,41 @@ using System;
 
 namespace Sweet.Actors
 {
-    public sealed class BufferCache : ObjectCacheBase<BufferSegment>
+    public sealed class ByteArrayCache : ObjectCacheBase<byte[]>
     {
-        public static readonly BufferCache Default = new BufferCache(10);
+        public static readonly ByteArrayCache Default = new ByteArrayCache(10);
 
-        private const int MinSegmentSize = 512;
-        private const int DefaultSegmentSize = 8 * Constants.KB;
+        public const int MinArraySize = 512;
+        public const int MaxArraySize = 4 * Constants.MB;
+        public const int DefaultArraySize = 8 * Constants.KB;
 
-        private int _segmentSize;
+        private int _arraySize;
 
-        public BufferCache(int initialCount = 0, int limit = DefaultLimit, int segmentSize = DefaultSegmentSize)
-            : base(SegmentProvider, 0, limit)
+        public ByteArrayCache(int initialCount = 0, int limit = DefaultLimit, int arraySize = DefaultArraySize)
+            : base(ArrayProvider, 0, limit)
         {
-            if (segmentSize < 1)
-                _segmentSize = DefaultSegmentSize;
-            else _segmentSize = Math.Max(MinSegmentSize, segmentSize);
+            if (arraySize < 1)
+                _arraySize = DefaultArraySize;
+            else
+                _arraySize = Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
 
             initialCount = Math.Max(0, initialCount);
             if (initialCount > 0)
                 for (var i = 0; i < initialCount; i++)
-                    Enqueue(SegmentProvider(this));
+                    Enqueue(ArrayProvider(this));
         }
 
-        public int SegmentSize => _segmentSize;
+        public int ArraySize => _arraySize;
 
-        private static BufferSegment SegmentProvider(ObjectCacheBase<BufferSegment> owner)
+        private static byte[] ArrayProvider(ObjectCacheBase<byte[]> cache)
         {
-            return new BufferSegment(((BufferCache)owner)._segmentSize);
+            return new byte[(((ByteArrayCache)cache)._arraySize)];
         }
 
-        protected override void OnDispose(BufferSegment item)
-        {
-            item.Dispose();
-        }
+        protected override void OnDispose(byte[] item)
+        { }
 
-        protected override void OnEnqueue(BufferSegment item)
-        {
-            item.Reset();
-        }
+        protected override void OnEnqueue(byte[] item)
+        { }
     }
 }

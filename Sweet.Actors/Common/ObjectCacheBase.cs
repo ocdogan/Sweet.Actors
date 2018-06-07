@@ -34,6 +34,8 @@ namespace Sweet.Actors
         protected const int MinLimit = 64;
         protected const int DefaultLimit = 1024;
 
+        private static readonly T[] EmptyArray = new T[0];
+
         private int _limit = -1;
         private readonly Func<ObjectCacheBase<T>, T> _provider;
 
@@ -73,20 +75,19 @@ namespace Sweet.Actors
             return result;
         }
 
-        public IList<T> Acquire(int count)
+        public T[] Acquire(int count)
         {
+            if (count == 1)
+                return new T[] { Acquire() };
+
             if (count > 0)
             {
-                var result = new List<T>(count);
-                while (count-- > 0)
-                {
-                    T item;
-                    if (!_cache.TryDequeue(out item))
-                        result.Add(_provider(this));
-                }
+                var result = new T[count];
+                for (var i = 0; i < count; i++)
+                    result[i] = Acquire();
                 return result;
             }
-            return null;
+            return EmptyArray;
         }
 
         public void Release(T item)

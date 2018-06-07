@@ -67,7 +67,8 @@ namespace Sweet.Actors.ConsoleTest
             // CounterTest();
             // AverageTest();
 
-            ServerTest();
+            // ServerTest();
+            ChunkedStreamTest();
 
             // ActorTest();
         }
@@ -95,6 +96,55 @@ namespace Sweet.Actors.ConsoleTest
 
             while (true)
                 Thread.Sleep(1000);
+        }
+
+        private static void ChunkedStreamTest()
+        {
+            var buffer = new byte[100];
+
+            var data1 = Encoding.UTF8.GetBytes("client.Send(Message.Empty, Address.Unknown);");
+            var data2 = Encoding.UTF8.GetBytes("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+
+            using (var stream = new ChunkedStream())
+            {
+                var loop = 10000;
+                for (var i = 0; i < loop; i++)
+                    stream.Write(data1, 0, data1.Length);
+
+                var dataSize = loop * data1.Length;
+                Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
+
+                var readSize = 0;
+
+                stream.Position = 0;
+
+                int readLen;
+                while ((readLen = stream.Read(buffer, 0, buffer.Length)) > 0)
+                    readSize += readLen;
+
+                Console.WriteLine("Expected size: " + dataSize + ", read size: " + readSize);
+
+                var trimBy = 10;
+
+                dataSize = (loop - trimBy) * data1.Length;
+                stream.TrimLeft(trimBy * data1.Length);
+
+                Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
+
+                for (var i = 0; i < trimBy; i++)
+                    stream.Write(data2, 0, data2.Length);
+
+                dataSize = loop * data1.Length;
+                Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
+
+                stream.Position = (loop - 2* trimBy) * data1.Length;
+
+                var dataBuffer = new byte[data1.Length];
+                while ((readLen = stream.Read(dataBuffer, 0, dataBuffer.Length)) > 0)
+                    Console.WriteLine(Encoding.UTF8.GetString(dataBuffer, 0, readLen));
+            }
+
+            Console.ReadKey();
         }
 
         private static void ActorTest()
