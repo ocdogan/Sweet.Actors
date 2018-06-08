@@ -116,7 +116,7 @@ namespace Sweet.Actors.ConsoleTest
 
                 var readSize = 0;
 
-                stream.Position = 0;
+                stream.ReadPosition = 0;
 
                 int readLen;
                 while ((readLen = stream.Read(buffer, 0, buffer.Length)) > 0)
@@ -137,7 +137,7 @@ namespace Sweet.Actors.ConsoleTest
                 dataSize = loop * data1.Length;
                 Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
 
-                stream.Position = (loop - 2* trimBy) * data1.Length;
+                stream.ReadPosition = (loop - 2* trimBy) * data1.Length;
 
                 var dataBuffer = new byte[data1.Length];
                 while ((readLen = stream.Read(dataBuffer, 0, dataBuffer.Length)) > 0)

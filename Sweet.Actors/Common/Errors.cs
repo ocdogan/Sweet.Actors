@@ -27,6 +27,7 @@ namespace Sweet.Actors
     public static class Errors
     {
         public const string StreamIsClosed = "Stream is closed";
+        public const string UnwritableStream = "Unwritable stream";
 
         public const string MessageExpired = "Message expired";
         public const string MaxAllowedDataSizeExceeded = "Max allowed data size exceeded";

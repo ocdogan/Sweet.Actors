@@ -1,25 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
     public class ChunkedStream : Stream
     {
         private static readonly byte[] EmptyChunk = new byte[0];
+        private static readonly Task<int> ReadCompleted = Task.FromResult(0);
 
         private bool _isClosed;
 
-        protected int _origin = 0;
-
+        protected int _origin;
         protected long _length;
-        protected long _position;
+
+        protected long _readPosition;
+        protected long _writePosition;
+
+        private List<byte[]> _chunks = new List<byte[]>();
 
         private int _chunkSize = ByteArrayCache.Default.ArraySize;
-        private List<byte[]> _chunks = new List<byte[]>();
 
         private bool _ownsCache;
         private ByteArrayCache _cache = ByteArrayCache.Default;
+
+        private Task<int> _lastReadTask;
 
         public ChunkedStream()
         { }
@@ -38,7 +45,9 @@ namespace Sweet.Actors
                 if (sourceLen > 0)
                 {
                     Write(source, 0, sourceLen);
-                    _position = 0;
+
+                    ReadPosition = 0L;
+                    WritePosition = 0L;
                 }
             }
         }
@@ -49,10 +58,10 @@ namespace Sweet.Actors
             if (length > 0)
             {
                 SetLength(length);
-                _position = length;
+                WritePosition = length;
 
-                ValidateChunks();
-                _position = 0;
+                ValidateChunks(GetWriteChunkIndex());
+                WritePosition = 0L;
             }
         }
 
@@ -95,17 +104,37 @@ namespace Sweet.Actors
 
         public override long Position
         {
-            get { return !_isClosed ? _position : 0L; }
-            set { if (!_isClosed) _position = Math.Max(0L, value); }
+            get { return WritePosition; }
+            set { WritePosition = value; }
         }
 
-        private int ChunkSize => _chunkSize;
+        protected int ChunkSize => _chunkSize;
 
         protected bool IsClosed => _isClosed;
 
         protected bool OwnsCache => _ownsCache;
 
         protected ByteArrayCache Cache => _cache;
+
+        public virtual long ReadPosition
+        {
+            get { return !_isClosed ? _readPosition : 0L; }
+            set
+            {
+                if (!_isClosed)
+                    _readPosition = Math.Min(_length, Math.Max(0L, value));
+            }
+        }
+
+        public virtual long WritePosition
+        {
+            get { return !_isClosed ? _writePosition : 0L; }
+            set
+            {
+                if (!_isClosed)
+                    _writePosition = Math.Min(_length, Math.Max(0L, value));
+            }
+        }
 
         protected void InitializeCache(int chunkSize)
         {
@@ -124,36 +153,77 @@ namespace Sweet.Actors
             }
         }
 
-        protected byte[] GetCurrentChunk()
+        protected virtual int GetWriteChunkIndex()
+        {
+            return (int)(WritePosition + _origin) / _chunkSize;
+        }
+
+        protected virtual int GetReadChunkIndex()
+        {
+            return (int)(ReadPosition + _origin) / _chunkSize;
+        }
+
+        private byte[] GetWriteChunk()
         {
             if (!_isClosed)
             {
-                ValidateChunks();
+                var writeIndex = GetWriteChunkIndex();
+                ValidateChunks(writeIndex);
 
-                var index = (int)(_position + _origin) / _chunkSize;
-                return _chunks[index];
+                return _chunks[writeIndex];
             }
             return EmptyChunk;
         }
 
-        protected void ValidateChunks()
+        private byte[] GetReadChunk()
         {
-            var index = (int)(_position + _origin) / _chunkSize;
+            if (!_isClosed)
+            {
+                var readIndex = GetReadChunkIndex();
+                if (readIndex > -1)
+                {
+                    if (readIndex < _chunks.Count)
+                        return _chunks[readIndex];
 
+                    if (readIndex == 0)
+                    {
+                        var chunk = _cache.Acquire();
+                        _chunks.Add(chunk);
+
+                        return chunk;
+                    }
+                }
+            }
+            return EmptyChunk;
+        }
+
+        protected void ValidateChunks(int index)
+        {
             var requiredCnt = (index - _chunks.Count) + 1;
+
             if (requiredCnt == 1)
                 _chunks.Add(_cache.Acquire());
             else if (requiredCnt > 0)
                 _chunks.AddRange(_cache.Acquire(requiredCnt));
         }
 
-        protected long GetChunkOffset()
+        protected long GetWriteChunkOffset()
         {
-            return (_position + _origin) % _chunkSize;
+            return (WritePosition + _origin) % _chunkSize;
+        }
+
+        protected long GetReadChunkOffset()
+        {
+            return (ReadPosition + _origin) % _chunkSize;
         }
 
         public override void Flush()
         { }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
 
         protected void ThrowIfDisposed()
         {
@@ -172,11 +242,14 @@ namespace Sweet.Actors
                 _length = value;
 
                 if (_length > initialLen)
-                    ValidateChunks();
+                    ValidateChunks(GetWriteChunkIndex());
                 else
                 {
-                    if (_position > _length)
-                        _position = _length;
+                    if (ReadPosition > _length)
+                        ReadPosition = _length;
+
+                    if (WritePosition > _length)
+                        WritePosition = _length;
 
                     var requiredCnt = ((_length + _origin) / _chunkSize) + 1;
 
@@ -198,38 +271,29 @@ namespace Sweet.Actors
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            ThrowIfDisposed();
-
-            if (count < 0)
-                throw new ArgumentOutOfRangeException(nameof(count));
+            ValidateReadWrite(buffer, offset, count);
 
             if (count > 0)
             {
-                if (buffer == null)
-                    throw new ArgumentNullException(nameof(buffer));
-
-                if (offset < 0)
-                    throw new ArgumentOutOfRangeException(nameof(offset));
-
-                var remaining = _length - _position;
+                var remaining = _length - ReadPosition;
                 var lCount = Math.Min(remaining, count);
 
                 var readLen = 0;
                 do
                 {
-                    var chunkOffset = (int)GetChunkOffset();
+                    var chunkOffset = (int)GetReadChunkOffset();
 
                     var copySize = Math.Min(lCount, _chunkSize - chunkOffset);
                     if (copySize < 1)
                         break;
 
-                    Buffer.BlockCopy(GetCurrentChunk(), chunkOffset, buffer, offset, (int)copySize);
+                    Buffer.BlockCopy(GetReadChunk(), chunkOffset, buffer, offset, (int)copySize);
 
                     lCount -= copySize;
                     offset += (int)copySize;
 
                     readLen += (int)copySize;
-                    _position += copySize;
+                    ReadPosition += copySize;
                 } while (lCount > 0);
 
                 return readLen;
@@ -237,6 +301,49 @@ namespace Sweet.Actors
             return 0;
         }
 
+        private void ValidateReadWrite(byte[] buffer, int offset, int count)
+        {
+            ThrowIfDisposed();
+
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
+            if (offset < 0)
+                throw new ArgumentOutOfRangeException(nameof(offset));
+
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count));
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            ValidateReadWrite(buffer, offset, count);
+
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromCanceled<int>(cancellationToken);
+
+            if (count > 0)
+            {
+                try
+                {
+                    var readLen = Read(buffer, offset, count);
+
+                    var lastReadTask = _lastReadTask;
+                    return (lastReadTask != null && lastReadTask.Result == readLen) ? 
+                        lastReadTask : (_lastReadTask = Task.FromResult<int>(readLen));
+                }
+                catch (OperationCanceledException)
+                {
+                    return Task.FromCanceled<int>(cancellationToken);
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException<int>(e);
+                }
+            }
+            return ReadCompleted;
+        }
+       
         public override long Seek(long offset, SeekOrigin origin)
         {
             ThrowIfDisposed();
@@ -244,58 +351,80 @@ namespace Sweet.Actors
             switch (origin)
             {
                 case SeekOrigin.Begin:
-                    _position = offset;
+                    ReadPosition = offset;
                     break;
                 case SeekOrigin.Current:
-                    _position += offset;
+                    ReadPosition += offset;
                     break;
                 case SeekOrigin.End:
-                    _position = _length - offset;
+                    ReadPosition = _length - offset;
                     break;
             }
-            return _position;
+            return ReadPosition;
         }
 
         public override void Write(byte[] buffer, int offset, int count)
         {
-            ThrowIfDisposed();
-
-            if (count < 0)
-                throw new ArgumentOutOfRangeException(nameof(count));
+            ValidateReadWrite(buffer, offset, count);
 
             if (count > 0)
             {
-                if (buffer == null)
-                    throw new ArgumentNullException(nameof(buffer));
-
-                if (offset < 0)
-                    throw new ArgumentOutOfRangeException(nameof(offset));
-
-                var initialPosition = _position;
+                var readPosition = ReadPosition;
+                var writePosition = WritePosition;
                 try
                 {
                     do
                     {
-                        var chunkOffset = (int)GetChunkOffset();
+                        var chunkOffset = (int)GetWriteChunkOffset();
 
                         var copySize = Math.Min(count, _chunkSize - chunkOffset);
                         if (copySize < 1)
                             break;
 
-                        EnsureCapacity(_position + copySize);
-                        Buffer.BlockCopy(buffer, offset, GetCurrentChunk(), chunkOffset, copySize);
+                        EnsureCapacity(WritePosition + copySize);
+                        Buffer.BlockCopy(buffer, offset, GetWriteChunk(), chunkOffset, copySize);
 
                         count -= copySize;
                         offset += copySize;
 
-                        _position += copySize;
+                        WritePosition += copySize;
                     } while (count > 0);
                 }
                 catch (Exception)
                 {
-                    _position = initialPosition;
+                    ReadPosition = readPosition;
+                    WritePosition = writePosition;
                     throw;
                 }
+                finally
+                {
+                    ReadPosition = readPosition;
+                }
+            }
+        }
+
+        public override Task WriteAsync(Byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            ValidateReadWrite(buffer, offset, count);
+
+            if (buffer.Length - offset < count)
+                throw new ArgumentOutOfRangeException(nameof(count));
+
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromCanceled(cancellationToken);
+
+            try
+            {
+                Write(buffer, offset, count);
+                return Task.CompletedTask;
+            }
+            catch (OperationCanceledException)
+            {
+                return Task.FromCanceled(cancellationToken);
+            }
+            catch (Exception e)
+            {
+                return Task.FromException(e);
             }
         }
 
@@ -309,13 +438,13 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
 
-            if (_position < _length)
+            if (ReadPosition < _length)
             {
-                var chunk = GetCurrentChunk();
-                if (chunk != null)
+                var chunk = GetReadChunk();
+                if (chunk != null && chunk.Length > 0)
                 {
-                    var result = chunk[GetChunkOffset()];
-                    _position++;
+                    var result = chunk[GetReadChunkOffset()];
+                    ReadPosition++;
 
                     return result;
                 }
@@ -327,10 +456,10 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
 
-            EnsureCapacity(_position + 1);
+            EnsureCapacity(WritePosition + 1);
 
-            GetCurrentChunk()[GetChunkOffset()] = value;
-            _position++;
+            GetWriteChunk()[GetWriteChunkOffset()] = value;
+            WritePosition++;
         }
 
         protected void ReleaseChunks(bool reinit)
@@ -340,7 +469,9 @@ namespace Sweet.Actors
 
             _origin = 0;
             _length = 0L;
-            _position = 0L;
+
+            ReadPosition = 0L;
+            WritePosition = 0L;
 
             if (chunks != null && chunks.Count > 0)
             {
@@ -353,14 +484,20 @@ namespace Sweet.Actors
         {
             if (!_isClosed)
             {
-                var initialPosition = _position;
-                _position = 0;
+                var readPosition = ReadPosition;
+                try
+                {
+                    ReadPosition = 0L;
 
-                var result = new byte[_length];
-                Read(result, 0, (int)_length);
+                    var result = new byte[_length];
+                    Read(result, 0, (int)_length);
 
-                _position = initialPosition;
-                return result;
+                    return result;
+                }
+                finally
+                {
+                    ReadPosition = readPosition;
+                }
             }
             return EmptyChunk;
         }
@@ -391,11 +528,16 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
 
-            var initialPosition = _position;
-            _position = 0;
-
-            CopyTo(destination);
-            _position = initialPosition;
+            var readPosition = ReadPosition;
+            try
+            {
+                ReadPosition = 0;
+                CopyTo(destination);
+            }
+            finally
+            {
+                ReadPosition = readPosition;
+            }
         }
 
         public void TrimLeft(int trimLength = -1)
@@ -403,7 +545,7 @@ namespace Sweet.Actors
             ThrowIfDisposed();
 
             if (trimLength < 0)
-                trimLength = (int)_position;
+                trimLength = (int)WritePosition;
 
             if (trimLength > 0)
             {
@@ -424,9 +566,11 @@ namespace Sweet.Actors
                     _origin = trimLength % _chunkSize;
 
                     _length = Math.Max(0, _length - trimLength);
-                    _position = Math.Max(0, _position - trimLength);
 
-                    ValidateChunks();
+                    ReadPosition = Math.Max(0L, ReadPosition - trimLength);
+                    WritePosition = Math.Max(0L, WritePosition - trimLength);
+
+                    ValidateChunks(GetWriteChunkIndex());
 
                     if (_origin > 0 && _length > 0 &&
                         _chunks.Count == 1)
