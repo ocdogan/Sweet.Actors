@@ -69,8 +69,7 @@ namespace Sweet.Actors
 
         public T Acquire()
         {
-            T result;
-            if (!_cache.TryDequeue(out result))
+            if (!_cache.TryDequeue(out T result))
                 return _provider(this);
             return result;
         }

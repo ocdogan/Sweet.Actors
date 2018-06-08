@@ -114,34 +114,37 @@ namespace Sweet.Actors.ConsoleTest
                 var dataSize = loop * data1.Length;
                 Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
 
-                var readSize = 0;
+                using (var reader = stream.NewReader())
+                {
+                    reader.Position = 0;
 
-                stream.ReadPosition = 0;
+                    int readLen;
+                    var readSize = 0;
 
-                int readLen;
-                while ((readLen = stream.Read(buffer, 0, buffer.Length)) > 0)
-                    readSize += readLen;
+                    while ((readLen = reader.Read(buffer, 0, buffer.Length)) > 0)
+                        readSize += readLen;
 
-                Console.WriteLine("Expected size: " + dataSize + ", read size: " + readSize);
+                    Console.WriteLine("Expected size: " + dataSize + ", read size: " + readSize);
 
-                var trimBy = 10;
+                    var trimBy = 10;
 
-                dataSize = (loop - trimBy) * data1.Length;
-                stream.TrimLeft(trimBy * data1.Length);
+                    dataSize = (loop - trimBy) * data1.Length;
+                    stream.TrimLeft(trimBy * data1.Length);
 
-                Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
+                    Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
 
-                for (var i = 0; i < trimBy; i++)
-                    stream.Write(data2, 0, data2.Length);
+                    for (var i = 0; i < trimBy; i++)
+                        stream.Write(data2, 0, data2.Length);
 
-                dataSize = loop * data1.Length;
-                Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
+                    dataSize = loop * data1.Length;
+                    Console.WriteLine("Expected size: " + dataSize + ", stream size: " + stream.Length);
 
-                stream.ReadPosition = (loop - 2* trimBy) * data1.Length;
+                    reader.Position = (loop - 2 * trimBy) * data1.Length;
 
-                var dataBuffer = new byte[data1.Length];
-                while ((readLen = stream.Read(dataBuffer, 0, dataBuffer.Length)) > 0)
-                    Console.WriteLine(Encoding.UTF8.GetString(dataBuffer, 0, readLen));
+                    var dataBuffer = new byte[data1.Length];
+                    while ((readLen = reader.Read(dataBuffer, 0, dataBuffer.Length)) > 0)
+                        Console.WriteLine(Encoding.UTF8.GetString(dataBuffer, 0, readLen));
+                }
             }
 
             Console.ReadKey();

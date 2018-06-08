@@ -22,23 +22,22 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace Sweet.Actors
 {
-    public static class Errors
+    public interface IChunkedStreamReader : IDisposable
     {
-        public const string EndOfFile = "End of file";
-        public const string StreamIsClosed = "Stream is closed";
-        public const string UnwritableStream = "Unwritable stream";
+        int ChunkSize { get; }
+        bool Closed { get; }
+        int Origin { get; }
+        long Position { get; set; }
 
-        public const string MessageExpired = "Message expired";
-        public const string MaxAllowedDataSizeExceeded = "Max allowed data size exceeded";
-        public const string InvalidPort = "Invalid port";
-        public const string InvalidAddress = "Invalid address";
-        public const string InvalidMessageType = "Invalid message type";
-        public const string InvalidResponseType = "Invalid response type";
-        public const string ActorAlreadyExsists = "Actor with name {0} already exists";
-        public const string ActorSystemAlreadyExsists = "Actor system with name {0} already exists";
-
-        public const string ExpectingReceiveCompletedOperation = "Expecting receive completed operation";
+        int Read(byte[] buffer, int offset, int count);
+        Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
+        int ReadByte();
+        byte[] ToArray();
     }
 }
