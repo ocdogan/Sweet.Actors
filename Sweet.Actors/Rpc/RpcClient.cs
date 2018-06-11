@@ -172,8 +172,11 @@ namespace Sweet.Actors
             if (socket != null)
                 using (socket)
                 {
-                    socket.Shutdown(SocketShutdown.Both);
-                    socket.Close();
+                    if (socket.IsConnected())
+                    {
+                        socket.Shutdown(SocketShutdown.Both);
+                        socket.Close();
+                    }
                 }
         }
 
@@ -257,8 +260,10 @@ namespace Sweet.Actors
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
+            /*
             socket.LingerState.Enabled = false;
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+            */
 
             socket.NoDelay = true;
         }
@@ -477,15 +482,15 @@ namespace Sweet.Actors
                             stream.Write(frameIdBytes, 0, frameIdBytes.Length);
 
                             // Frame length
-                            var frameDataSize = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
+                            var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
 
-                            var frameDataSizeBytes = frameDataSize.ToBytes();
-                            stream.Write(frameDataSizeBytes, 0, frameDataSizeBytes.Length);
+                            var frameDataLenBytes = frameDataLen.ToBytes();
+                            stream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
 
-                            if (frameDataSize > 0)
+                            if (frameDataLen > 0)
                             {
-                                stream.Write(data, offset, frameDataSize);
-                                offset += frameDataSize;
+                                stream.Write(data, offset, frameDataLen);
+                                offset += frameDataLen;
                             }
                         }
 
@@ -504,7 +509,7 @@ namespace Sweet.Actors
             _responseList[request.Id] = request;
             try
             {
-                var rpcMsg = request.Message.ActualMessageToRpc(request.To, request.Id);
+                var rpcMsg = request.Message.ToRpcMessage(request.To, request.Id);
                 if (Write(rpcMsg, flush) && flush)
                     BeginReceive();
             }

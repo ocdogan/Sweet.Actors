@@ -397,6 +397,7 @@ namespace Sweet.Actors
 
         protected long _position;
 
+        private bool _release = true;
         private List<byte[]> _chunks = new List<byte[]>();
 
         private int _chunkSize = ByteArrayCache.Default.ArraySize;
@@ -428,13 +429,42 @@ namespace Sweet.Actors
             {
                 var sourceLen = source.Length;
                 if (sourceLen > 0)
-                {
                     Write(source, 0, sourceLen);
-                    _position = 0L;
-                }
             }
         }
 
+        public ChunkedStream(IList<byte[]> source, bool release)
+        {
+            _release = release;
+            _defaultReader = new ChunkedStreamReader(this, _chunks);
+
+            if (source == null)
+            {
+                var cnt = source.Count;
+                if (cnt > 0)
+                {
+                    var chunkSize = -1;
+
+                    foreach (var chunk in source)
+                    {
+                        if (chunk != null)
+                        {
+                            var chunkLen = chunk.Length;
+                            if (chunkLen > 0)
+                            {
+                                if (chunkSize == -1)
+                                {
+                                    chunkSize = chunkLen;                    
+                                    InitializeCache(chunkSize);
+                                }
+                                
+                                Write(chunk, 0, chunkLen);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         public ChunkedStream(int length, int chunkSize = -1)
         {
             InitializeCache(chunkSize);
@@ -610,7 +640,8 @@ namespace Sweet.Actors
                                 var chunk = _chunks[index];
 
                                 _chunks.RemoveAt(index);
-                                _cache.Release(chunk);
+                                if (_release)
+                                    _cache.Release(chunk);
                             }
                         }
                     }
@@ -803,7 +834,8 @@ namespace Sweet.Actors
 
                 if (chunks != null && chunks.Count > 0)
                 {
-                    _cache.Release(chunks);
+                    if (_release)
+                        _cache.Release(chunks);
                     chunks.Clear();
                 }
             }
@@ -884,7 +916,8 @@ namespace Sweet.Actors
                             var chunk = _chunks[0];
                             _chunks.RemoveAt(0);
 
-                            _cache.Release(chunk);
+                            if (_release)
+                                _cache.Release(chunk);
                         }
 
                         _origin = trimLength % _chunkSize;

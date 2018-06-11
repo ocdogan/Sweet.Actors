@@ -22,48 +22,11 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-using System.IO;
-using Wire;
-
 namespace Sweet.Actors
 {
-    public class DefaultRpcSerializer : IRpcSerializer
+    public static class RpcErrors
     {
-        private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
-
-        public (IMessage, Address) Deserialize(byte[] data)
-        {
-            if (data == null || data.Length == 0)
-                return (Message.Empty, Address.Unknown);
-
-            using (var ms = new MemoryStream(data))
-            {
-                var rpcMsg = _serializer.Deserialize<RpcMessage>(ms);
-                return rpcMsg.ToActualMessage();
-            }
-        }
-
-        public (IMessage, Address) Deserialize(Stream stream)
-        {
-            if (stream == null)
-                return (Message.Empty, Address.Unknown);
-
-            var rpcMsg = _serializer.Deserialize<RpcMessage>(stream);
-            return rpcMsg.ToActualMessage();
-        }
-
-        public byte[] Serialize(RpcMessage msg)
-        {
-            if (msg != null)
-            {
-                using (var ms = new MemoryStream())
-                {
-                    _serializer.Serialize(msg, ms);
-                    return ms.ToArray();
-                }
-            }
-            return null;
-        }
+        public const string InvalidMessage = "Invalid message";
+        public const string InvalidSerializerKey = "Invalid serializer key";
     }
 }

@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.IO;
 
 namespace Sweet.Actors
 {
@@ -30,5 +31,6 @@ namespace Sweet.Actors
     {
         byte[] Serialize(RpcMessage msg);
         (IMessage, Address) Deserialize(byte[] data);
+        (IMessage, Address) Deserialize(Stream stream);
     }
 }

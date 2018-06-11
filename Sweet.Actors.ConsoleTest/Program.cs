@@ -67,8 +67,8 @@ namespace Sweet.Actors.ConsoleTest
             // CounterTest();
             // AverageTest();
 
-            // ServerTest();
-            ChunkedStreamTest();
+            // ChunkedStreamTest();
+            ServerTest();
 
             // ActorTest();
         }

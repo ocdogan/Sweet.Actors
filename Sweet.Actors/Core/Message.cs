@@ -48,7 +48,7 @@ namespace Sweet.Actors
 		bool Expired { get; }
     }
 
-    internal class Message : IMessage
+    public class Message : IMessage
     {
         public static readonly Message Empty = new Message(new object(), Address.Unknown);
 

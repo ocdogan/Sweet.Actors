@@ -71,21 +71,25 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    _buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred);
-
-                    Message msg = null;
-                    try
+                    if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred))
                     {
-                        if (_buffer.TryGetMessage(out ReceivedMessage receivedMsg))
-                            Server.HandleMessage(msg, Connection);
-                    }
-                    catch (Exception e)
-                    {
-                        if (msg == null || msg.MessageType != MessageType.FutureMessage)
-                            throw;
+                        IMessage msg = null;
+                        try
+                        {
+                            if (_buffer.TryGetMessage(out (IMessage, Address) receivedMsg))
+                            {
+                                msg = receivedMsg.Item1;
+                                Server.HandleMessage(receivedMsg, Connection);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            if (msg == null || msg.MessageType != MessageType.FutureMessage)
+                                throw;
 
-                        var response = CreateResponseError(msg, e);
-                        Server.SendMessage(response);
+                            var response = CreateResponseError(msg, e);
+                            Server.SendMessage(response);
+                        }
                     }
                 }
                 catch (Exception)
@@ -95,7 +99,7 @@ namespace Sweet.Actors
                 }
             }
 
-            private Message CreateResponseError(Message msg, Exception exception)
+            private Message CreateResponseError(IMessage msg, Exception exception)
             {
                 return null;
             }
@@ -221,9 +225,10 @@ namespace Sweet.Actors
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
-            socket.LingerState.Enabled = false;
+            /* socket.LingerState.Enabled = false;
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
-
+            */
+            
             socket.NoDelay = true;
         }
 
@@ -501,7 +506,7 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        private void HandleMessage(Message msg, Socket connection)
+        private void HandleMessage((IMessage, Address) msg, Socket connection)
         { }
 
         private void SendMessage(Message msg)
