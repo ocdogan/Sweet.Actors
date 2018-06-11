@@ -25,6 +25,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -41,16 +42,14 @@ namespace Sweet.Actors
             private long _position;
 
             private ChunkedStream _stream;
-            private ByteArrayCache _cache;
 
             private List<byte[]> _chunks;
             private Task<int> _lastReadTask;
 
             private byte[] _buffer = new byte[32];
 
-            public ChunkedStreamReader(ChunkedStream stream, List<byte[]> chunks, ByteArrayCache cache)
+            public ChunkedStreamReader(ChunkedStream stream, List<byte[]> chunks)
             {
-                _cache = cache;
                 _chunks = chunks;
                 _stream = stream;
                 _chunkSize = stream._chunkSize;
@@ -67,7 +66,6 @@ namespace Sweet.Actors
 
             protected override void OnDispose(bool disposing)
             {
-                _cache = null;
                 _chunks = null;
 
                 if (_stream != null)
@@ -319,6 +317,57 @@ namespace Sweet.Actors
             }
         }
 
+        public class ChunkedStreamWriter : BinaryWriter, IChunkedStreamWriter
+        {
+            private ChunkedStream _stream;
+
+            private bool _isClosed;
+            private BinaryWriter _writer;
+
+            public ChunkedStreamWriter(ChunkedStream stream)
+            {
+                _stream = stream;
+                _writer = new BinaryWriter(stream, new UTF8Encoding(false, true), true);
+            }
+
+            private void ThrowIfDisposed(string name = null)
+            {
+                if (_isClosed)
+                    throw new ObjectDisposedException("writer");
+                if (_stream?._isClosed ?? true)
+                    throw new ObjectDisposedException("stream");
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                _isClosed = true;
+                if (disposing)
+                {
+                    _stream = null;
+                    using (var writer = _writer)
+                    {
+                        _writer = null;
+                    }
+                }
+                base.Dispose(disposing);
+            }
+
+            public int ChunkSize => _stream?.ChunkSize ?? 0;
+
+            public bool Closed => _isClosed || (_stream?.Closed ?? true);
+
+            public int Origin => _stream?.Origin ?? 0;
+
+            public long Position => _stream?.Position ?? 0L;
+
+            public Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                ThrowIfDisposed();
+                return _stream.WriteAsync(buffer, offset, count);
+            }
+
+        }
+
         internal enum ValueName
         {
             Length,
@@ -361,19 +410,19 @@ namespace Sweet.Actors
 
         public ChunkedStream()
         {
-            _defaultReader = new ChunkedStreamReader(this, _chunks, _cache);
+            _defaultReader = new ChunkedStreamReader(this, _chunks);
         }
 
         public ChunkedStream(int chunkSize = -1)
         {
             InitializeCache(chunkSize);
-            _defaultReader = new ChunkedStreamReader(this, _chunks, _cache);
+            _defaultReader = new ChunkedStreamReader(this, _chunks);
         }
 
         public ChunkedStream(byte[] source, int chunkSize = -1)
         {
             InitializeCache(chunkSize);
-            _defaultReader = new ChunkedStreamReader(this, _chunks, _cache);
+            _defaultReader = new ChunkedStreamReader(this, _chunks);
 
             if (source != null)
             {
@@ -771,7 +820,13 @@ namespace Sweet.Actors
         public IChunkedStreamReader NewReader()
         {
             ThrowIfDisposed();
-            return new ChunkedStreamReader(this, _chunks, _cache);
+            return new ChunkedStreamReader(this, _chunks);
+        }
+
+        public IChunkedStreamWriter NewWriter()
+        {
+            ThrowIfDisposed();
+            return new ChunkedStreamWriter(this);
         }
 
         public byte[] ToArray()

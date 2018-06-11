@@ -147,7 +147,8 @@ namespace Sweet.Actors.ConsoleTest
                 }
             }
 
-            Console.ReadKey();
+            while (true)
+                Thread.Sleep(1000);
         }
 
         private static void ActorTest()

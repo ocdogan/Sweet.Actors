@@ -1,4 +1,4 @@
-﻿#region License
+#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -28,29 +28,27 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public interface IChunkedStreamReader : IDisposable
+    public interface IChunkedStreamWriter : IDisposable
     {
         int ChunkSize { get; }
         bool Closed { get; }
         int Origin { get; }
-        long Position { get; set; }
+        long Position { get; }
 
-        int Read(byte[] buffer, int offset, int count);
-        Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-        int ReadByte();
-        byte[] ToArray();
-
-        bool ReadBoolean();
-        sbyte ReadSByte();
-        char ReadChar();
-        short ReadInt16();
-        ushort ReadUInt16();
-        int ReadInt32();
-        uint ReadUInt32();
-        long ReadInt64();
-        ulong ReadUInt64();
-        float ReadSingle();
-        double ReadDouble();
-        decimal ReadDecimal();
+        void Write(byte[] buffer, int offset, int count);
+        Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
+        void Write(byte value);
+        void Write(bool value);
+        void Write(sbyte value);
+        void Write(char value);
+        void Write(short value);
+        void Write(ushort value);
+        void Write(int value);
+        void Write(uint value);
+        void Write(long value);
+        void Write(ulong value);
+        void Write(float value);
+        void Write(double value);
+        void Write(decimal value);
     }
 }
