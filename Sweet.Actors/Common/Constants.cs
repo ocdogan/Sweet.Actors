@@ -51,6 +51,8 @@ namespace Sweet.Actors
         public const int MaxSequentialInvokeLimit = 2000;
         public const int DefaultSequentialInvokeLimit = 240;
 
+        public const string DefaultSerializerKey = "default";
+
         public static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
     }
 }

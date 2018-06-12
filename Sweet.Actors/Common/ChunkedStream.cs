@@ -433,38 +433,36 @@ namespace Sweet.Actors
             }
         }
 
-        public ChunkedStream(IList<byte[]> source, bool release)
+        public ChunkedStream(IList<ArraySegment<byte>> source, bool release)
         {
             _release = release;
             _defaultReader = new ChunkedStreamReader(this, _chunks);
 
-            if (source == null)
+            if (source != null)
             {
                 var cnt = source.Count;
                 if (cnt > 0)
                 {
                     var chunkSize = -1;
 
-                    foreach (var chunk in source)
+                    foreach (var segment in source)
                     {
-                        if (chunk != null)
+                        var chunkLen = segment.Count;
+                        if (chunkLen > 0)
                         {
-                            var chunkLen = chunk.Length;
-                            if (chunkLen > 0)
+                            if (chunkSize == -1)
                             {
-                                if (chunkSize == -1)
-                                {
-                                    chunkSize = chunkLen;                    
-                                    InitializeCache(chunkSize);
-                                }
-                                
-                                Write(chunk, 0, chunkLen);
+                                chunkSize = Math.Max(ByteArrayCache.Default.ArraySize, chunkLen);                               
+                                InitializeCache(chunkSize);
                             }
+
+                            Write(segment.Array, 0, chunkLen);
                         }
                     }
                 }
             }
         }
+
         public ChunkedStream(int length, int chunkSize = -1)
         {
             InitializeCache(chunkSize);

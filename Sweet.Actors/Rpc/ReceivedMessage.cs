@@ -45,7 +45,9 @@ namespace Sweet.Actors
 
         public ushort FrameId { get; set; }
 
-        public byte[] FrameData { get; set; }
+        public ushort DataLength { get; set; }
+
+        public byte[] Data { get; set; }
     }
 
     internal class ReceivedMessage

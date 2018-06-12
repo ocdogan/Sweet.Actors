@@ -47,7 +47,7 @@ namespace Sweet.Actors
 
         internal static bool IsConnected(this Socket socket, int poll = -1)
         {
-            if (socket != null && socket.Connected)
+            if ((socket != null) && socket.Connected && socket.Handle != IntPtr.Zero)
             {
                 if (poll > -1)
                     return !(socket.Poll(poll, SelectMode.SelectRead) && (socket.Available == 0));

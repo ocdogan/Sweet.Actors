@@ -74,27 +74,14 @@ namespace Sweet.Actors
 
         static RpcClient()
         {
-            RpcSerializerRegistry.Register<DefaultRpcSerializer>("default");
+            RpcSerializerRegistry.Register<DefaultRpcSerializer>(Constants.DefaultSerializerKey);
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
         public RpcClient(RpcClientSettings settings)
         {
             _settings = ((RpcClientSettings)settings?.Clone()) ?? new RpcClientSettings();
-
-            var serializerName = _settings.Serializer;
-            _serializer = RpcSerializerRegistry.Get(serializerName);
-            if (_serializer == null)
-            {
-                serializerName = "default";
-                _serializer = RpcSerializerRegistry.Get(serializerName);
-            }
-
-            if (_serializer != null)
-            {
-                var sn = Encoding.UTF8.GetBytes(serializerName);
-                Buffer.BlockCopy(_serializerKey, 0, sn, 0, Math.Min(_serializerKey.Length, sn.Length));
-            }
+            InitSerializer(_settings.Serializer);
         }
 
         public long Status
@@ -133,6 +120,26 @@ namespace Sweet.Actors
             if (!disposing)
                 TryToClose();
             else Close();
+        }
+
+        private void InitSerializer(string serializerName)
+        {
+            serializerName = serializerName?.Trim();
+            if (String.IsNullOrEmpty(serializerName))
+                serializerName = Constants.DefaultSerializerKey;
+
+            _serializer = RpcSerializerRegistry.Get(serializerName);
+            if (_serializer == null && serializerName != Constants.DefaultSerializerKey)
+            {
+                serializerName = Constants.DefaultSerializerKey;
+                _serializer = RpcSerializerRegistry.Get(serializerName);
+            }
+
+            if (_serializer != null)
+            {
+                var sn = Encoding.UTF8.GetBytes(serializerName);
+                Buffer.BlockCopy(sn, 0, _serializerKey, 0, Math.Min(_serializerKey.Length, sn.Length));
+            }
         }
 
         private bool TryToClose()

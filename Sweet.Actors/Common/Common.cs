@@ -195,7 +195,7 @@ namespace Sweet.Actors
                         if (length == 0)
                             return result;
 
-                        Array.Copy(bytes, offset, result, 0, length);
+                        Buffer.BlockCopy(bytes, offset, result, 0, length);
                         return result;
                     }
                 }
@@ -270,7 +270,7 @@ namespace Sweet.Actors
             var ticks = BitConverter.GetBytes(value.Ticks);
 
             var result = new byte[ticks.Length + 1];
-            Array.Copy(ticks, result, ticks.Length);
+            Buffer.BlockCopy(ticks, 0, result, 0, ticks.Length);
             
             result[result.Length -1] = (byte)value.Kind;
             return result;
@@ -387,10 +387,10 @@ namespace Sweet.Actors
             var ticks = BitConverter.ToInt64(value, index);
             if (value.Length >= index + 9)
             {
-                var kind = (DateTimeKind)((int)value[index + 8]);
+                var kind = (DateTimeKind)value[index + 8];
                 return new DateTime(ticks, kind);
             }
-            return null;
+            return new DateTime(ticks);
         }
 
         internal static char ToChar(this byte[] value, int index)

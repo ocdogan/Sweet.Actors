@@ -36,7 +36,7 @@ namespace Sweet.Actors
         private int _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
         private int _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
 
-        private string _serializer = "default";
+        private string _serializer = Constants.DefaultSerializerKey;
 
         protected RpcSettings()
         {
@@ -107,7 +107,7 @@ namespace Sweet.Actors
         public T UsingSerializer(string serializer)
         {
             serializer = serializer?.Trim();
-            _serializer = String.IsNullOrEmpty(serializer) ? "default" : serializer;
+            _serializer = String.IsNullOrEmpty(serializer) ? Constants.DefaultSerializerKey : serializer;
             return (T)this;
         }
 

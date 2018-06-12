@@ -91,11 +91,14 @@ namespace Sweet.Actors.ConsoleTest
 
             Task.Factory.StartNew(() => {
                 client.Connect();
-                // client.Send(Message.Empty, Address.Unknown);
+                client.Send(Message.Empty, Address.Unknown);
             }, TaskCreationOptions.LongRunning);
 
-            while (true)
-                Thread.Sleep(1000);
+            Console.WriteLine("Press any key to exit");
+            Console.ReadKey();
+
+            /* while (true)
+                Thread.Sleep(1000); */
         }
 
         private static void ChunkedStreamTest()

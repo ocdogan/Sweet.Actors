@@ -98,7 +98,7 @@ namespace Sweet.Actors
                 {
                     var frameCnt = frames.Count;
                     for (var i = 0; i < frameCnt; i++)
-                        FrameCache.Release(frames[i].FrameData);
+                        FrameCache.Release(frames[i].Data);
                 }
             }
         }
@@ -175,19 +175,31 @@ namespace Sweet.Actors
                     if (_mainHeaderBuffer[0] != RpcConstants.HeaderSign)
                         throw new Exception(Errors.InvalidMessageType);
 
-                    var headerIndex = 1;
+                    var headerIndex = sizeof(byte);
 
                     var receivedMsg = new ReceivedMessage();
 
                     receivedMsg.Header.ProcessId = _mainHeaderBuffer.ToInt(headerIndex);
-                    headerIndex += 4;
+                    headerIndex += sizeof(int);
 
-                    receivedMsg.Header.MessageId = _mainHeaderBuffer.ToUShort(headerIndex);
-                    headerIndex += 2;
+                    receivedMsg.Header.MessageId = _mainHeaderBuffer.ToInt(headerIndex);
+                    headerIndex += sizeof(int);
 
-                    receivedMsg.Header.SerializerKey = 
-                        Encoding.UTF8.GetString(_mainHeaderBuffer, headerIndex, RpcConstants.SerializerRegistryNameLength);
-                    headerIndex += 2;
+                    var serializerKey =
+                        Encoding.UTF8.GetString(_mainHeaderBuffer, headerIndex, RpcConstants.SerializerRegistryNameLength)?.TrimEnd();
+                    headerIndex += RpcConstants.SerializerRegistryNameLength;
+
+                    if (serializerKey != null)
+                    {
+                        var pos = serializerKey.IndexOf('\0');
+                        if (pos > -1)
+                            serializerKey = serializerKey.Substring(0, pos);
+                    }
+
+                    if (String.IsNullOrEmpty(serializerKey))
+                        serializerKey = Constants.DefaultSerializerKey;
+
+                    receivedMsg.Header.SerializerKey = serializerKey;
 
                     var frameCount = (receivedMsg.Header.FrameCount = _mainHeaderBuffer.ToUShort(headerIndex));
                     
@@ -214,37 +226,41 @@ namespace Sweet.Actors
 
                                 var frame = new ReceivedFrame();
 
-                                headerIndex = 1;
+                                headerIndex = sizeof(byte);
 
-                                frame.ProcessId = _mainHeaderBuffer.ToInt(headerIndex);
-                                headerIndex += 4;
+                                frame.ProcessId = _frameHeaderBuffer.ToInt(headerIndex);
+                                headerIndex += sizeof(int);
 
-                                frame.MessageId = _mainHeaderBuffer.ToUShort(headerIndex);
-                                headerIndex += 2;
+                                frame.MessageId = _frameHeaderBuffer.ToInt(headerIndex);
+                                headerIndex += sizeof(int);
 
                                 if (frame.ProcessId != receivedMsg.Header.ProcessId ||
                                     frame.MessageId != receivedMsg.Header.MessageId)
                                     throw new Exception(RpcErrors.InvalidMessage);
 
-                                frame.FrameId = _mainHeaderBuffer.ToUShort(headerIndex);
-                                headerIndex += 2;
+                                frame.FrameId = _frameHeaderBuffer.ToUShort(headerIndex);
+                                headerIndex += sizeof(ushort);
 
-                                var frameDataLen = _mainHeaderBuffer.ToUShort(headerIndex);
-                                headerIndex += 2;
+                                var frameDataLen = _frameHeaderBuffer.ToUShort(headerIndex);
+                                headerIndex += sizeof(ushort);
                                 
                                 if (frameDataLen > 0)
                                 {
                                     if (bufferedLen < frameDataLen)
                                         break;
-                                    
+
+                                    bufferedLen -= frameDataLen;
                                     var dataBuffer = FrameCache.Acquire();
 
                                     var readLen = reader.Read(dataBuffer, 0, frameDataLen);
                                     if (readLen < frameDataLen)
                                         break;
 
-                                    frame.FrameData = dataBuffer;
+                                    frame.Data = dataBuffer;
+                                    frame.DataLength = frameDataLen;
                                 }
+
+                                receivedMsg.Frames.Add(frame);
 
                                 if (i == frameCount-1)
                                     completed = true;
@@ -284,9 +300,9 @@ namespace Sweet.Actors
                         {
                             IRpcSerializer serializer = null;
 
-                            var serializerKey = receivedMsg.Header.SerializerKey?.Trim();
+                            var serializerKey = receivedMsg.Header.SerializerKey;
                             if (String.IsNullOrEmpty(serializerKey))
-                                serializerKey = "default";
+                                serializerKey = Constants.DefaultSerializerKey;
 
                             if (serializerKey == _serializerKey)
                                 serializer = _serializer;
@@ -295,12 +311,22 @@ namespace Sweet.Actors
                             if (serializer == null)
                                 throw new Exception(RpcErrors.InvalidSerializerKey);
 
-                            var dataList = new List<byte[]>(framesCnt);
+                            var dataList = new List<ArraySegment<byte>>(framesCnt);
                             foreach (var frame in frames)
-                                dataList.Add(frame.FrameData);
+                            {
+                                var frameData = frame.Data;
+                                if (frameData != null)
+                                {
+                                    if (frame.DataLength == frameData.Length)
+                                        dataList.Add(new ArraySegment<byte>(frameData));
+                                    else
+                                        dataList.Add(new ArraySegment<byte>(frameData, 0, frame.DataLength));
+                                }
+                            }
 
                             using (var stream = new ChunkedStream(dataList, false))
                             {
+                                stream.Position = 0;
                                 msg = serializer.Deserialize(stream);
 
                                 if (msg.Item1 != null && msg.Item1 != Message.Empty &&

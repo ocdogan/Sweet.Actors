@@ -62,8 +62,11 @@ namespace Sweet.Actors
                 if (connection != null)
                     using (connection)
                     {
-                        connection.Shutdown(SocketShutdown.Both);
-                        connection.Close();
+                        if (connection.IsConnected())
+                        {
+                            connection.Shutdown(SocketShutdown.Both);
+                            connection.Close();
+                        }
                     }                
             }
 
@@ -121,7 +124,7 @@ namespace Sweet.Actors
 
         static RpcServer()
         {
-            RpcSerializerRegistry.Register<DefaultRpcSerializer>("default");
+            RpcSerializerRegistry.Register<DefaultRpcSerializer>(Constants.DefaultSerializerKey);
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
