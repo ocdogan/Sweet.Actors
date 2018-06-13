@@ -75,9 +75,20 @@ namespace Sweet.Actors.ConsoleTest
 
         private static void ServerTest()
         {
+            var sysOptions = ActorSystemOptions
+                .UsingName("default")
+                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+
+            var actorOptions = ActorOptions
+                .UsingName("dummy")
+                .UsingSequentialInvokeLimit(1000);
+
+            var actorSystem = ActorSystem.GetOrAdd(sysOptions);
+            var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
+
             var serverSettings = (new RpcServerSettings()).UsingIPAddress("127.0.0.1");
 
-            var server = new RpcServer(serverSettings);
+            var server = new RpcServer(actorSystem, serverSettings);
             server.Start();
 
             Thread.Sleep(2000);
@@ -91,7 +102,7 @@ namespace Sweet.Actors.ConsoleTest
 
             Task.Factory.StartNew(() => {
                 client.Connect();
-                client.Send(Message.Empty, Address.Unknown);
+                client.Send(Message.Empty, Pid.Unknown);
             }, TaskCreationOptions.LongRunning);
 
             Console.WriteLine("Press any key to exit");

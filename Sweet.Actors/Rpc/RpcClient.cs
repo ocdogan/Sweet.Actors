@@ -38,7 +38,7 @@ namespace Sweet.Actors
     {
         private class Request
         {
-            public Address To;
+            public Pid To;
             public RpcMessageId Id;
             public IMessage Message;
             public TaskCompletionSource<object> TaskCompletionSource;
@@ -267,11 +267,6 @@ namespace Sweet.Actors
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
-            /*
-            socket.LingerState.Enabled = false;
-            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
-            */
-
             socket.NoDelay = true;
         }
 
@@ -307,7 +302,7 @@ namespace Sweet.Actors
             { }
         }
 
-        public Task Send(IMessage msg, Address to)
+        public Task Send(IMessage msg, Pid to)
         {
             ThrowIfDisposed();
             if (msg == null)

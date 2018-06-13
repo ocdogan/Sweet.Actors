@@ -32,32 +32,29 @@ namespace Sweet.Actors
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public (IMessage, Address) Deserialize(byte[] data)
+        public (IMessage, Pid) Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return (Message.Empty, Address.Unknown);
+                return (Message.Empty, Pid.Unknown);
 
-            using (var ms = new MemoryStream(data))
+            using (var stream = new ChunkedStream(data))
             {
-                var rpcMsg = _serializer.Deserialize<RpcMessage>(ms);
-                return rpcMsg.ToActualMessage();
+                return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
             }
         }
 
-        public (IMessage, Address) Deserialize(Stream stream)
+        public (IMessage, Pid) Deserialize(Stream stream)
         {
             if (stream == null)
-                return (Message.Empty, Address.Unknown);
-
-            var rpcMsg = _serializer.Deserialize<RpcMessage>(stream);
-            return rpcMsg.ToActualMessage();
+                return (Message.Empty, Pid.Unknown);
+            return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
         }
 
         public byte[] Serialize(RpcMessage msg)
         {
             if (msg != null)
             {
-                using (var ms = new MemoryStream())
+                using (var ms = new ChunkedStream())
                 {
                     _serializer.Serialize(msg, ms);
                     return ms.ToArray();

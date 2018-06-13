@@ -28,7 +28,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public sealed class ActorSystem
+    public sealed class ActorSystem : Disposable
     {
         private class FunctionCallActor : IActor
         {
@@ -69,24 +69,64 @@ namespace Sweet.Actors
 
         private ActorSystem(ActorSystemOptions options)
         {
-            SystemOptions = options ?? ActorSystemOptions.Default;
+            Settings = options ?? ActorSystemOptions.Default;
             Name = options.Name;
         }
 
         public string Name { get; }
 
-        public ActorSystemOptions SystemOptions { get; }
+        public ActorSystemOptions Settings { get; }
 
-        public static ActorSystem GetOrAdd(ActorSystemOptions options = null)
+        protected override void OnDispose(bool disposing)
         {
-            options = (options ?? ActorSystemOptions.Default);
-            return _systemRegistery.GetOrAdd(options.Name,
-                (sn) => new ActorSystem(options));
+            if (disposing)
+            {
+                _systemRegistery.TryRemove(Name, out ActorSystem actorSystem);
+
+                foreach (var process in _functionRegistery.Values)
+                {
+                    try
+                    {
+                        process.Dispose();
+                    }
+                    catch (Exception)
+                    { }
+                }
+
+                foreach (var procList in _actorRegistery.Values)
+                {
+                    foreach (var process in procList.Values)
+                    {
+                        try
+                        {
+                            process.Dispose();
+                        }
+                        catch (Exception)
+                        { }
+                    }
+                }               
+            }
+            base.OnDispose(disposing);
+        }
+
+        public static bool TryGet(string actorSystemName, out ActorSystem actorSystem)
+        {
+            actorSystem = null;
+            return _systemRegistery.TryGetValue(actorSystemName, out actorSystem);
+        }
+
+        public static ActorSystem GetOrAdd(ActorSystemOptions settings = null)
+        {
+            settings = (settings ?? ActorSystemOptions.Default);
+            return _systemRegistery.GetOrAdd(settings.Name,
+                (sn) => new ActorSystem(settings));
         }
 
         public Pid FromType<T>(ActorOptions options = null)
             where T : class, IActor, new()
         {
+            ThrowIfDisposed();
+
             var processList =
                 _actorRegistery.GetOrAdd(typeof(T),
                                          (t) => new ConcurrentDictionary<string, Process>());
@@ -98,11 +138,11 @@ namespace Sweet.Actors
                 {
                     var sequentialInvokeLimit = options.SequentialInvokeLimit;
                     if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = SystemOptions.SequentialInvokeLimit;
+                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
 
                     var actor = Activator.CreateInstance<T>();
-                    return new Process(this, actor, null, 
-                                    options.ErrorHandler ?? SystemOptions.ErrorHandler, 
+                    return new Process(an, this, actor,  
+                                    options.ErrorHandler ?? Settings.ErrorHandler, 
                                     GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
@@ -120,6 +160,8 @@ namespace Sweet.Actors
 
         public (bool, Pid) FromActor(IActor actor, ActorOptions options = null)
         {
+            ThrowIfDisposed();
+
             if (actor == null)
                 throw new ArgumentNullException(nameof(actor));
 
@@ -134,8 +176,8 @@ namespace Sweet.Actors
                 (an) =>
                 {
                     exists = false;
-                    return new Process(this, actor, null, 
-                                    options.ErrorHandler ?? SystemOptions.ErrorHandler,
+                    return new Process(an, this, actor, 
+                                    options.ErrorHandler ?? Settings.ErrorHandler,
                                     GetSequentialInvokeLimit(options), options.InitialContextData);
                 });
 
@@ -144,6 +186,8 @@ namespace Sweet.Actors
 
         public Pid FromFunction(Func<IContext, IMessage, Task> receiveFunc, ActorOptions options = null)
         {
+            ThrowIfDisposed();
+
             if (receiveFunc == null)
                 throw new ArgumentNullException(nameof(receiveFunc));
 
@@ -159,8 +203,8 @@ namespace Sweet.Actors
                     throw new Exception(String.Format(Errors.ActorAlreadyExsists, actorName));
 
                 var actor = new FunctionCallActor(receiveFunc);
-                var p = new Process(this, actor, null,
-                                options.ErrorHandler ?? SystemOptions.ErrorHandler,
+                var p = new Process(actorName, this, actor, 
+                                options.ErrorHandler ?? Settings.ErrorHandler,
                                 GetSequentialInvokeLimit(options), options.InitialContextData);
 
                 _functionRegistery[actorName] = p;
@@ -172,7 +216,7 @@ namespace Sweet.Actors
         {
             var result = options.SequentialInvokeLimit;
             if (result < 1)
-                result = SystemOptions.SequentialInvokeLimit;
+                result = Settings.SequentialInvokeLimit;
 
             return result;
         }

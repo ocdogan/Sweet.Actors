@@ -38,14 +38,17 @@ namespace Sweet.Actors
         ActorSystem System { get; }
     }
 
-    internal class Process : IProcess
+    internal class Process : Disposable, IProcess
     {
         private const object DefaultResponse = null;
 
         private static readonly Task Sended = Task.FromResult(0);
         private static readonly Task ProcessCompleted = Task.FromResult(0);
 
+        private static ConcurrentDictionary<Pid, Process> _processRegistery = new ConcurrentDictionary<Pid, Process>();
+
         private Pid _pid;
+        private string _name;
         private Context _ctx;
         private long _inProcess;
         private int _sequentialInvokeLimit;
@@ -53,16 +56,18 @@ namespace Sweet.Actors
 
         private ConcurrentQueue<Message> _mailbox = new ConcurrentQueue<Message>();
 
-        public Process(ActorSystem system, IActor actor, Address address,
+        public Process(string name, ActorSystem system, IActor actor, 
                        IErrorHandler errorHandler = null,
                        int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
                        IDictionary<string, object> initialContextData = null)
         {
+            _name = name;
+
             Actor = actor;
             System = system;
 
             _pid = new Pid(this);
-            _ctx = new Context(this, address);
+            _ctx = new Context(this);
 
             _errorHandler = errorHandler ?? DefaultErrorHandler.Instance;
 
@@ -73,6 +78,8 @@ namespace Sweet.Actors
             if (initialContextData != null)
                 foreach (var kv in initialContextData)
                     _ctx.SetData(kv.Key, kv.Value);
+
+            _processRegistery.TryAdd(_pid, this);
         }
 
         public ActorSystem System { get; }
@@ -83,13 +90,30 @@ namespace Sweet.Actors
 
         public Pid Pid => _pid;
 
-		public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public string Name => _name;
+
+        protected override void OnDispose(bool disposing)
+        {
+            _processRegistery.TryRemove(_pid, out Process process);
+            base.OnDispose(disposing);
+        }
+
+        public static bool TryGet(Pid pid, out Process process)
+        {
+            if (pid != null)
+                return _processRegistery.TryGetValue(pid, out process);
+
+            process = null;
+            return false;
+        }
+
+        public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             if (message != null)
             {
                 try
                 {
-                    _mailbox.Enqueue(new Message(message, _ctx.Address, header));
+                    _mailbox.Enqueue(new Message(message, _ctx.Pid, header));
                     StartNewProcess();
                 }
                 catch (Exception e)
@@ -111,7 +135,7 @@ namespace Sweet.Actors
 						var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
 							new TaskCompletionSource<IFutureResponse<T>>();
 
-						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Address, header, timeoutMSec));
+						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
 						StartNewProcess();
 
 						return tcs.Task;
@@ -119,10 +143,10 @@ namespace Sweet.Actors
                 }
                 catch (Exception e)
                 {
-                    return Task.FromResult<IFutureResponse<T>>(new FutureError<T>(e, _ctx.Address));
+                    return Task.FromResult<IFutureResponse<T>>(new FutureError<T>(e, _ctx.Pid));
                 }
             }
-            return Task.FromResult<IFutureResponse<T>>(new FutureResponse<T>(default(T), _ctx.Address));
+            return Task.FromResult<IFutureResponse<T>>(new FutureResponse<T>(default(T), _ctx.Pid));
         }
 
         private void StartNewProcess()
@@ -170,14 +194,14 @@ namespace Sweet.Actors
 
                         if (isFutureCall &&
                             !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
-                            future.Respond(DefaultResponse, _ctx.Address);
+                            future.Respond(DefaultResponse, _ctx.Pid);
                     }
                     catch (Exception e)
                     {
                         HandleError(msg, e);
 
                         if (isFutureCall && (future != null))
-                            future.RespondToWithError(e, _ctx.Address);
+                            future.RespondToWithError(e, _ctx.Pid);
 
                         return Task.FromException(e);
                     }

@@ -48,9 +48,9 @@ namespace Sweet.Actors
 
         public Dictionary<string, string> Header { get; set; }
 
-        public Address From { get; set; }
+        public string From { get; set; }
 
-        public Address To { get; set; }
+        public string To { get; set; }
 
         public string ResponseType { get; set; }
 

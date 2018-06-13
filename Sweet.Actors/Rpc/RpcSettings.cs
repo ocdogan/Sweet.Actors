@@ -100,6 +100,7 @@ namespace Sweet.Actors
             port = Math.Max(0, port);
             if (port > IPEndPoint.MaxPort)
                 throw new ArgumentOutOfRangeException(nameof(Port));
+
             _endPoint = new IPEndPoint(_endPoint.Address, port);
             return (T)this;
         }

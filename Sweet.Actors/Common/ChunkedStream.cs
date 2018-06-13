@@ -81,11 +81,11 @@ namespace Sweet.Actors
                 switch (eventArgs.Name)
                 {
                     case ValueName.Length:
-                        if (eventArgs.NewValue > _position)
-                            _position = eventArgs.NewValue;
+                        if (eventArgs.NewValue < _position)
+                            _position = Math.Max(0, eventArgs.NewValue);
                         break;
                     case ValueName.Origin:
-                        _position -= (eventArgs.NewValue - eventArgs.OldValue);
+                        _position -= Math.Max(0, _position - (eventArgs.NewValue - eventArgs.OldValue));
                         break;
                 }
             }
@@ -490,6 +490,14 @@ namespace Sweet.Actors
                 }
             }
             base.Dispose(disposing);
+        }
+
+        public long Capacity
+        {
+            get
+            {
+                return _isClosed ? 0L : Math.Max(0L, (_chunkSize * (_chunks?.Count ?? 0)) - _origin);
+            }
         }
 
         public override bool CanRead

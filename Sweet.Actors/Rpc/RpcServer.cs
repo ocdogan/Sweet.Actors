@@ -79,19 +79,21 @@ namespace Sweet.Actors
                         IMessage msg = null;
                         try
                         {
-                            if (_buffer.TryGetMessage(out (IMessage, Address) receivedMsg))
+                            if (_buffer.TryGetMessage(out (IMessage, Pid) receivedMsg))
                             {
                                 msg = receivedMsg.Item1;
-                                Server.HandleMessage(receivedMsg, Connection);
+                                Server.HandleMessage(receivedMsg, this);
                             }
                         }
                         catch (Exception e)
                         {
-                            if (msg == null || msg.MessageType != MessageType.FutureMessage)
-                                throw;
-
-                            var response = CreateResponseError(msg, e);
-                            Server.SendMessage(response);
+                            if ((msg != null) && (msg.MessageType == MessageType.FutureMessage))
+                            {
+                                var response = CreateResponseError(msg, e);
+                                Server.SendMessage(response, this);
+                                return;
+                            }
+                            throw;
                         }
                     }
                 }
@@ -109,7 +111,14 @@ namespace Sweet.Actors
         }
 
         private const int MaxBufferSize = 4 * Constants.KB;
-        private readonly LingerOption _lingerState = new LingerOption(true, 0);
+        private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
+
+        // States
+        private int _stopping;
+        private int _accepting;
+        private long _status = RpcServerStatus.Stopped;
+
+        private ActorSystem _actorSystem;
 
         private Socket _listener;
 		private IPEndPoint _localEndPoint;
@@ -117,19 +126,15 @@ namespace Sweet.Actors
 
         private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
 
-        // States
-        private int _stopping;
-        private int _accepting;
-        private long _status = RpcServerStatus.Stopped;
-
         static RpcServer()
         {
             RpcSerializerRegistry.Register<DefaultRpcSerializer>(Constants.DefaultSerializerKey);
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
-        public RpcServer(RpcServerSettings settings = null)
+        public RpcServer(ActorSystem actorSystem, RpcServerSettings settings = null)
         {
+            _actorSystem = actorSystem;
             _settings = ((RpcServerSettings)settings?.Clone()) ?? new RpcServerSettings();
         }
 
@@ -228,10 +233,6 @@ namespace Sweet.Actors
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
-            /* socket.LingerState.Enabled = false;
-            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
-            */
-            
             socket.NoDelay = true;
         }
 
@@ -347,7 +348,7 @@ namespace Sweet.Actors
                 var connection = eventArgs.AcceptSocket;
                 if (connection.Connected)
                 {
-                    connection.LingerState = _lingerState;
+                    connection.LingerState = NoLingerState;
 
                     Task.Factory.StartNew(() =>
                     {
@@ -509,10 +510,16 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        private void HandleMessage((IMessage, Address) msg, Socket connection)
-        { }
+        private void HandleMessage((IMessage, Pid) receivedMsg, ReceiveContext ctx)
+        {
+            var to = receivedMsg.Item2;
+            if (to != null)
+            {
+                var msg = receivedMsg.Item1;
+            }
+        }
 
-        private void SendMessage(Message msg)
+        private void SendMessage(IMessage msg, ReceiveContext ctx)
         { }
     }
 }

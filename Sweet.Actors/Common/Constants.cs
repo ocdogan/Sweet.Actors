@@ -39,10 +39,10 @@ namespace Sweet.Actors
         public const int DefaultPort = 6663;
         public const string DefaultHost = "local";
 
-        public const string Protocol = "playbook://";
-        public const string AddressFormat = "playbook://{0}:{1}/{2}";
+        public const string Protocol = "actors://";
+        public const string AddressFormat = "actors://{0}:{1}/{2}";
         public static readonly int ProtocolLength = Protocol.Length;
-        public static readonly int EmptyProtocolLength = "playbook://:0/".Length;
+        public static readonly int EmptyProtocolLength = "actors://:0/".Length;
 
         public const string EmptyActorName = "[FAE04EC0-301F-11D3-BF4B-00C04F79EFBC]";
         public const string DefaultActorSystemName = "[EDF53DA8-5449-4489-BDFC-CF165071362A]";

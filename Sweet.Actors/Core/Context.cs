@@ -30,9 +30,6 @@ namespace Sweet.Actors
 {
     public interface IContext
     {
-        ContextId Id { get; }
-        Address Address { get; }
-
         bool HasData(string key);
         object GetData(string key);
         void SetData(string key, object data);
@@ -45,23 +42,28 @@ namespace Sweet.Actors
         void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null);
     }
 
-    internal class Context : IContext, IFutureContext
+    internal class Context : Disposable, IContext, IFutureContext
     {
-        private ContextId _id;
+        private Pid _pid;
         private Process _process;
+
         private ConcurrentDictionary<string, object> _dataCtx = new ConcurrentDictionary<string, object>();
 
-        internal Context(Process process, Address address)
+        internal Context(Process process)
         {
-            _id = ContextId.Next();
-
             _process = process;
-            Address = address ?? Address.Unknown;
+            _pid = _process.Pid;
         }
 
-        public ContextId Id => _id;
+        public Pid Pid => _pid;
 
-        public Address Address { get; }
+        protected override void OnDispose(bool disposing)
+        {
+            _pid = null;
+            _process = null;
+
+            base.OnDispose(disposing);
+        }
 
         public bool HasData(string key)
         {
@@ -86,12 +88,12 @@ namespace Sweet.Actors
 
         public void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null)
         {
-            ((FutureMessage)future).Respond(response, Address, header);
+            ((FutureMessage)future).Respond(response, _pid, header);
         }
 
         public void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null)
         {
-            ((FutureMessage)future).Respond(new FutureError<T>(e, Address, header));
+            ((FutureMessage)future).Respond(new FutureError<T>(e, _pid, header));
         }
     }
 }

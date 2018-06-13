@@ -103,64 +103,6 @@ namespace Sweet.Actors
             }
         }
 
-        /* private void TryParse()
-        {
-            var stream = _stream;
-
-            var streamLen = stream?.Length ?? 0;
-            var positionSnapshot = stream?.Position ?? 0;
-
-            var bufferSize = streamLen - positionSnapshot;
-            if (bufferSize >= RpcConstants.HeaderSize)
-            {
-                stream.Read(_mainHeaderBuffer, 0, RpcConstants.HeaderSize);
-
-                if (_mainHeaderBuffer[0] != RpcConstants.HeaderSign)
-                    throw new Exception(Errors.InvalidMessageType);
-
-                var headerIndex = 1;
-
-                var receivedMsg = new ReceivedMessage();
-
-                receivedMsg.Header.ProcessId = _mainHeaderBuffer.ToInt(headerIndex);
-                headerIndex += 4;
-
-                receivedMsg.Header.MessageId = _mainHeaderBuffer.ToUShort(headerIndex);
-                headerIndex += 2;
-
-                receivedMsg.Header.SerializerKey = 
-                    Encoding.UTF8.GetString(_mainHeaderBuffer, headerIndex, RpcConstants.SerializerRegistryNameLength);
-                headerIndex += 2;
-
-                var frameCount = (receivedMsg.Header.FrameCount = _mainHeaderBuffer.ToUShort(headerIndex));
-                
-                var completed = frameCount == 0;
-                if (!completed)
-                {
-                    bufferSize -= RpcConstants.HeaderSize;
-
-                    for (var i = (ushort)0; i < frameCount; i++)
-                    {
-                        if (bufferSize >= RpcConstants.FrameHeaderSize)
-                        {
-                            stream.Read(_frameHeaderBuffer, 0, RpcConstants.FrameHeaderSize);
-
-                            if (_frameHeaderBuffer[0] != RpcConstants.FrameSign)
-                                throw new Exception(Errors.InvalidMessageType);
-
-                            var frame = new ReceivedFrame();
-                        }
-                    }
-                }
-
-                if (!completed)
-                    stream.Position = positionSnapshot;
-                else {
-                    _messageQueue.Enqueue(receivedMsg);
-                }
-            }
-        } */
-
         private bool TryParse()
         {
             var stream = _stream;
@@ -283,9 +225,9 @@ namespace Sweet.Actors
             return false;
         }
 
-		public bool TryGetMessage(out (IMessage, Address) msg)
+		public bool TryGetMessage(out (IMessage, Pid) msg)
 		{
-			msg = (Message.Empty, Address.Unknown);
+			msg = (Message.Empty, Pid.Unknown);
 
             if (!Disposed &&
                 _messageQueue.TryDequeue(out ReceivedMessage receivedMsg))
@@ -306,7 +248,11 @@ namespace Sweet.Actors
 
                             if (serializerKey == _serializerKey)
                                 serializer = _serializer;
-                            else _serializer = (serializer = RpcSerializerRegistry.Get(serializerKey));
+                            else
+                            {
+                                _serializerKey = serializerKey;
+                                _serializer = (serializer = RpcSerializerRegistry.Get(serializerKey));
+                            }
                             
                             if (serializer == null)
                                 throw new Exception(RpcErrors.InvalidSerializerKey);
@@ -326,11 +272,10 @@ namespace Sweet.Actors
 
                             using (var stream = new ChunkedStream(dataList, false))
                             {
-                                stream.Position = 0;
                                 msg = serializer.Deserialize(stream);
 
                                 if (msg.Item1 != null && msg.Item1 != Message.Empty &&
-                                    msg.Item2 != Address.Unknown)
+                                    msg.Item2 != Pid.Unknown)
                                     return true;
                             }
                         }

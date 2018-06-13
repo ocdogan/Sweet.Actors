@@ -43,14 +43,14 @@ namespace Sweet.Actors
     {
         object Data { get; }
         IReadOnlyDictionary<string, string> Header { get; }
-        Address From { get; }
+        Pid From { get; }
         MessageType MessageType { get; }
 		bool Expired { get; }
     }
 
     public class Message : IMessage
     {
-        public static readonly Message Empty = new Message(new object(), Address.Unknown);
+        public static readonly Message Empty = new Message(new object(), Pid.Unknown);
 
 		private int _creationTime;
 		private int _timeoutMSec = -1;
@@ -58,11 +58,11 @@ namespace Sweet.Actors
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
-		internal Message(object data, Address from = null, IDictionary<string, string> header = null, 
+		internal Message(object data, Pid from = null, IDictionary<string, string> header = null, 
 		                 int timeoutMSec = -1)
         {
             Data = data;
-            From = from ?? Address.Unknown;
+            From = from ?? Pid.Unknown;
             _header = (header != null) ? new ReadOnlyDictionary<string, string>(header) : _defaultHeader;
 
 			_timeoutMSec = timeoutMSec;
@@ -77,7 +77,7 @@ namespace Sweet.Actors
 
         public IReadOnlyDictionary<string, string> Header => _header;
 
-        public Address From { get; }
+        public Pid From { get; }
 
         public virtual MessageType MessageType => MessageType.Default;
 
@@ -101,7 +101,7 @@ namespace Sweet.Actors
     internal abstract class FutureMessage : Message, IFutureMessage
     {
         internal FutureMessage(object data, Type responseType,
-                               Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+                               Pid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         {
             ResponseType = responseType;
@@ -120,9 +120,9 @@ namespace Sweet.Actors
 
         public abstract bool IsFaulted { get; }
 
-        internal abstract void Respond(object response, Address from = null, IDictionary<string, string> header = null);
+        internal abstract void Respond(object response, Pid from = null, IDictionary<string, string> header = null);
 
-        internal abstract void RespondToWithError(Exception e, Address from = null, IDictionary<string, string> header = null);
+        internal abstract void RespondToWithError(Exception e, Pid from = null, IDictionary<string, string> header = null);
 
         public abstract void Cancel();
     }
@@ -135,7 +135,7 @@ namespace Sweet.Actors
         internal FutureMessage(object data,
                                CancellationTokenSource cancellationTokenSource,
                                TaskCompletionSource<IFutureResponse<T>> taskCompletionSource,
-                               Address from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+                               Pid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, typeof(T), from, header, timeoutMSec)
         {
             _cts = cancellationTokenSource ?? (timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : new CancellationTokenSource());
@@ -150,7 +150,7 @@ namespace Sweet.Actors
 
         public override bool IsFaulted => _tcs.Task.IsFaulted;
 
-        internal override void Respond(object response, Address from = null, IDictionary<string, string> header = null)
+        internal override void Respond(object response, Pid from = null, IDictionary<string, string> header = null)
         {
             try
             {
@@ -163,7 +163,7 @@ namespace Sweet.Actors
             }
         }
 
-        internal override void RespondToWithError(Exception e, Address from = null, IDictionary<string, string> header = null)
+        internal override void RespondToWithError(Exception e, Pid from = null, IDictionary<string, string> header = null)
         {
             _tcs.SetResult(new FutureError<T>(e, from, header));
         }
@@ -188,7 +188,7 @@ namespace Sweet.Actors
     {
         protected bool _isEmpty;
 
-		internal FutureResponse(Address from = null, IDictionary<string, string> header = null,
+		internal FutureResponse(Pid from = null, IDictionary<string, string> header = null,
                          int timeoutMSec = -1)
 			: base(default(T), from, header, timeoutMSec)
         {
@@ -196,7 +196,7 @@ namespace Sweet.Actors
         }
 
         internal FutureResponse(T data,
-		                        Address from = null, IDictionary<string, string> header = null,
+		                        Pid from = null, IDictionary<string, string> header = null,
                                 int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         { }
@@ -217,7 +217,7 @@ namespace Sweet.Actors
         private Exception _error;
 
         internal FutureError(Exception e,
-                                Address from = null, IDictionary<string, string> header = null)
+                                Pid from = null, IDictionary<string, string> header = null)
             : base(default(T), from, header)
         {
             _error = e;

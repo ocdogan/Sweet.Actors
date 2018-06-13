@@ -29,7 +29,7 @@ namespace Sweet.Actors
 {
     public static class RpcExtensions
     {
-        public static (IMessage, Address) ToActualMessage(this RpcMessage rpcMsg)
+        public static (IMessage, Pid) ToActualMessage(this RpcMessage rpcMsg)
         {
             IMessage msg = null;
             if (rpcMsg != null)
@@ -37,33 +37,33 @@ namespace Sweet.Actors
                 switch (rpcMsg.MessageType)
                 {
                     case MessageType.Default:
-                        msg = new Message(rpcMsg.Data, rpcMsg.From, rpcMsg.Header);
+                        msg = new Message(rpcMsg.Data, MockPid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                     case MessageType.FutureMessage:
                         msg = MessageFactory.CreateFutureMessage(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
-                            rpcMsg.From, rpcMsg.Header, rpcMsg.TimeoutMSec);
+                            MockPid.Parse(rpcMsg.From), rpcMsg.Header, rpcMsg.TimeoutMSec);
                         break;
                     case MessageType.FutureResponse:
                         msg = MessageFactory.CreateFutureResponse(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
-                            rpcMsg.From, rpcMsg.Header);
+                            MockPid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                     case MessageType.FutureError:
                         msg = MessageFactory.CreateFutureError(Type.GetType(rpcMsg.ResponseType), rpcMsg.Exception,
-                            rpcMsg.From, rpcMsg.Header);
+                            MockPid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                 }
             }
-            return (msg ?? Message.Empty, rpcMsg?.To ?? Address.Unknown);
+            return (msg ?? Message.Empty, MockPid.Parse(rpcMsg?.To) ?? Pid.Unknown);
         }
 
-        public static RpcMessage ToRpcMessage(this IMessage msg, Address to, RpcMessageId id = null)
+        public static RpcMessage ToRpcMessage(this IMessage msg, Pid to, RpcMessageId id = null)
         {
-            var result = new RpcMessage{ To = to, Id = id?.ToString() ?? RpcMessageId.NextAsString() };
+            var result = new RpcMessage{ To = to?.ToString(), Id = id?.ToString() ?? RpcMessageId.NextAsString() };
             if (msg != null)
             {
-                result.Data = msg.Data;
                 result.MessageType = msg.MessageType;
-                result.From = msg.From;
+                result.From = msg.From?.ToString();
+                result.Data = msg.Data;
 
                 var msgHeader = msg.Header;
                 if (msgHeader != null)
