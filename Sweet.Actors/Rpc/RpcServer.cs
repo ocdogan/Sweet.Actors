@@ -38,14 +38,14 @@ namespace Sweet.Actors
             private RpcServer _server;
             private Socket _connection;
             private IPEndPoint _remoteEndPoint;
-            private readonly ReceiveBuffer _buffer;
+            private readonly RpcReceiveBuffer _buffer;
 
             public ReceiveContext(RpcServer server, Socket connection)
             {
                 _server = server;
                 _connection = connection;
                 _remoteEndPoint = (_connection?.RemoteEndPoint as IPEndPoint);
-                _buffer = new ReceiveBuffer();
+                _buffer = new RpcReceiveBuffer();
             }
 
             public Socket Connection => _connection;

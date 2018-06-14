@@ -32,7 +32,7 @@ using System.Text;
 
 namespace Sweet.Actors
 {
-    internal class ReceiveBuffer : Disposable
+    internal class RpcReceiveBuffer : Disposable
     {
         private const int BlockSize = 16 * Constants.KB;
         private const int LargeBufferMultiple = 1 << 20;
@@ -54,7 +54,7 @@ namespace Sweet.Actors
         private string _serializerKey;
         private IRpcSerializer _serializer;
 
-        public ReceiveBuffer()
+        public RpcReceiveBuffer()
         {
            //  _stream = new RecyclableMemoryStream(StreamManager);
            _stream = new ChunkedStream();
