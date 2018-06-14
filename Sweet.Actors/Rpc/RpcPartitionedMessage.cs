@@ -26,7 +26,7 @@ using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    internal class ReceivedHeader
+    internal class RpcPartitionedHeader
     {
         public int ProcessId { get; set; }
 
@@ -37,7 +37,7 @@ namespace Sweet.Actors
         public ushort FrameCount { get; set; }
     }
 
-    internal class ReceivedFrame
+    internal class RpcPartitionedFrame
     {
         public int ProcessId { get; set; }
 
@@ -50,13 +50,13 @@ namespace Sweet.Actors
         public byte[] Data { get; set; }
     }
 
-    internal class ReceivedMessage
+    internal class RpcPartitionedMessage
     {
-        public ReceivedHeader Header { get; } = new ReceivedHeader();
+        public RpcPartitionedHeader Header { get; } = new RpcPartitionedHeader();
 
-        public IList<ReceivedFrame> Frames { get; } = new List<ReceivedFrame>();
+        public IList<RpcPartitionedFrame> Frames { get; } = new List<RpcPartitionedFrame>();
 
-        public ReceivedMessage()
+        public RpcPartitionedMessage()
         { }
     }
 }

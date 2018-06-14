@@ -43,7 +43,7 @@ namespace Sweet.Actors
         /* private static readonly RecyclableMemoryStreamManager StreamManager = 
             new RecyclableMemoryStreamManager(BlockSize, LargeBufferMultiple, MaximumBufferSize); */
 
-        private ConcurrentQueue<ReceivedMessage> _messageQueue = new ConcurrentQueue<ReceivedMessage>();
+        private ConcurrentQueue<RpcPartitionedMessage> _messageQueue = new ConcurrentQueue<RpcPartitionedMessage>();
 
         private byte[] _mainHeaderBuffer = new byte[RpcConstants.HeaderSize];
         private byte[] _frameHeaderBuffer = new byte[RpcConstants.FrameHeaderSize];
@@ -82,14 +82,14 @@ namespace Sweet.Actors
             return false;
         }
 
-		private void ReleaseMessages(ConcurrentQueue<ReceivedMessage> queue)
+		private void ReleaseMessages(ConcurrentQueue<RpcPartitionedMessage> queue)
 		{
             if (queue != null)
-                while (queue.TryDequeue(out ReceivedMessage receivedMsg))
+                while (queue.TryDequeue(out RpcPartitionedMessage receivedMsg))
                     ReleaseFrames(receivedMsg);
         }
 
-        private static void ReleaseFrames(ReceivedMessage receivedMsg)
+        private static void ReleaseFrames(RpcPartitionedMessage receivedMsg)
         {
             if (receivedMsg != null)
             {
@@ -119,7 +119,7 @@ namespace Sweet.Actors
 
                     var headerIndex = sizeof(byte);
 
-                    var receivedMsg = new ReceivedMessage();
+                    var receivedMsg = new RpcPartitionedMessage();
 
                     receivedMsg.Header.ProcessId = _mainHeaderBuffer.ToInt(headerIndex);
                     headerIndex += sizeof(int);
@@ -166,7 +166,7 @@ namespace Sweet.Actors
                                 if (_frameHeaderBuffer[0] != RpcConstants.FrameSign)
                                     throw new Exception(Errors.InvalidMessageType);
 
-                                var frame = new ReceivedFrame();
+                                var frame = new RpcPartitionedFrame();
 
                                 headerIndex = sizeof(byte);
 
@@ -230,7 +230,7 @@ namespace Sweet.Actors
 			msg = (Message.Empty, Pid.Unknown);
 
             if (!Disposed &&
-                _messageQueue.TryDequeue(out ReceivedMessage receivedMsg))
+                _messageQueue.TryDequeue(out RpcPartitionedMessage receivedMsg))
             {
                 try
                 {
