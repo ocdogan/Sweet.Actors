@@ -32,10 +32,10 @@ namespace Sweet.Actors
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public (IMessage, Pid) Deserialize(byte[] data)
+        public (IMessage, Aid) Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return (Message.Empty, Pid.Unknown);
+                return (Message.Empty, Aid.Unknown);
 
             using (var stream = new ChunkedStream(data))
             {
@@ -43,10 +43,10 @@ namespace Sweet.Actors
             }
         }
 
-        public (IMessage, Pid) Deserialize(Stream stream)
+        public (IMessage, Aid) Deserialize(Stream stream)
         {
             if (stream == null)
-                return (Message.Empty, Pid.Unknown);
+                return (Message.Empty, Aid.Unknown);
             return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
         }
 

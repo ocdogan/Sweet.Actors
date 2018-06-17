@@ -24,25 +24,45 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public sealed class ActorSystem : Disposable
+    public sealed class ActorSystem : Disposable, IResponseHandler
     {
-        private class FunctionCallActor : IActor
+        private enum ProcessType
         {
-            private Func<IContext, IMessage, Task> _receiveFunc;
+            Class,
+            Function,
+            Remote
+        }
 
-            public FunctionCallActor(Func<IContext, IMessage, Task> receiveFunc)
+        private class ProcessRegistery : IDisposable
+        {            
+            public ProcessRegistery(Process process, Type actorType, 
+                ProcessType processType = ProcessType.Class,
+                RemoteAddress remoteAddress = null)
             {
-                _receiveFunc = receiveFunc;
+                Process = process;
+                ActorType = actorType;
+                ProcessType = processType;
+                RemoteAddress = remoteAddress;
+            }
+            
+            public void Dispose()
+            {
+                using (var process = Process)
+                    Process = null;
             }
 
-            public Task OnReceive(IContext ctx, IMessage msg)
-            {
-                return _receiveFunc(ctx, msg);
-            }
+            public Type ActorType { get; }
+
+            public Process Process { get; private set; }
+
+            public ProcessType ProcessType { get; }
+
+            public RemoteAddress RemoteAddress { get; }
         }
 
         private class AnonymousNameGenerator : Id<ActorSystem>
@@ -61,11 +81,8 @@ namespace Sweet.Actors
         private static readonly ConcurrentDictionary<string, ActorSystem> _systemRegistery =
             new ConcurrentDictionary<string, ActorSystem>();
 
-        private readonly ConcurrentDictionary<Type, ConcurrentDictionary<string, Process>> _actorRegistery =
-            new ConcurrentDictionary<Type, ConcurrentDictionary<string, Process>>();
-
-        private readonly ConcurrentDictionary<string, Process> _functionRegistery =
-            new ConcurrentDictionary<string, Process>();
+        private ConcurrentDictionary<string, ProcessRegistery> _processRegistery =
+            new ConcurrentDictionary<string, ProcessRegistery>();
 
         private ActorSystem(ActorSystemOptions options)
         {
@@ -83,28 +100,16 @@ namespace Sweet.Actors
             {
                 _systemRegistery.TryRemove(Name, out ActorSystem actorSystem);
 
-                foreach (var process in _functionRegistery.Values)
+                var processes = Interlocked.Exchange(ref _processRegistery, null);
+                foreach (var registery in processes.Values)
                 {
                     try
                     {
-                        process.Dispose();
+                        registery.Dispose();
                     }
                     catch (Exception)
                     { }
                 }
-
-                foreach (var procList in _actorRegistery.Values)
-                {
-                    foreach (var process in procList.Values)
-                    {
-                        try
-                        {
-                            process.Dispose();
-                        }
-                        catch (Exception)
-                        { }
-                    }
-                }               
             }
             base.OnDispose(disposing);
         }
@@ -115,75 +120,128 @@ namespace Sweet.Actors
             return _systemRegistery.TryGetValue(actorSystemName, out actorSystem);
         }
 
-        public static ActorSystem GetOrAdd(ActorSystemOptions settings = null)
+        public static bool TryGet(Aid actorId, out Pid pid)
         {
-            settings = (settings ?? ActorSystemOptions.Default);
-            return _systemRegistery.GetOrAdd(settings.Name,
-                (sn) => new ActorSystem(settings));
+            pid = null;
+            if (actorId != null)
+            {
+                pid = actorId as Pid;
+                if (pid?.Process != null)
+                    return true;
+
+                if (TryGet(actorId.ActorSystem, out ActorSystem actorSystem))
+                {
+                    pid = actorSystem.Get(actorId.Actor);
+                    return (pid?.Process != null);
+                }
+            }
+            return false;
+        }
+
+        public static ActorSystem GetOrAdd(ActorSystemOptions options = null)
+        {
+            options = (options ?? ActorSystemOptions.Default);
+            return _systemRegistery.GetOrAdd(options.Name,
+                (sn) => new ActorSystem(options));
+        }
+
+        public Pid Get(string actorName)
+        {
+            actorName = actorName?.Trim();
+            if (_processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
+                return registery.Process.Pid;
+            return null;
+        }
+
+        public Pid From(ActorOptions options)
+        {
+            ThrowIfDisposed();
+
+            if (options == null)
+                throw new ArgumentNullException(nameof(options));
+
+            if (IsRemote(options))
+                return FromRemote(options);
+
+            Type actorType = null;
+
+            var actor = options.Actor;
+            if (actor == null)
+                actorType = options.ActorType;
+
+            if (actor == null && actorType == null)
+                throw new ArgumentNullException(nameof(options.Actor));
+
+            return GetOrAdd(options, actor, actorType);
+        }
+
+        private bool IsRemote(ActorOptions options)
+        {
+            return (options != null) && (options.EndPoint != null) &&
+                !String.IsNullOrEmpty(options.RemoteActorSystem?.Trim());
         }
 
         public Pid FromType<T>(ActorOptions options = null)
             where T : class, IActor, new()
         {
             ThrowIfDisposed();
-
-            var processList =
-                _actorRegistery.GetOrAdd(typeof(T),
-                                         (t) => new ConcurrentDictionary<string, Process>());
-
-            options = (options ?? ActorOptions.Default);
-
-            var p = processList.GetOrAdd(GetActorName(options),
-                (an) =>
-                {
-                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
-                    if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
-
-                    var actor = Activator.CreateInstance<T>();
-                    return new Process(an, this, actor,  
-                                    options.ErrorHandler ?? Settings.ErrorHandler, 
-                                    GetSequentialInvokeLimit(options), options.InitialContextData);
-                });
-
-            return p.Pid;
+            return GetOrAdd(options, null, typeof(T));
         }
 
-        private static string GetActorName(ActorOptions settings)
-        {
-            var result = settings.Name?.Trim();
-            if (String.IsNullOrEmpty(result))
-                result = Constants.EmptyActorName;
-
-            return result;
-        }
-
-        public (bool, Pid) FromActor(IActor actor, ActorOptions options = null)
+        public Pid FromActor(IActor actor, ActorOptions options = null)
         {
             ThrowIfDisposed();
 
             if (actor == null)
                 throw new ArgumentNullException(nameof(actor));
 
-            var processList =
-                _actorRegistery.GetOrAdd(actor.GetType(),
-                                         (t) => new ConcurrentDictionary<string, Process>());
-
-            options = (options ?? ActorOptions.Default);
-
-            var exists = true;
-            var p = processList.GetOrAdd(GetActorName(options),
-                (an) =>
-                {
-                    exists = false;
-                    return new Process(an, this, actor, 
-                                    options.ErrorHandler ?? Settings.ErrorHandler,
-                                    GetSequentialInvokeLimit(options), options.InitialContextData);
-                });
-
-            return (!exists, p.Pid);
+            return GetOrAdd(options, actor, actor.GetType());
         }
 
+        private Pid GetOrAdd(ActorOptions options, IActor actor, Type actorType)
+        {
+            options = (options ?? ActorOptions.Default);
+
+            if (actor != null)
+                actorType = actor.GetType();
+
+            var actorName = options.Name?.Trim();
+            if (String.IsNullOrEmpty(actorName))
+                actorName = actorType.ToString();
+
+            var isNew = false;
+            var registery = _processRegistery.GetOrAdd(actorName,
+                (an) =>
+                {
+                    isNew = true;
+
+                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
+                    if (sequentialInvokeLimit < 1)
+                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
+
+                    var p = new Process(an, this,
+                                    actor ?? (IActor)Activator.CreateInstance(actorType),
+                                    options.ErrorHandler ?? Settings.ErrorHandler,
+                                    GetSequentialInvokeLimit(options), options.InitialContextData);
+                    return new ProcessRegistery(p, actorType);
+                });
+
+            if (!isNew && 
+                ((registery.ProcessType != ProcessType.Class) || (registery.ActorType != actorType)))
+                throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
+
+            return registery.Process.Pid;
+        }
+
+        private int GetSequentialInvokeLimit(ActorOptions options)
+        {
+            var result = options.SequentialInvokeLimit;
+            if (result < 1)
+                result = Settings.SequentialInvokeLimit;
+
+            return result;
+        }
+   
         public Pid FromFunction(Func<IContext, IMessage, Task> receiveFunc, ActorOptions options = null)
         {
             ThrowIfDisposed();
@@ -197,28 +255,75 @@ namespace Sweet.Actors
             if (String.IsNullOrEmpty(actorName))
                 actorName = AnonymousNameGenerator.Next();
 
-            lock (_actorRegistery)
-            {
-                if (_functionRegistery.ContainsKey(actorName))
-                    throw new Exception(String.Format(Errors.ActorAlreadyExsists, actorName));
+            var isNew = false;
+            var registery = _processRegistery.GetOrAdd(actorName,
+                (an) =>
+                {
+                    isNew = true;
 
-                var actor = new FunctionCallActor(receiveFunc);
-                var p = new Process(actorName, this, actor, 
+                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
+                    if (sequentialInvokeLimit < 1)
+                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
+
+                    var p = new FunctionCallProcess(actorName, this, receiveFunc, 
                                 options.ErrorHandler ?? Settings.ErrorHandler,
                                 GetSequentialInvokeLimit(options), options.InitialContextData);
 
-                _functionRegistery[actorName] = p;
-                return p.Pid;
+                    return new ProcessRegistery(p, typeof(FunctionCallProcess), ProcessType.Function);
+                });
+
+            if (!isNew)
+            {
+                if (registery.ProcessType != ProcessType.Function)
+                    throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
+
+                var fp = registery.Process as FunctionCallProcess;
+                if (fp == null)
+                    throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
+
+                if (fp.ReceiveFunc != receiveFunc)
+                    throw new Exception(Errors.ActorAlreadyExsists);
             }
+
+            return registery.Process.Pid;
         }
 
-        private int GetSequentialInvokeLimit(ActorOptions options)
+        public Pid FromRemote(ActorOptions options)
         {
-            var result = options.SequentialInvokeLimit;
-            if (result < 1)
-                result = Settings.SequentialInvokeLimit;
+            ThrowIfDisposed();
 
-            return result;
+            if (options == null)
+                throw new ArgumentNullException(nameof(options));
+
+            var remoteActorSystem = options.RemoteActorSystem;
+            if (String.IsNullOrEmpty(remoteActorSystem))
+                throw new ArgumentNullException(nameof(options.RemoteActorSystem));
+
+            var actorName = options.Name?.Trim();
+            if (String.IsNullOrEmpty(actorName))
+                throw new ArgumentNullException(nameof(options.Name));
+
+            var isNew = false;
+            var registery = _processRegistery.GetOrAdd(actorName,
+                (an) =>
+                {
+                    isNew = true;
+                    var p = new RemoteProcess(options.Name, this, 
+                            new RemoteAddress(options.EndPoint, remoteActorSystem, options.Name));
+
+                    return new ProcessRegistery(p, typeof(FunctionCallProcess), ProcessType.Function);
+                });
+
+            if (!isNew &&
+                (registery.ProcessType != ProcessType.Remote) || (registery.ActorType != typeof(RemoteProcess)))
+                throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
+
+            return registery.Process.Pid;
+        }
+
+        void IResponseHandler.OnResponse(IMessage message, RemoteAddress from)
+        {
+            throw new NotImplementedException();
         }
     }
 }

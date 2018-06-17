@@ -34,11 +34,11 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public class RpcClient : Disposable
+    public class RpcClient : Disposable, IRemoteClient
     {
         private class Request
         {
-            public Pid To;
+            public Aid To;
             public RpcMessageId Id;
             public IMessage Message;
             public TaskCompletionSource<object> TaskCompletionSource;
@@ -302,7 +302,7 @@ namespace Sweet.Actors
             { }
         }
 
-        public Task Send(IMessage msg, Pid to)
+        public Task Send(IMessage msg, Aid to)
         {
             ThrowIfDisposed();
             if (msg == null)
@@ -371,7 +371,7 @@ namespace Sweet.Actors
 
                             tcs.TrySetException(error);
                             if (isFutureCall)
-                                future.RespondToWithError(error, request.To);
+                                future.RespondToWithError(error, future.From);
 
                             continue;
                         }
@@ -383,7 +383,7 @@ namespace Sweet.Actors
                         HandleError(request, e);
 
                         if (isFutureCall)
-                            future.RespondToWithError(e, request.To);
+                            future.RespondToWithError(e, future.From);
 
                         return Task.FromException(e);
                     }

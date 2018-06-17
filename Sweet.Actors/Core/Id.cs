@@ -119,7 +119,7 @@ namespace Sweet.Actors
         {
             unchecked
             {
-                int hash = MinorRevision.GetHashCode();
+                var hash = MinorRevision.GetHashCode();
                 hash = 31 * hash + Minor.GetHashCode();
                 hash = 31 * hash + MajorRevision.GetHashCode();
                 return 31 * hash + Major.GetHashCode();

@@ -28,5 +28,6 @@ namespace Sweet.Actors
     {
         public const string InvalidMessage = "Invalid message";
         public const string InvalidSerializerKey = "Invalid serializer key";
+        public const string CannotResolveEndPoint = "Can not resolve end-point";
     }
 }

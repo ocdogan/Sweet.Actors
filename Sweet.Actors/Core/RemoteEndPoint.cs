@@ -23,14 +23,53 @@
 #endregion License
 
 using System;
-using System.IO;
 
 namespace Sweet.Actors
 {
-    public interface IRpcSerializer
+    public class RemoteEndPoint
     {
-        byte[] Serialize(RpcMessage msg);
-        (IMessage, Aid) Deserialize(byte[] data);
-        (IMessage, Aid) Deserialize(Stream stream);
+        public static readonly RemoteEndPoint Default = new RemoteEndPoint(null, -1);
+          
+        private int _port;
+        private string _host;
+        private int _hashCode;
+
+        public RemoteEndPoint(string host, int port)
+        {
+            _host = host?.Trim();
+            if (string.IsNullOrEmpty(host))
+                _host = Constants.DefaultHost;
+            _port = port < 0 ? Constants.DefaultPort : port;
+        }
+
+        public string Host => _host;
+        public int Port => _port;
+
+        public override string ToString()
+        {
+            return $"{Host}:{Port}";
+        } 
+
+        public override int GetHashCode()
+        {
+            if (_hashCode == 0)
+            {
+                var hash = 1 + (Host ?? String.Empty).GetHashCode();
+                _hashCode = 31 * hash + Port.GetHashCode();
+            }
+            return _hashCode;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj == null)
+                return false;
+            
+            if (obj is RemoteEndPoint rr)
+                return (rr.GetHashCode() == GetHashCode()) &&
+                    rr.Port == Port &&
+                    rr.Host == Host;
+            return false;
+        }
     }
 }

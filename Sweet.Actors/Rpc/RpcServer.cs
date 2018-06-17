@@ -79,7 +79,7 @@ namespace Sweet.Actors
                         IMessage msg = null;
                         try
                         {
-                            if (_buffer.TryGetMessage(out (IMessage, Pid) receivedMsg))
+                            if (_buffer.TryGetMessage(out (IMessage, Aid) receivedMsg))
                             {
                                 msg = receivedMsg.Item1;
                                 Server.HandleMessage(receivedMsg, this);
@@ -510,7 +510,7 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        private void HandleMessage((IMessage, Pid) receivedMsg, ReceiveContext ctx)
+        private void HandleMessage((IMessage, Aid) receivedMsg, ReceiveContext ctx)
         {
             var to = receivedMsg.Item2;
             if (to != null)

@@ -56,15 +56,15 @@ namespace Sweet.Actors
 
         private ConcurrentQueue<Message> _mailbox = new ConcurrentQueue<Message>();
 
-        public Process(string name, ActorSystem system, IActor actor, 
-                       IErrorHandler errorHandler = null,
+        public Process(string name, ActorSystem actorSystem, 
+                       IActor actor, IErrorHandler errorHandler = null,
                        int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
                        IDictionary<string, object> initialContextData = null)
         {
             _name = name;
 
             Actor = actor;
-            System = system;
+            System = actorSystem;
 
             _pid = new Pid(this);
             _ctx = new Context(this);
@@ -84,7 +84,7 @@ namespace Sweet.Actors
 
         public ActorSystem System { get; }
 
-        public IActor Actor { get; }
+        public IActor Actor { get; protected set; }
 
         public IContext Context { get { return _ctx; } }
 
@@ -229,6 +229,51 @@ namespace Sweet.Actors
         protected virtual Task Send(IContext ctx, Message msg)
         {
             return Actor.OnReceive(ctx, msg);
+        }
+    }
+
+    internal class FunctionCallProcess : Process, IActor
+    {
+        private Func<IContext, IMessage, Task> _receiveFunc;
+
+        public FunctionCallProcess(string name, ActorSystem actorSystem,
+                       Func<IContext, IMessage, Task> function, 
+                       IErrorHandler errorHandler = null,
+                       int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
+                       IDictionary<string, object> initialContextData = null)
+                       : base(name, actorSystem, null, 
+                            errorHandler, sequentialInvokeLimit, initialContextData)
+        { 
+            _receiveFunc = function;
+            Actor = this;
+        }
+
+        public Func<IContext, IMessage, Task> ReceiveFunc => _receiveFunc;
+        
+        public Task OnReceive(IContext ctx, IMessage msg)
+        {
+            return _receiveFunc(ctx, msg);
+        }
+    }
+
+    internal class RemoteProcess : Process, IActor
+    {
+        private RemoteAddress _remoteAddress;
+
+        public RemoteProcess(string name, ActorSystem actorSystem,
+                       RemoteAddress remoteAddress, IErrorHandler errorHandler = null,
+                       int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
+                       IDictionary<string, object> initialContextData = null)
+                       : base(name, actorSystem, null, 
+                            errorHandler, sequentialInvokeLimit, initialContextData)
+        { 
+            _remoteAddress = remoteAddress;
+            Actor = this;
+        }
+
+        public Task OnReceive(IContext ctx, IMessage msg)
+        {
+            throw new NotImplementedException();
         }
     }
 }

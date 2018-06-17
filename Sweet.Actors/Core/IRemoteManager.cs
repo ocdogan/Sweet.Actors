@@ -1,4 +1,4 @@
-﻿#region License
+#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,26 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+using System.Threading.Tasks;
+
 namespace Sweet.Actors
-{
-    public static class Errors
+{    
+    public interface IRemoteManager : IDisposable
     {
-        public const string EndOfFile = "End of file";
-        public const string StreamIsClosed = "Stream is closed";
-        public const string UnwritableStream = "Unwritable stream";
-
-        public const string MessageExpired = "Message expired";
-        public const string MaxAllowedDataSizeExceeded = "Max allowed data size exceeded";
-        public const string InvalidPort = "Invalid port";
-        public const string InvalidAddress = "Invalid address";
-        public const string InvalidMessageType = "Invalid message type";
-        public const string InvalidResponseType = "Invalid response type";
-        public const string ActorAlreadyExsists = "Actor with name {0} already exists";
-        public const string ActorSystemAlreadyExsists = "Actor system with name {0} already exists";
-        public const string ActorWithNameOfDifferentTypeAlreadyExists = "Actor with name of different type already exists";
-
-        public const string ExpectingReceiveCompletedOperation = "Expecting receive completed operation";
-
-        public const string UnknownProcess = "Unknown process";
+        void SetResponseHandler(IResponseHandler handler);
+        Task Send(IMessage message, RemoteAddress to);
     }
 }

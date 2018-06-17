@@ -36,7 +36,7 @@ namespace Sweet.Actors
         private static readonly ConcurrentDictionary<Type, Type> _futureResponseRepository = new ConcurrentDictionary<Type, Type>();
 
         public static IFutureMessage CreateFutureMessage(Type responseType, object data, 
-                               Pid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+                               Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             var repositoryType = _futureMessageRepository.GetOrAdd(responseType, (t) => {
                 var elementType = t.GetGenericArguments()[0];
@@ -46,7 +46,7 @@ namespace Sweet.Actors
         }
 
         public static IFutureResponse CreateFutureResponse(Type responseType, object data,
-                               Pid from = null, IDictionary<string, string> header = null)
+                               Aid from = null, IDictionary<string, string> header = null)
         {
             var repositoryType = _futureResponseRepository.GetOrAdd(responseType, (t) => {
                 var elementType = t.GetGenericArguments()[0];
@@ -56,7 +56,7 @@ namespace Sweet.Actors
         }
 
         public static IFutureError CreateFutureError(Type responseType, Exception error,
-                               Pid from = null, IDictionary<string, string> header = null)
+                               Aid from = null, IDictionary<string, string> header = null)
         {
             var repositoryType = _futureErrorRepository.GetOrAdd(responseType, (t) => {
                 var elementType = t.GetGenericArguments()[0];

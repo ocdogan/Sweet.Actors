@@ -31,6 +31,10 @@ namespace Sweet.Actors
     {
         public static readonly ActorOptions Default = new ActorOptions(null);
 
+        private IActor _actor;
+        private Type _actorType;
+        private string _remoteActorSystem;
+        private RemoteEndPoint _endPoint;
         private IDictionary<string, object> _initialContextData;
 
         private ActorOptions(string name)
@@ -47,6 +51,45 @@ namespace Sweet.Actors
             _initialContextData = initialContextData;
             return this;
         }
+
+        public ActorOptions UsingRemoteActorSystem(string remoteActorSystem)
+        {
+            _remoteActorSystem = remoteActorSystem?.Trim();
+            return this;
+        }
+
+        public ActorOptions UsingRemoteEndPoint(string host, int port)
+        {
+            _endPoint = new RemoteEndPoint(host, port);
+            return this;
+        }
+
+        public ActorOptions UsingRemoteEndPoint(RemoteEndPoint endPoint)
+        {
+            _endPoint = endPoint;
+            return this;
+        }
+
+        public ActorOptions UsingActor(IActor actor)
+        {
+            _actor = actor;
+            return this;
+        }
+
+        public ActorOptions UsingActor<T>()
+            where T : class, IActor, new()
+        {
+            _actorType = typeof(T);
+            return this;
+        }
+
+        public IActor Actor => _actor;
+
+        public Type ActorType => _actorType;
+
+        public string RemoteActorSystem => _remoteActorSystem;
+
+        public RemoteEndPoint EndPoint => _endPoint;
 
         public IDictionary<string, object> InitialContextData => _initialContextData;
     }

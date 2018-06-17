@@ -29,34 +29,34 @@ namespace Sweet.Actors
 {
     public static class RpcExtensions
     {
-        public static (IMessage, Pid) ToActualMessage(this RpcMessage rpcMsg)
+        public static (IMessage, Aid) ToActualMessage(this RpcMessage rpcMsg)
         {
-            IMessage msg = null;
+            IMessage message = null;
             if (rpcMsg != null)
             {
                 switch (rpcMsg.MessageType)
                 {
                     case MessageType.Default:
-                        msg = new Message(rpcMsg.Data, MockPid.Parse(rpcMsg.From), rpcMsg.Header);
+                        message = new Message(rpcMsg.Data, Aid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                     case MessageType.FutureMessage:
-                        msg = MessageFactory.CreateFutureMessage(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
-                            MockPid.Parse(rpcMsg.From), rpcMsg.Header, rpcMsg.TimeoutMSec);
+                        message = MessageFactory.CreateFutureMessage(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
+                            Aid.Parse(rpcMsg.From), rpcMsg.Header, rpcMsg.TimeoutMSec);
                         break;
                     case MessageType.FutureResponse:
-                        msg = MessageFactory.CreateFutureResponse(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
-                            MockPid.Parse(rpcMsg.From), rpcMsg.Header);
+                        message = MessageFactory.CreateFutureResponse(Type.GetType(rpcMsg.ResponseType), rpcMsg.Data,
+                            Aid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                     case MessageType.FutureError:
-                        msg = MessageFactory.CreateFutureError(Type.GetType(rpcMsg.ResponseType), rpcMsg.Exception,
-                            MockPid.Parse(rpcMsg.From), rpcMsg.Header);
+                        message = MessageFactory.CreateFutureError(Type.GetType(rpcMsg.ResponseType), rpcMsg.Exception,
+                            Aid.Parse(rpcMsg.From), rpcMsg.Header);
                         break;
                 }
             }
-            return (msg ?? Message.Empty, MockPid.Parse(rpcMsg?.To) ?? Pid.Unknown);
+            return (message ?? Message.Empty, Aid.Parse(rpcMsg?.To) ?? Aid.Unknown);
         }
 
-        public static RpcMessage ToRpcMessage(this IMessage msg, Pid to, RpcMessageId id = null)
+        public static RpcMessage ToRpcMessage(this IMessage msg, Aid to, RpcMessageId id = null)
         {
             var result = new RpcMessage{ To = to?.ToString(), Id = id?.ToString() ?? RpcMessageId.NextAsString() };
             if (msg != null)

@@ -225,9 +225,9 @@ namespace Sweet.Actors
             return false;
         }
 
-		public bool TryGetMessage(out (IMessage, Pid) msg)
+		public bool TryGetMessage(out (IMessage, Aid) message)
 		{
-			msg = (Message.Empty, Pid.Unknown);
+			message = (Message.Empty, Aid.Unknown);
 
             if (!Disposed &&
                 _messageQueue.TryDequeue(out RpcPartitionedMessage receivedMsg))
@@ -272,10 +272,10 @@ namespace Sweet.Actors
 
                             using (var stream = new ChunkedStream(dataList, false))
                             {
-                                msg = serializer.Deserialize(stream);
+                                message = serializer.Deserialize(stream);
 
-                                if (msg.Item1 != null && msg.Item1 != Message.Empty &&
-                                    msg.Item2 != Pid.Unknown)
+                                if (message.Item1 != null && message.Item1 != Message.Empty &&
+                                    message.Item2 != Aid.Unknown)
                                     return true;
                             }
                         }
