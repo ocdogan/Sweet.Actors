@@ -50,14 +50,14 @@ namespace Sweet.Actors
             return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
         }
 
-        public byte[] Serialize(RpcMessage msg)
+        public byte[] Serialize(RpcMessage message)
         {
-            if (msg != null)
+            if (message != null)
             {
-                using (var ms = new ChunkedStream())
+                using (var stream = new ChunkedStream())
                 {
-                    _serializer.Serialize(msg, ms);
-                    return ms.ToArray();
+                    _serializer.Serialize(message, stream);
+                    return stream.ToArray();
                 }
             }
             return null;

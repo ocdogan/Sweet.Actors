@@ -81,23 +81,28 @@ namespace Sweet.Actors
         private static readonly ConcurrentDictionary<string, ActorSystem> _systemRegistery =
             new ConcurrentDictionary<string, ActorSystem>();
 
+        private IRemoteManager _remoteManager;
+
         private ConcurrentDictionary<string, ProcessRegistery> _processRegistery =
             new ConcurrentDictionary<string, ProcessRegistery>();
 
         private ActorSystem(ActorSystemOptions options)
         {
-            Settings = options ?? ActorSystemOptions.Default;
+            Options = options ?? ActorSystemOptions.Default;
             Name = options.Name;
         }
 
         public string Name { get; }
 
-        public ActorSystemOptions Settings { get; }
+        public ActorSystemOptions Options { get; }
+
+        internal IRemoteManager RemoteManager => _remoteManager;
 
         protected override void OnDispose(bool disposing)
         {
             if (disposing)
             {
+                _remoteManager?.Unbind(this);
                 _systemRegistery.TryRemove(Name, out ActorSystem actorSystem);
 
                 var processes = Interlocked.Exchange(ref _processRegistery, null);
@@ -112,6 +117,11 @@ namespace Sweet.Actors
                 }
             }
             base.OnDispose(disposing);
+        }
+
+        internal void SetRemoteManager(IRemoteManager remoteManager)
+        {
+            _remoteManager = remoteManager;
         }
 
         public static bool TryGet(string actorSystemName, out ActorSystem actorSystem)
@@ -217,11 +227,11 @@ namespace Sweet.Actors
 
                     var sequentialInvokeLimit = options.SequentialInvokeLimit;
                     if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
+                        sequentialInvokeLimit = Options.SequentialInvokeLimit;
 
                     var p = new Process(an, this,
                                     actor ?? (IActor)Activator.CreateInstance(actorType),
-                                    options.ErrorHandler ?? Settings.ErrorHandler,
+                                    options.ErrorHandler ?? Options.ErrorHandler,
                                     GetSequentialInvokeLimit(options), options.InitialContextData);
                     return new ProcessRegistery(p, actorType);
                 });
@@ -237,7 +247,7 @@ namespace Sweet.Actors
         {
             var result = options.SequentialInvokeLimit;
             if (result < 1)
-                result = Settings.SequentialInvokeLimit;
+                result = Options.SequentialInvokeLimit;
 
             return result;
         }
@@ -263,10 +273,10 @@ namespace Sweet.Actors
 
                     var sequentialInvokeLimit = options.SequentialInvokeLimit;
                     if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = Settings.SequentialInvokeLimit;
+                        sequentialInvokeLimit = Options.SequentialInvokeLimit;
 
                     var p = new FunctionCallProcess(actorName, this, receiveFunc, 
-                                options.ErrorHandler ?? Settings.ErrorHandler,
+                                options.ErrorHandler ?? Options.ErrorHandler,
                                 GetSequentialInvokeLimit(options), options.InitialContextData);
 
                     return new ProcessRegistery(p, typeof(FunctionCallProcess), ProcessType.Function);
@@ -311,7 +321,7 @@ namespace Sweet.Actors
                     var p = new RemoteProcess(options.Name, this, 
                             new RemoteAddress(options.EndPoint, remoteActorSystem, options.Name));
 
-                    return new ProcessRegistery(p, typeof(FunctionCallProcess), ProcessType.Function);
+                    return new ProcessRegistery(p, typeof(RemoteProcess), ProcessType.Remote);
                 });
 
             if (!isNew &&

@@ -28,8 +28,8 @@ using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public abstract class RpcSettings<T>
-        where T : RpcSettings<T>
+    public abstract class RpcOptions<T>
+        where T : RpcOptions<T>
     {
         private IPEndPoint _endPoint;
 
@@ -38,7 +38,7 @@ namespace Sweet.Actors
 
         private string _serializer = Constants.DefaultSerializerKey;
 
-        protected RpcSettings()
+        protected RpcOptions()
         {
             if (Socket.OSSupportsIPv4)
                 _endPoint = new IPEndPoint(IPAddress.Any, Constants.DefaultPort);
@@ -130,11 +130,11 @@ namespace Sweet.Actors
             return (T)this;
         }
 
-        protected abstract T NewInstance();
+        protected abstract T New();
 
         public virtual T Clone()
         {
-            var result = NewInstance();
+            var result = New();
 
             result._endPoint = new IPEndPoint(_endPoint.Address, _endPoint.Port);
             result._serializer = _serializer;

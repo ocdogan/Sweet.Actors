@@ -22,41 +22,19 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
+using System.Net;
 
 namespace Sweet.Actors
 {
-    public class RpcServerSettings : RpcSettings<RpcServerSettings>
+    public interface IRemoteServer
     {
-        public const int MinConcurrentConnectionsCount = 10;
-		public const int DefaultConcurrentConnectionsCount = Constants.KB;
+        IPEndPoint EndPoint { get; }
+        long Status { get; }
 
-        private int _concurrentConnections = DefaultConcurrentConnectionsCount;
+        bool Bind(ActorSystem actorSystem);
+        bool Unbind(ActorSystem actorSystem);
 
-        public RpcServerSettings()
-            : base()
-        { }
-
-        public int ConcurrentConnections => _concurrentConnections; 
-
-        public RpcServerSettings UsingConcurrentConnections(int concurrentConnections)
-        {
-            _concurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
-                Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
-            return this;
-        }
-
-        protected override RpcServerSettings NewInstance()
-        {
-            return new RpcServerSettings();
-        }
-
-        public override RpcServerSettings Clone()
-        {
-            var result = (RpcServerSettings)base.Clone();
-            result._concurrentConnections = _concurrentConnections;
-
-            return result;
-        }
+        void Start();
+        void Stop();
     }
 }

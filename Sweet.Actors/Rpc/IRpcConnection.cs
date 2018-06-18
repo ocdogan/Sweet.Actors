@@ -22,12 +22,15 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System.Threading.Tasks;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Sweet.Actors
 {
-    public interface IActor
+    public interface IRpcConnection
     {
-        Task OnReceive(IContext ctx, IMessage message);
+        Socket Connection { get; }
+        IPEndPoint RemoteEndPoint { get; }
+        IRemoteServer Server { get; }
     }
 }

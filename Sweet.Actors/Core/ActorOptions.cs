@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
 
 namespace Sweet.Actors
 {
@@ -67,6 +68,13 @@ namespace Sweet.Actors
         public ActorOptions UsingRemoteEndPoint(RemoteEndPoint endPoint)
         {
             _endPoint = endPoint;
+            return this;
+        }
+
+        public ActorOptions UsingRemoteEndPoint(IPEndPoint endPoint)
+        {
+            _endPoint = (endPoint == null) ? null : 
+                new RemoteEndPoint(endPoint.Address.ToString(), endPoint.Port);
             return this;
         }
 

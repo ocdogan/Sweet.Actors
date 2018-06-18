@@ -36,7 +36,7 @@ namespace Sweet.Actors
             public IRpcSerializer Instance;
         }
 
-        private static readonly ConcurrentDictionary<string, Registry> _registry =
+        private static readonly ConcurrentDictionary<string, Registry> _serializerRegistry =
             new ConcurrentDictionary<string, Registry>();
 
         private static void ValidateRegistryName(string registryName)
@@ -54,7 +54,7 @@ namespace Sweet.Actors
         {
             ValidateRegistryName(registryName);
 
-            if (!_registry.TryGetValue(registryName, out Registry reg))
+            if (!_serializerRegistry.TryGetValue(registryName, out Registry reg))
                 return null;
 
             if (reg.Instance == null)
@@ -72,7 +72,7 @@ namespace Sweet.Actors
             where T : class, IRpcSerializer, new()
         {
             ValidateRegistryName(registryName);
-            _registry.GetOrAdd(registryName, NewRegistry<T>);
+            _serializerRegistry.GetOrAdd(registryName, NewRegistry<T>);
         }
 
         private static Registry NewRegistry<T>(string registryName) 

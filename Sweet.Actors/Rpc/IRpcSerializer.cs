@@ -29,7 +29,7 @@ namespace Sweet.Actors
 {
     public interface IRpcSerializer
     {
-        byte[] Serialize(RpcMessage msg);
+        byte[] Serialize(RpcMessage message);
         (IMessage, Aid) Deserialize(byte[] data);
         (IMessage, Aid) Deserialize(Stream stream);
     }

@@ -29,7 +29,7 @@ namespace Sweet.Actors
     public class RemoteAddress
     {
         private int _hashCode;
-        private Aid _actorId;
+        private Aid _actor;
         private RemoteEndPoint _endPoint;
 
         internal RemoteAddress(string host, int port, string actorSystem, string actor)
@@ -39,7 +39,7 @@ namespace Sweet.Actors
                 throw new ArgumentNullException(nameof(host));
 
             _endPoint = new RemoteEndPoint(host, port);
-            _actorId = new Aid(actorSystem, actor);
+            _actor = new Aid(actorSystem, actor);
         }
 
         internal RemoteAddress(string host, int port, Aid actorId)
@@ -48,41 +48,29 @@ namespace Sweet.Actors
             if (host == null)
                 throw new ArgumentNullException(nameof(host));
 
-            if (actorId == null)
-                throw new ArgumentNullException(nameof(actorId));
-
             _endPoint = new RemoteEndPoint(host, port);
-            _actorId = actorId;
+            _actor = actorId ?? throw new ArgumentNullException(nameof(actorId));
         }
 
         internal RemoteAddress(RemoteEndPoint endPoint, string actorSystem, string actor)
         {
-            if (endPoint == null)
-                throw new ArgumentNullException(nameof(endPoint));
-
-            _endPoint = endPoint;
-            _actorId = new Aid(actorSystem, actor);
+            _endPoint = endPoint ?? throw new ArgumentNullException(nameof(endPoint));
+            _actor = new Aid(actorSystem, actor);
         }
 
         internal RemoteAddress(RemoteEndPoint endPoint, Aid actorId)
         {
-            if (endPoint == null)
-                throw new ArgumentNullException(nameof(endPoint));
-
-            if (actorId == null)
-                throw new ArgumentNullException(nameof(actorId));
-
-            _endPoint = endPoint;
-            _actorId = actorId;
+            _endPoint = endPoint ?? throw new ArgumentNullException(nameof(endPoint));
+            _actor = actorId ?? throw new ArgumentNullException(nameof(actorId));
         }
 
         public RemoteEndPoint EndPoint => _endPoint;
 
-        public Aid ActorId => _actorId;
+        public Aid Actor => _actor;
         
         public override string ToString()
         {
-            return $"actors://{_endPoint.Host}:{_endPoint.Port}/{_actorId.ActorSystem}/{_actorId.Actor}";
+            return $"actors://{_endPoint.Host}:{_endPoint.Port}/{_actor.ActorSystem}/{_actor.Actor}";
         } 
 
         public override int GetHashCode()
@@ -90,7 +78,7 @@ namespace Sweet.Actors
             if (_hashCode == 0)
             {
                 var hash = _endPoint.GetHashCode();
-                _hashCode = 31 * hash + _actorId.GetHashCode();
+                _hashCode = 31 * hash + _actor.GetHashCode();
             }
             return _hashCode;
         }
@@ -102,8 +90,8 @@ namespace Sweet.Actors
             
             if (obj is RemoteAddress ra)
                 return (ra.GetHashCode() == GetHashCode()) &&
-                    ra.EndPoint == EndPoint &&
-                    ra._actorId == _actorId;
+                    ra._endPoint == _endPoint &&
+                    ra._actor == _actor;
             return false;
         }
     }

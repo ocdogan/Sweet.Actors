@@ -70,8 +70,8 @@ namespace Sweet.Actors
             if (obj == null)
                 return false;
 
-            if (obj is Pid id)
-                return id.Equals(obj);
+            if (obj is Pid pid)
+                return pid.Equals(obj);
             return false;
         }
     }

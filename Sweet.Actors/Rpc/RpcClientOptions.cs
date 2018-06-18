@@ -22,12 +22,19 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System.Threading.Tasks;
-
 namespace Sweet.Actors
 {
-    public interface IActor
+    public class RpcClientOptions : RpcOptions<RpcClientOptions>
     {
-        Task OnReceive(IContext ctx, IMessage message);
+        public static readonly RpcClientOptions Default = new RpcClientOptions();
+
+        public RpcClientOptions()
+            : base()
+        { }
+
+        protected override RpcClientOptions New()
+        {
+            return new RpcClientOptions();
+        }
     }
 }

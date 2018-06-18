@@ -27,7 +27,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {    
-    public interface IRemoteManager : IDisposable
+    public interface IRemoteManager : IRemoteServer, IDisposable
     {
         void SetResponseHandler(IResponseHandler handler);
         Task Send(IMessage message, RemoteAddress to);

@@ -25,11 +25,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    internal class RpcClientManager : Disposable, IRemoteManager
+    public class RpcManager : RpcServer, IRemoteManager
     {
         private const int DefaultTimeout = 30000;
 
@@ -44,7 +45,7 @@ namespace Sweet.Actors
             public EndPointResolver(string host, int timeoutMSec = -1)
             {
                 _host = host?.Trim();
-                if (_isIPAddress = IPAddress.TryParse(host, out IPAddress address))                
+                if (_isIPAddress = IPAddress.TryParse(host, out IPAddress address))
                     _addresses = new IPAddress[] { address };
                 _timeoutMSec = timeoutMSec < 1 ? DefaultTimeout : timeoutMSec;
             }
@@ -53,7 +54,7 @@ namespace Sweet.Actors
             {
                 if (!_isIPAddress)
                 {
-                    if (_resolveTimeMSec == 0) 
+                    if (_resolveTimeMSec == 0)
                     {
                         var entry = Dns.GetHostEntry(_host);
                         _resolveTimeMSec = Environment.TickCount;
@@ -74,41 +75,41 @@ namespace Sweet.Actors
                     }
                 }
                 return _addresses;
-            } 
+            }
         }
 
-        private class RpcMockClient
+        private class RpcManagedClient : RpcClient
         {
-            private RpcClient _client;
             private int _creationTime;
 
-            public RpcMockClient(RpcClient client)
+            public RpcManagedClient(RpcClientOptions options)
+                : base(options)
             {
-                _client = client;
                 _creationTime = Environment.TickCount;
             }
-
-            public RpcClient Client => _client;
-
-            public bool Valid => (_client == null) && 
-                (Environment.TickCount - _creationTime < DefaultTimeout);
         }
 
-        private static readonly ConcurrentDictionary<string, EndPointResolver> _resolvers = 
+        private static readonly ConcurrentDictionary<string, EndPointResolver> _resolvers =
             new ConcurrentDictionary<string, EndPointResolver>();
-        
+
         private IResponseHandler _responseHandler;
-        private ConcurrentDictionary<RemoteEndPoint, RpcMockClient> _clients = new ConcurrentDictionary<RemoteEndPoint, RpcMockClient>();
+        private ConcurrentDictionary<RemoteEndPoint, RpcManagedClient> _clients = 
+            new ConcurrentDictionary<RemoteEndPoint, RpcManagedClient>();
+
+        public RpcManager(RpcServerOptions options = null)
+            : base(options)
+        { }
 
         protected override void OnDispose(bool disposing)
         {
             if (disposing)
             {
-                foreach (var c in _clients.Values)
-                    using (c.Client) {}
+                foreach (var client in _clients.Values)
+                    using (client) { }
             }
             base.OnDispose(disposing);
         }
+
         public void SetResponseHandler(IResponseHandler handler)
         {
             _responseHandler = handler;
@@ -119,24 +120,21 @@ namespace Sweet.Actors
             if (endPoint == null)
                 throw new ArgumentNullException(nameof(endPoint));
 
-            var record = _clients.GetOrAdd(endPoint, NewClient);
-            if (record.Valid)
-                return record.Client;
-            return (_clients[endPoint] = NewClient(endPoint)).Client;
-        }   
+            return _clients.GetOrAdd(endPoint, NewClient);
+        }
 
-        private static RpcMockClient NewClient(RemoteEndPoint endPoint)
+        private static RpcManagedClient NewClient(RemoteEndPoint endPoint)
         {
-            var addresses = _resolvers.GetOrAdd(endPoint.Host, 
+            var addresses = _resolvers.GetOrAdd(endPoint.Host,
                                 (host) => new EndPointResolver(host)).Resolve();
-            
-            if (addresses.IsEmpty())
-                return new RpcMockClient(null);
 
-            var settings = new RpcClientSettings().
+            if (addresses.IsEmpty())
+                return new RpcManagedClient(null);
+
+            var settings = new RpcClientOptions().
                 UsingEndPoint(new IPEndPoint(addresses[0], endPoint.Port));
 
-            return new RpcMockClient(new RpcClient(settings));
+            return new RpcManagedClient(settings);
         }
 
         public Task Send(IMessage message, RemoteAddress to)
@@ -155,12 +153,46 @@ namespace Sweet.Actors
                 if (client == null)
                     throw new Exception(RpcErrors.CannotResolveEndPoint);
 
-                return client.Send(message, null);
+                return client.Send(message, to.Actor);
             }
             catch (Exception e)
             {
                 return Task.FromException(e);
             }
+        }
+
+        public override bool Bind(ActorSystem actorSystem)
+        {
+            if (base.Bind(actorSystem))
+            {
+                actorSystem.SetRemoteManager(this);
+                return true;
+            }
+            return false;
+        }
+
+        public override bool Unbind(ActorSystem actorSystem)
+        {
+            if (base.Unbind(actorSystem))
+            {
+                actorSystem.SetRemoteManager(null);
+                return true;
+            }
+            return false;
+        }
+
+        protected override void HandleMessage((IMessage, Aid) receivedMsg, IRpcConnection connection)
+        {
+            var to = receivedMsg.Item2;
+            if (to != null)
+            {
+                var msg = receivedMsg.Item1;
+            }
+        }
+
+        protected override void SendMessage(IMessage message, IRpcConnection connection)
+        {
+            throw new NotImplementedException();
         }
     }
 }

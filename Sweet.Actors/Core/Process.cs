@@ -167,30 +167,30 @@ namespace Sweet.Actors
                     FutureMessage future = null;
 
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_mailbox.TryDequeue(out Message msg))
+                        !_mailbox.TryDequeue(out Message message))
                         break;
                     
                     try
                     {
-                        isFutureCall = (msg.MessageType == MessageType.FutureMessage);
+                        isFutureCall = (message.MessageType == MessageType.FutureMessage);
 
                         if (isFutureCall)
                         {
-                            future = (FutureMessage)msg;
-                            if (future.IsCanceled || msg.Expired)
+                            future = (FutureMessage)message;
+                            if (future.IsCanceled || message.Expired)
                             {
                                 future.Cancel();
                                 continue;
                             }
                         }
 
-                        if (msg.Expired)
+                        if (message.Expired)
                             throw new Exception(Errors.MessageExpired);
 
-                        var t = Send(_ctx, msg);
+                        var t = Send(_ctx, message);
 
                         if (t.IsFaulted)
-                            HandleError(msg, t.Exception);
+                            HandleError(message, t.Exception);
 
                         if (isFutureCall &&
                             !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
@@ -198,7 +198,7 @@ namespace Sweet.Actors
                     }
                     catch (Exception e)
                     {
-                        HandleError(msg, e);
+                        HandleError(message, e);
 
                         if (isFutureCall && (future != null))
                             future.RespondToWithError(e, _ctx.Pid);
@@ -216,19 +216,19 @@ namespace Sweet.Actors
             return ProcessCompleted;
         }
 
-        private void HandleError(Message msg, Exception e)
+        private void HandleError(Message message, Exception e)
         {
             try
             {
-                _errorHandler.HandleError(this, msg, e);
+                _errorHandler.HandleError(this, message, e);
             }
             catch (Exception)
             { }
         }
 
-        protected virtual Task Send(IContext ctx, Message msg)
+        protected virtual Task Send(IContext ctx, Message message)
         {
-            return Actor.OnReceive(ctx, msg);
+            return Actor.OnReceive(ctx, message);
         }
     }
 
@@ -250,9 +250,9 @@ namespace Sweet.Actors
 
         public Func<IContext, IMessage, Task> ReceiveFunc => _receiveFunc;
         
-        public Task OnReceive(IContext ctx, IMessage msg)
+        public Task OnReceive(IContext ctx, IMessage message)
         {
-            return _receiveFunc(ctx, msg);
+            return _receiveFunc(ctx, message);
         }
     }
 
@@ -271,9 +271,13 @@ namespace Sweet.Actors
             Actor = this;
         }
 
-        public Task OnReceive(IContext ctx, IMessage msg)
+        public Task OnReceive(IContext ctx, IMessage message)
         {
-            throw new NotImplementedException();
+            var remoteMngr = System?.RemoteManager;
+            if (remoteMngr == null)
+                Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
+
+            return remoteMngr.Send(message, _remoteAddress);
         }
     }
 }

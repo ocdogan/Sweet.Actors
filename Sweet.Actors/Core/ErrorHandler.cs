@@ -28,14 +28,14 @@ namespace Sweet.Actors
 {
     public interface IErrorHandler
     {
-        void HandleError(IProcess process, IMessage msg, Exception error);
+        void HandleError(IProcess process, IMessage message, Exception error);
     }
 
     internal class DefaultErrorHandler : IErrorHandler
     {
         public static readonly IErrorHandler Instance = new DefaultErrorHandler();
 
-        public void HandleError(IProcess process, IMessage msg, Exception error)
+        public void HandleError(IProcess process, IMessage message, Exception error)
         { }
     }
 
@@ -48,9 +48,9 @@ namespace Sweet.Actors
             _handlerAction = handlerAction ?? DefaultErrorHandler.Instance.HandleError;
         }
 
-        public void HandleError(IProcess process, IMessage msg, Exception error)
+        public void HandleError(IProcess process, IMessage message, Exception error)
         {
-            _handlerAction(process, msg, error);
+            _handlerAction(process, message, error);
         }
     }
 }

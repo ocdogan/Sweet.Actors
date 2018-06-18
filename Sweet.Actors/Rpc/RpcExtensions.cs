@@ -56,16 +56,16 @@ namespace Sweet.Actors
             return (message ?? Message.Empty, Aid.Parse(rpcMsg?.To) ?? Aid.Unknown);
         }
 
-        public static RpcMessage ToRpcMessage(this IMessage msg, Aid to, RpcMessageId id = null)
+        public static RpcMessage ToRpcMessage(this IMessage message, Aid to, RpcMessageId id = null)
         {
             var result = new RpcMessage{ To = to?.ToString(), Id = id?.ToString() ?? RpcMessageId.NextAsString() };
-            if (msg != null)
+            if (message != null)
             {
-                result.MessageType = msg.MessageType;
-                result.From = msg.From?.ToString();
-                result.Data = msg.Data;
+                result.MessageType = message.MessageType;
+                result.From = message.From?.ToString();
+                result.Data = message.Data;
 
-                var msgHeader = msg.Header;
+                var msgHeader = message.Header;
                 if (msgHeader != null)
                 {
                     var header = new Dictionary<string, string>(msgHeader.Count);
@@ -77,7 +77,7 @@ namespace Sweet.Actors
                 }
 
                 var state = RpcMessageState.Default;
-                if (msg is IFutureMessage future)
+                if (message is IFutureMessage future)
                 {
                     result.TimeoutMSec = future.TimeoutMSec;
                     result.ResponseType = future.ResponseType?.ToString();
@@ -92,7 +92,7 @@ namespace Sweet.Actors
                         state |= RpcMessageState.Faulted;
                 }
 
-                if (msg is IFutureError error)
+                if (message is IFutureError error)
                 {
                     result.Exception = error.Exception;
 
@@ -100,7 +100,7 @@ namespace Sweet.Actors
                         state |= RpcMessageState.Faulted;                        
                 }
 
-                if (msg is IFutureResponse resp)
+                if (message is IFutureResponse resp)
                 {
                     if (resp.IsEmpty)
                         state |= RpcMessageState.Empty;

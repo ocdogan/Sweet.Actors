@@ -39,6 +39,7 @@ namespace Sweet.Actors
         public const string ActorAlreadyExsists = "Actor with name {0} already exists";
         public const string ActorSystemAlreadyExsists = "Actor system with name {0} already exists";
         public const string ActorWithNameOfDifferentTypeAlreadyExists = "Actor with name of different type already exists";
+        public const string SystemIsNotConfiguredForToCallRemoteActors = "System is not configured for to call remote actors";
 
         public const string ExpectingReceiveCompletedOperation = "Expecting receive completed operation";
 

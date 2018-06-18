@@ -34,7 +34,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public class RpcClient : Disposable, IRemoteClient
+    internal class RpcClient : Disposable, IRemoteClient
     {
         private class Request
         {
@@ -52,7 +52,7 @@ namespace Sweet.Actors
         private static readonly Task ProcessCompleted = Task.FromResult(0);
 
         private Socket _socket;
-        private RpcClientSettings _settings;
+        private RpcClientOptions _options;
 
         private Stream _netStream;
         private Stream _outStream;
@@ -62,11 +62,10 @@ namespace Sweet.Actors
         private long _inProcess;
         private long _status = RpcClientStatus.Closed;
 
-        private byte[] _serializerKey = new byte[RpcConstants.SerializerRegistryNameLength];
-
-        private int _remoteMessageId;
+        private int _messageIdSeed;
 
         private IRpcSerializer _serializer;
+        private byte[] _serializerKey = new byte[RpcConstants.SerializerRegistryNameLength];
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<Request> _requestQueue = new ConcurrentQueue<Request>();
@@ -78,10 +77,10 @@ namespace Sweet.Actors
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
-        public RpcClient(RpcClientSettings settings)
+        public RpcClient(RpcClientOptions options)
         {
-            _settings = ((RpcClientSettings)settings?.Clone()) ?? new RpcClientSettings();
-            InitSerializer(_settings.Serializer);
+            _options = options?.Clone() ?? RpcClientOptions.Default;
+            InitSerializer(_options.Serializer);
         }
 
         public long Status
@@ -137,8 +136,8 @@ namespace Sweet.Actors
 
             if (_serializer != null)
             {
-                var sn = Encoding.UTF8.GetBytes(serializerName);
-                Buffer.BlockCopy(sn, 0, _serializerKey, 0, Math.Min(_serializerKey.Length, sn.Length));
+                var serializerNameBytes = Encoding.UTF8.GetBytes(serializerName);
+                Buffer.BlockCopy(serializerNameBytes, 0, _serializerKey, 0, Math.Min(_serializerKey.Length, serializerNameBytes.Length));
             }
         }
 
@@ -198,16 +197,16 @@ namespace Sweet.Actors
                 if (oldTcs != null)
                     oldTcs.TrySetCanceled();
 
-                var remoteEP = _settings.EndPoint;
+                var remoteEP = _options.EndPoint;
 
                 Socket socket = null;
                 try
                 {
-                    var family = remoteEP.AddressFamily;
-                    if (family == AddressFamily.Unknown || family == AddressFamily.Unspecified)
-                        family = IPAddress.Any.AddressFamily;
+                    var addressFamily = remoteEP.AddressFamily;
+                    if (addressFamily == AddressFamily.Unknown || addressFamily == AddressFamily.Unspecified)
+                        addressFamily = IPAddress.Any.AddressFamily;
 
-                    socket = new NativeSocket(family, SocketType.Stream, ProtocolType.Tcp);
+                    socket = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
                     Configure(socket);
 
                     socket.ConnectAsync(remoteEP)
@@ -253,16 +252,16 @@ namespace Sweet.Actors
         {
             socket.SetIOLoopbackFastPath();
 
-            if (_settings.SendTimeoutMSec > 0)
+            if (_options.SendTimeoutMSec > 0)
             {
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
-                                        _settings.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.SendTimeoutMSec);
+                                        _options.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.SendTimeoutMSec);
             }
 
-            if (_settings.ReceiveTimeoutMSec > 0)
+            if (_options.ReceiveTimeoutMSec > 0)
             {
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
-                                        _settings.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.ReceiveTimeoutMSec);
+                                        _options.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.ReceiveTimeoutMSec);
             }
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
@@ -302,18 +301,19 @@ namespace Sweet.Actors
             { }
         }
 
-        public Task Send(IMessage msg, Aid to)
+        public Task Send(IMessage message, Aid to)
         {
             ThrowIfDisposed();
-            if (msg == null)
-                return Task.FromException(new ArgumentNullException(nameof(msg)));
+
+            if (message == null)
+                return Task.FromException(new ArgumentNullException(nameof(message)));
 
             var tcs = new TaskCompletionSource<object>();
 
             _requestQueue.Enqueue(new Request {
                 Id = RpcMessageId.Next(),
                 To = to,
-                Message = msg,
+                Message = message,
                 TaskCompletionSource = tcs
             });
 
@@ -350,12 +350,12 @@ namespace Sweet.Actors
                     FutureMessage future = null;
                     try
                     {
-                        var msg = request.Message;
-                        isFutureCall = (msg.MessageType == MessageType.FutureMessage);
+                        var message = request.Message;
+                        isFutureCall = (message.MessageType == MessageType.FutureMessage);
 
                         if (isFutureCall)
                         {
-                            future = (FutureMessage)msg;
+                            future = (FutureMessage)message;
                             if (future.IsCanceled)
                             {
                                 tcs.TrySetCanceled();
@@ -365,7 +365,7 @@ namespace Sweet.Actors
                             }
                         }
 
-                        if (msg.Expired)
+                        if (message.Expired)
                         {
                             var error = new Exception(Errors.MessageExpired);
 
@@ -431,14 +431,14 @@ namespace Sweet.Actors
             }
         }
 
-        protected virtual bool Write(RpcMessage msg, bool flush = true)
+        protected virtual bool Write(RpcMessage message, bool flush = true)
         {
             if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
             {
                 var stream = _outStream;
                 if (stream != null)
                 {
-                    var data = _serializer.Serialize(msg);
+                    var data = _serializer.Serialize(message);
                     if (data != null)
                     {
                         var dataLen = data.Length;
@@ -453,7 +453,7 @@ namespace Sweet.Actors
                         stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
                         
                         // Message Id
-                        var msgIdBytes = Interlocked.Increment(ref _remoteMessageId).ToBytes();
+                        var msgIdBytes = Interlocked.Increment(ref _messageIdSeed).ToBytes();
                         stream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                         // Serialization type

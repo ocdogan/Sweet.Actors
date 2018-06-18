@@ -30,32 +30,34 @@ namespace Sweet.Actors
     {
         public static readonly RemoteEndPoint Default = new RemoteEndPoint(null, -1);
           
-        private int _port;
-        private string _host;
+        private int _port = Constants.DefaultPort;
+        private string _host = Constants.DefaultHost;
+
         private int _hashCode;
 
         public RemoteEndPoint(string host, int port)
         {
             _host = host?.Trim();
-            if (string.IsNullOrEmpty(host))
+            if (String.IsNullOrEmpty(host))
                 _host = Constants.DefaultHost;
             _port = port < 0 ? Constants.DefaultPort : port;
         }
 
         public string Host => _host;
+
         public int Port => _port;
 
         public override string ToString()
         {
-            return $"{Host}:{Port}";
+            return $"{_host}:{_port}";
         } 
 
         public override int GetHashCode()
         {
             if (_hashCode == 0)
             {
-                var hash = 1 + (Host ?? String.Empty).GetHashCode();
-                _hashCode = 31 * hash + Port.GetHashCode();
+                var hash = 1 + (_host ?? String.Empty).GetHashCode();
+                _hashCode = 31 * hash + _port.GetHashCode();
             }
             return _hashCode;
         }
@@ -65,10 +67,10 @@ namespace Sweet.Actors
             if (obj == null)
                 return false;
             
-            if (obj is RemoteEndPoint rr)
-                return (rr.GetHashCode() == GetHashCode()) &&
-                    rr.Port == Port &&
-                    rr.Host == Host;
+            if (obj is RemoteEndPoint re)
+                return (re.GetHashCode() == GetHashCode()) &&
+                    re._port == _port &&
+                    re._host == _host;
             return false;
         }
     }

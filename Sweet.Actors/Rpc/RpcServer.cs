@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -31,9 +32,9 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public class RpcServer : Disposable
+    public abstract class RpcServer : Disposable, IRemoteServer
     {
-        private class ReceiveContext : Disposable
+        private class ReceiveContext : Disposable, IRpcConnection
         {
             private RpcServer _server;
             private Socket _connection;
@@ -52,7 +53,7 @@ namespace Sweet.Actors
 
             public IPEndPoint RemoteEndPoint => _remoteEndPoint;
 
-            public RpcServer Server => _server;
+            public IRemoteServer Server => _server;
 
             protected override void OnDispose(bool disposing)
             {
@@ -76,21 +77,21 @@ namespace Sweet.Actors
                 {
                     if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred))
                     {
-                        IMessage msg = null;
+                        IMessage message = null;
                         try
                         {
                             if (_buffer.TryGetMessage(out (IMessage, Aid) receivedMsg))
                             {
-                                msg = receivedMsg.Item1;
-                                Server.HandleMessage(receivedMsg, this);
+                                message = receivedMsg.Item1;
+                                _server.HandleMessage(receivedMsg, this);
                             }
                         }
                         catch (Exception e)
                         {
-                            if ((msg != null) && (msg.MessageType == MessageType.FutureMessage))
+                            if ((message != null) && (message.MessageType == MessageType.FutureMessage))
                             {
-                                var response = CreateResponseError(msg, e);
-                                Server.SendMessage(response, this);
+                                var response = CreateResponseError(message, e);
+                                _server.SendMessage(response, this);
                                 return;
                             }
                             throw;
@@ -104,7 +105,7 @@ namespace Sweet.Actors
                 }
             }
 
-            private Message CreateResponseError(IMessage msg, Exception exception)
+            private IMessage CreateResponseError(IMessage message, Exception exception)
             {
                 return null;
             }
@@ -118,13 +119,12 @@ namespace Sweet.Actors
         private int _accepting;
         private long _status = RpcServerStatus.Stopped;
 
-        private ActorSystem _actorSystem;
-
         private Socket _listener;
 		private IPEndPoint _localEndPoint;
-        private RpcServerSettings _settings;
+        private RpcServerOptions _options;
 
         private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
+        private readonly ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
 
         static RpcServer()
         {
@@ -132,13 +132,30 @@ namespace Sweet.Actors
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
-        public RpcServer(ActorSystem actorSystem, RpcServerSettings settings = null)
+        internal RpcServer(RpcServerOptions options = null)
         {
-            _actorSystem = actorSystem;
-            _settings = ((RpcServerSettings)settings?.Clone()) ?? new RpcServerSettings();
+            _options = options?.Clone() ?? RpcServerOptions.Default;
         }
 
-        public IPEndPoint EndPoint => _localEndPoint ?? _settings?.EndPoint;
+        protected override void OnDispose(bool disposing)
+        {
+            if (_actorSystemBindings.Count > 0)
+            {
+                var actorSystems = _actorSystemBindings.Values.ToArray();
+                _actorSystemBindings.Clear();
+
+                foreach (var actorSystem in actorSystems)
+                    actorSystem.SetRemoteManager(null);
+            }
+
+            if (!disposing)
+                TryToStop();
+            else Stop();
+
+            base.OnDispose(disposing);
+        }
+
+        public IPEndPoint EndPoint => _localEndPoint ?? _options?.EndPoint;
 
         public long Status
         {
@@ -151,18 +168,36 @@ namespace Sweet.Actors
             }
         }
 
-        protected override void OnDispose(bool disposing)
-        {
-            base.OnDispose(disposing);
-            if (!disposing)
-                TryToStop();
-            else Stop();
-        }
-
         public void Start()
         {
             Stop();
             StartListening();
+        }
+
+        public virtual bool Bind(ActorSystem actorSystem)
+        {
+            ThrowIfDisposed();
+
+            if (actorSystem != null &&
+                (!_actorSystemBindings.TryGetValue(actorSystem.Name, out ActorSystem bindedSystem) || 
+                bindedSystem == actorSystem))
+            {
+                _actorSystemBindings[actorSystem.Name] = actorSystem;
+                return true;
+            }
+            return false;
+        }
+
+        public virtual bool Unbind(ActorSystem actorSystem)
+        {
+            ThrowIfDisposed();
+
+            if (actorSystem != null &&
+                _actorSystemBindings.TryGetValue(actorSystem.Name, out ActorSystem bindedSystem) &&
+                bindedSystem == actorSystem)
+                return _actorSystemBindings.TryRemove(actorSystem.Name, out bindedSystem);
+
+            return false;
         }
 
         private void StartListening()
@@ -170,16 +205,16 @@ namespace Sweet.Actors
             if ((_stopping != Constants.True) &&
                 Common.CompareAndSet(ref _status, RpcServerStatus.Stopped, RpcServerStatus.Starting))
             {
-                var servingEP = _settings.EndPoint;
+                var servingEP = _options.EndPoint;
 
                 Socket listener = null;
                 try
                 {
-                    var family = servingEP.AddressFamily;
-                    if (family == AddressFamily.Unknown || family == AddressFamily.Unspecified)
-                        family = IPAddress.Any.AddressFamily;
+                    var addressFamily = servingEP.AddressFamily;
+                    if (addressFamily == AddressFamily.Unknown || addressFamily == AddressFamily.Unspecified)
+                        addressFamily = IPAddress.Any.AddressFamily;
 
-                    listener = new NativeSocket(family, SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
+                    listener = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
                     Configure(listener);
                 }
                 catch (Exception)
@@ -194,7 +229,7 @@ namespace Sweet.Actors
                 try
                 {
                     listener.Bind(servingEP);
-                    listener.Listen(_settings.ConcurrentConnections);
+                    listener.Listen(_options.ConcurrentConnections);
 
                     var localEP = (listener.LocalEndPoint as IPEndPoint) ?? 
                         (IPEndPoint)listener.LocalEndPoint;
@@ -219,23 +254,22 @@ namespace Sweet.Actors
         {
             socket.SetIOLoopbackFastPath();
 
-            if (_settings.SendTimeoutMSec > 0)
+            if (_options.SendTimeoutMSec > 0)
             {
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
-                                        _settings.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.SendTimeoutMSec);
+                                        _options.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.SendTimeoutMSec);
             }
 
-            if (_settings.ReceiveTimeoutMSec > 0)
+            if (_options.ReceiveTimeoutMSec > 0)
             {
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
-                                        _settings.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _settings.ReceiveTimeoutMSec);
+                                        _options.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.ReceiveTimeoutMSec);
             }
 
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
             socket.NoDelay = true;
         }
-
 
         private SocketAsyncEventArgs NewSocketAsyncEventArgs()
         {
@@ -357,7 +391,7 @@ namespace Sweet.Actors
                         else
                         {
                             var readEventArgs = AcquireSocketAsyncEventArgs(connection);
-                            StartReceiveAsync(server, connection, readEventArgs);
+                            StartReceiveAsync(connection, readEventArgs);
                         }
                     }).Ignore();
                 }
@@ -373,7 +407,7 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartReceiveAsync(RpcServer server, Socket connection, SocketAsyncEventArgs eventArgs)
+        private void StartReceiveAsync(Socket connection, SocketAsyncEventArgs eventArgs)
         {
             try
             {
@@ -414,7 +448,7 @@ namespace Sweet.Actors
             if (eventArgs.LastOperation != SocketAsyncOperation.Receive)
                 throw new ArgumentException(Errors.ExpectingReceiveCompletedOperation);
 
-            ((ReceiveContext)eventArgs.UserToken).Server.ProcessReceived(eventArgs);
+            ((RpcServer)((ReceiveContext)eventArgs.UserToken).Server).ProcessReceived(eventArgs);
         }
 
         private void ProcessReceived(SocketAsyncEventArgs eventArgs)
@@ -437,7 +471,7 @@ namespace Sweet.Actors
             }
             
             if (continueReceiving)
-                StartReceiveAsync(receiveContext.Server, connection, eventArgs);
+                StartReceiveAsync(connection, eventArgs);
             else {
                 CloseSocket(connection);
                 ReleaseSocketAsyncEventArgs(eventArgs);
@@ -510,16 +544,8 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        private void HandleMessage((IMessage, Aid) receivedMsg, ReceiveContext ctx)
-        {
-            var to = receivedMsg.Item2;
-            if (to != null)
-            {
-                var msg = receivedMsg.Item1;
-            }
-        }
+        protected abstract void HandleMessage((IMessage, Aid) receivedMsg, IRpcConnection connection);
 
-        private void SendMessage(IMessage msg, ReceiveContext ctx)
-        { }
+        protected abstract void SendMessage(IMessage message, IRpcConnection connection);
     }
 }

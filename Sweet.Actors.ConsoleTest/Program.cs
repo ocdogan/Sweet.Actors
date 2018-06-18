@@ -68,48 +68,53 @@ namespace Sweet.Actors.ConsoleTest
             // AverageTest();
 
             // ChunkedStreamTest();
-            ServerTest();
+            // ClientServerTest();
+            RemoteTest();
 
             // ActorTest();
         }
 
-        private static void ServerTest()
+        private static void RemoteTest()
         {
-            var sysOptions = ActorSystemOptions
-                .UsingName("default")
+            var remoteManager = new RpcManager((new RpcServerOptions()).UsingIPAddress("127.0.0.1"));
+            remoteManager.Start();
+
+            var systemOptions = ActorSystemOptions
+                .UsingName("system")
                 .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
 
-            var actorOptions = ActorOptions
-                .UsingName("dummy")
-                .UsingSequentialInvokeLimit(1000);
+            var actorSystem = ActorSystem.GetOrAdd(systemOptions);
+            // var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
 
-            var actorSystem = ActorSystem.GetOrAdd(sysOptions);
-            var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
-
-            var serverSettings = (new RpcServerSettings()).UsingIPAddress("127.0.0.1");
-
-            var server = new RpcServer(actorSystem, serverSettings);
-            server.Start();
+            remoteManager.Bind(actorSystem);
 
             Thread.Sleep(2000);
 
-            var serverEP = server.EndPoint;
-            var clientSettings = (new RpcClientSettings()).UsingEndPoint(serverEP);
+            /* var serverEP = remoteManager.EndPoint;
+            var clientSettings = (new RpcClientOptions()).UsingEndPoint(serverEP); */
 
-            Console.WriteLine(serverEP);
+            Console.WriteLine(remoteManager.EndPoint);
 
-            var client = new RpcClient(clientSettings);
+            var actorOptions = ActorOptions
+                .UsingName("actor")
+                .UsingSequentialInvokeLimit(1000)
+                .UsingRemoteActorSystem("system")
+                .UsingRemoteEndPoint(remoteManager.EndPoint);
+
+            var remotePid = actorSystem.FromRemote(actorOptions);
+            remotePid.Tell("hello");
+
+            /* var client = new RpcClient(clientSettings);
 
             Task.Factory.StartNew(() => {
-                client.Connect();
                 client.Send(Message.Empty, new Aid("system", "actor"));
-            }, TaskCreationOptions.LongRunning);
+            }); */
 
             Console.WriteLine("Press any key to exit");
-            // Console.ReadKey();
+            Console.ReadKey();
 
-            while (true)
-                Thread.Sleep(1000);
+            /* while (true)
+                Thread.Sleep(1000); */
         }
 
         private static void ChunkedStreamTest()

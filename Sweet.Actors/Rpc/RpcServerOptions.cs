@@ -22,17 +22,43 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+
 namespace Sweet.Actors
 {
-    public class RpcClientSettings : RpcSettings<RpcClientSettings>
+    public class RpcServerOptions : RpcOptions<RpcServerOptions>
     {
-        public RpcClientSettings()
+        public static readonly RpcServerOptions Default = new RpcServerOptions();
+
+        public const int MinConcurrentConnectionsCount = 10;
+		public const int DefaultConcurrentConnectionsCount = Constants.KB;
+
+        private int _concurrentConnections = DefaultConcurrentConnectionsCount;
+
+        public RpcServerOptions()
             : base()
         { }
 
-        protected override RpcClientSettings NewInstance()
+        public int ConcurrentConnections => _concurrentConnections; 
+
+        public RpcServerOptions UsingConcurrentConnections(int concurrentConnections)
         {
-            return new RpcClientSettings();
+            _concurrentConnections = (concurrentConnections < 1) ? DefaultConcurrentConnectionsCount : 
+                Math.Max(MinConcurrentConnectionsCount, concurrentConnections);
+            return this;
+        }
+
+        protected override RpcServerOptions New()
+        {
+            return new RpcServerOptions();
+        }
+
+        public override RpcServerOptions Clone()
+        {
+            var result = base.Clone();
+            result._concurrentConnections = _concurrentConnections;
+
+            return result;
         }
     }
 }
