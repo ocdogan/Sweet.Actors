@@ -25,6 +25,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -54,7 +55,7 @@ namespace Sweet.Actors
         private int _sequentialInvokeLimit;
         private IErrorHandler _errorHandler;
 
-        private ConcurrentQueue<Message> _mailbox = new ConcurrentQueue<Message>();
+        private ConcurrentQueue<IMessage> _mailbox = new ConcurrentQueue<IMessage>();
 
         public Process(string name, ActorSystem actorSystem, 
                        IActor actor, IErrorHandler errorHandler = null,
@@ -98,13 +99,21 @@ namespace Sweet.Actors
             base.OnDispose(disposing);
         }
 
-        public static bool TryGet(Pid pid, out Process process)
+        public Task Send(IMessage message, int timeoutMSec = -1)
         {
-            if (pid != null)
-                return _processRegistery.TryGetValue(pid, out process);
-
-            process = null;
-            return false;
+            if (message != null)
+            {
+                try
+                {
+                    _mailbox.Enqueue(message);
+                    StartNewProcess();
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException(e);
+                }
+            }
+            return Sended;
         }
 
         public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
@@ -167,7 +176,7 @@ namespace Sweet.Actors
                     FutureMessage future = null;
 
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_mailbox.TryDequeue(out Message message))
+                        !_mailbox.TryDequeue(out IMessage message))
                         break;
                     
                     try
@@ -216,7 +225,7 @@ namespace Sweet.Actors
             return ProcessCompleted;
         }
 
-        private void HandleError(Message message, Exception e)
+        private void HandleError(IMessage message, Exception e)
         {
             try
             {
@@ -226,7 +235,7 @@ namespace Sweet.Actors
             { }
         }
 
-        protected virtual Task Send(IContext ctx, Message message)
+        protected virtual Task Send(IContext ctx, IMessage message)
         {
             return Actor.OnReceive(ctx, message);
         }

@@ -24,6 +24,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -183,10 +185,38 @@ namespace Sweet.Actors
 
         protected override void HandleMessage((IMessage, Aid) receivedMsg, IRpcConnection connection)
         {
-            var to = receivedMsg.Item2;
-            if (to != null)
+            var message = receivedMsg.Item1;
+            if (message != null)
             {
-                var msg = receivedMsg.Item1;
+                var to = receivedMsg.Item2;
+                if (to != null)
+                {
+                    var actor = to.Actor?.Trim();
+                    var actorSystem = to.ActorSystem?.Trim();
+
+                    if (!String.IsNullOrEmpty(actor) &&
+                        !String.IsNullOrEmpty(actorSystem) &&
+                        TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem))
+                    {
+                        var pid = bindedSystem.Get(actor);
+                        if (pid != null && pid != Pid.Unknown)
+                        {
+                            if (!(message is FutureMessage))
+                                pid.Tell(message);
+                            else {
+                                var header = message.Header as IDictionary<string, string>;
+                                if (header == null && message.Header != null)
+                                {
+                                    header = new Dictionary<string, string>();
+                                    foreach (var kv in message.Header)
+                                        header.Add(kv);
+                                }
+
+                                pid.Request<object>(message.Data, header);
+                            };
+                        }
+                    }
+                }
             }
         }
 

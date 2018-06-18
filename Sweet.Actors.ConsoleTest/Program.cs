@@ -43,10 +43,10 @@ namespace Sweet.Actors.ConsoleTest
         {
             private int _state;
 
-            public Task OnReceive(IContext ctx, IMessage msg)
+            public Task OnReceive(IContext ctx, IMessage message)
             {
                 var i = Interlocked.Add(ref _state, 1);
-                if (msg is IFutureMessage futureMessage)
+                if (message is IFutureMessage futureMessage)
                 {
                     ((IFutureContext)ctx).RespondTo(futureMessage, i);
                 }
@@ -74,9 +74,67 @@ namespace Sweet.Actors.ConsoleTest
             // ActorTest();
         }
 
+        private static void RunRemoteSystem()
+        {
+            var remoteServerOptions = (new RpcServerOptions())
+                .UsingIPAddress("127.0.0.1")
+                .UsingPort(17777);
+
+            var remoteManager = new RpcManager(remoteServerOptions);
+            remoteManager.Start();
+
+            var remoteSystemOptions = ActorSystemOptions
+                .UsingName("remote-system")
+                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+
+            var remoteSystem = ActorSystem.GetOrAdd(remoteSystemOptions);
+            remoteManager.Bind(remoteSystem);
+
+            var actorOptions = ActorOptions
+                .UsingName("remote-actor");
+
+            remoteSystem.FromFunction((ctx, message) => {
+                    Console.WriteLine(message.Data);
+                    return Receive.Completed;
+                },
+                actorOptions);
+        }
+
+        private static void RunLocalSystem()
+        {
+            var localServerOptions = (new RpcServerOptions())
+                .UsingIPAddress("127.0.0.1")
+                .UsingPort(18888);
+
+            var localManager = new RpcManager(localServerOptions);
+            localManager.Start();
+
+            var localSystemOptions = ActorSystemOptions
+                .UsingName("local-system")
+                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+
+            var localSystem = ActorSystem.GetOrAdd(localSystemOptions);
+
+            localManager.Bind(localSystem);
+
+            var remoteActorOptions = ActorOptions
+                .UsingName("remote-actor")
+                .UsingRemoteActorSystem("remote-system")
+                .UsingRemoteEndPoint("127.0.0.1", 17777);
+
+            var remotePid = localSystem.FromRemote(remoteActorOptions);
+            remotePid.Tell("hello");
+        }
+
         private static void RemoteTest()
         {
-            var remoteManager = new RpcManager((new RpcServerOptions()).UsingIPAddress("127.0.0.1"));
+            RunRemoteSystem();
+            RunLocalSystem();
+
+            Console.WriteLine("Press any key to exit");
+            Console.Read();
+
+            /* var remoteManager = new RpcManager((new RpcServerOptions()).UsingIPAddress("127.0.0.1"));
             remoteManager.Start();
 
             var systemOptions = ActorSystemOptions
@@ -84,14 +142,10 @@ namespace Sweet.Actors.ConsoleTest
                 .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
-            // var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
 
             remoteManager.Bind(actorSystem);
 
             Thread.Sleep(2000);
-
-            /* var serverEP = remoteManager.EndPoint;
-            var clientSettings = (new RpcClientOptions()).UsingEndPoint(serverEP); */
 
             Console.WriteLine(remoteManager.EndPoint);
 
@@ -104,17 +158,9 @@ namespace Sweet.Actors.ConsoleTest
             var remotePid = actorSystem.FromRemote(actorOptions);
             remotePid.Tell("hello");
 
-            /* var client = new RpcClient(clientSettings);
-
-            Task.Factory.StartNew(() => {
-                client.Send(Message.Empty, new Aid("system", "actor"));
-            }); */
-
             Console.WriteLine("Press any key to exit");
-            Console.ReadKey();
-
-            /* while (true)
-                Thread.Sleep(1000); */
+            Console.Read();
+            */
         }
 
         private static void ChunkedStreamTest()
@@ -174,7 +220,7 @@ namespace Sweet.Actors.ConsoleTest
         {
             var sw = new Stopwatch();
 
-            var sysOptions = ActorSystemOptions
+            var systemOptions = ActorSystemOptions
                 .UsingName("default")
                 .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
 
@@ -182,7 +228,7 @@ namespace Sweet.Actors.ConsoleTest
                 .UsingName("dummy")
                 .UsingSequentialInvokeLimit(1000);
 
-            var actorSystem = ActorSystem.GetOrAdd(sysOptions);
+            var actorSystem = ActorSystem.GetOrAdd(systemOptions);
             var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
 
             var state = 0;

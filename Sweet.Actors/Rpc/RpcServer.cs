@@ -174,6 +174,12 @@ namespace Sweet.Actors
             StartListening();
         }
 
+        protected bool TryGetBindedSystem(string actorSystem, out ActorSystem bindedSystem)
+        {
+            bindedSystem = null;
+            return !Disposed && _actorSystemBindings.TryGetValue(actorSystem, out bindedSystem);
+        }
+
         public virtual bool Bind(ActorSystem actorSystem)
         {
             ThrowIfDisposed();

@@ -45,17 +45,22 @@ namespace Sweet.Actors
 
         internal Process Process => _process;
 
+        internal Task Tell(IMessage message, int timeoutMSec = -1)
+        {
+			return _process.Send(message, timeoutMSec);
+        }
+
         public virtual Task Tell(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
 			return _process.Send(message, header, timeoutMSec);
         }
 
-		public virtual Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public virtual Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
 			return _process.Request<T>(message, header, timeoutMSec);
         }
 
-        public override string ToString()
+		public override string ToString()
         {
             return base.ToString();
         }

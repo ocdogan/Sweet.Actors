@@ -58,8 +58,7 @@ namespace Sweet.Actors
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
-		internal Message(object data, Aid from = null, IDictionary<string, string> header = null, 
-		                 int timeoutMSec = -1)
+		internal Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             Data = data;
             From = from ?? Aid.Unknown;
@@ -101,7 +100,7 @@ namespace Sweet.Actors
     internal abstract class FutureMessage : Message, IFutureMessage
     {
         internal FutureMessage(object data, Type responseType,
-                               Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+                               Aid from, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         {
             ResponseType = responseType;
@@ -188,15 +187,13 @@ namespace Sweet.Actors
     {
         protected bool _isEmpty;
 
-		internal FutureResponse(Aid from = null, IDictionary<string, string> header = null,
-                         int timeoutMSec = -1)
+		internal FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(default(T), from, header, timeoutMSec)
         {
             _isEmpty = true;
         }
 
-        internal FutureResponse(T data,
-		                        Aid from = null, IDictionary<string, string> header = null,
+		internal FutureResponse(T data, Aid from = null, IDictionary<string, string> header = null,
                                 int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         { }
@@ -216,8 +213,7 @@ namespace Sweet.Actors
     {
         private Exception _error;
 
-        internal FutureError(Exception e,
-                                Aid from = null, IDictionary<string, string> header = null)
+        internal FutureError(Exception e, Aid from = null, IDictionary<string, string> header = null)
             : base(default(T), from, header)
         {
             _error = e;
