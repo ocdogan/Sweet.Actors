@@ -32,22 +32,22 @@ namespace Sweet.Actors
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public (IMessage, Aid, WireMessageId) Deserialize(byte[] data)
+        public RemoteMessage Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return (Message.Empty, Aid.Unknown, WireMessageId.Empty);
+                return null;
 
             using (var stream = new ChunkedStream(data))
             {
-                return (_serializer.Deserialize<WireMessage>(stream)).ToActualMessage();
+                return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
             }
         }
 
-        public (IMessage, Aid, WireMessageId) Deserialize(Stream stream)
+        public RemoteMessage Deserialize(Stream stream)
         {
             if (stream == null)
-                return (Message.Empty, Aid.Unknown, WireMessageId.Empty);
-            return (_serializer.Deserialize<WireMessage>(stream)).ToActualMessage();
+                return null;
+            return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
         }
 
         public byte[] Serialize(WireMessage message)

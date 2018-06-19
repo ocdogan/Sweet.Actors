@@ -36,11 +36,12 @@ namespace Sweet.Actors
 {
     internal class RpcClient : Disposable, IRemoteClient
     {
-        private class Request
+        private class Request : RemoteMessage
         {
-            public Aid To;
-            public WireMessageId Id;
-            public IMessage Message;
+            public Request(IMessage message, Aid to)
+                : base(message, to, WireMessageId.Next())
+            { }
+
             public TaskCompletionSource<object> TaskCompletionSource;
         }
 
@@ -287,12 +288,10 @@ namespace Sweet.Actors
 
             var tcs = new TaskCompletionSource<object>();
 
-            _requestQueue.Enqueue(new Request {
-                Id = WireMessageId.Next(),
-                To = to,
-                Message = message,
-                TaskCompletionSource = tcs
-            });
+            _requestQueue.Enqueue(
+                new Request(message, to) {
+                    TaskCompletionSource = tcs
+                });
 
             Schedule();
             return tcs.Task;
@@ -417,10 +416,10 @@ namespace Sweet.Actors
 
         private void Send(Request request, bool flush = true)
         {
-            _responseList[request.Id] = request;
+            _responseList[request.MessageId] = request;
             try
             {
-                var wireMsg = request.Message.ToWireMessage(request.To, request.Id);
+                var wireMsg = request.Message.ToWireMessage(request.To, request.MessageId);
                 if (Write(wireMsg, flush) && flush)
                     BeginReceive();
             }

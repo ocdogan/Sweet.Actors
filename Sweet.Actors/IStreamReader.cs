@@ -23,14 +23,30 @@
 #endregion License
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public interface IChunkedStreamReader : IStreamReader, IDisposable
+    public interface IStreamReader : IDisposable
     {
-        int ChunkSize { get; }
-        int Origin { get; }
+        bool Closed { get; }
+        long Position { get; set; }
 
-        byte[] ToArray();
+        int Read(byte[] buffer, int offset, int count);
+        Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
+        int ReadByte();
+        bool ReadBoolean();
+        sbyte ReadSByte();
+        char ReadChar();
+        short ReadInt16();
+        ushort ReadUInt16();
+        int ReadInt32();
+        uint ReadUInt32();
+        long ReadInt64();
+        ulong ReadUInt64();
+        float ReadSingle();
+        double ReadDouble();
+        decimal ReadDecimal();
     }
 }

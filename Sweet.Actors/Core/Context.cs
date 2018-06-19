@@ -34,15 +34,12 @@ namespace Sweet.Actors
         object GetData(string key);
         void SetData(string key, object data);
         bool TryGetData(string key, out object data);
+
+        void RespondTo<T>(IMessage message, T response, IDictionary<string, string> header = null);
+        void RespondToWithError<T>(IMessage message, Exception e, IDictionary<string, string> header = null);
     }
 
-    public interface IFutureContext : IContext
-    {
-        void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null);
-        void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null);
-    }
-
-    internal class Context : Disposable, IContext, IFutureContext
+    internal class Context : Disposable, IContext
     {
         private Pid _pid;
         private Process _process;
@@ -86,14 +83,16 @@ namespace Sweet.Actors
             _dataCtx[key] = data;
         }
 
-        public void RespondTo<T>(IFutureMessage future, T response, IDictionary<string, string> header = null)
+        public void RespondTo<T>(IMessage message, T response, IDictionary<string, string> header = null)
         {
-            ((FutureMessage)future).Respond(response, _pid, header);
+            if (message is FutureMessage future)
+                future.Respond(response, _pid, header);
         }
 
-        public void RespondToWithError<T>(IFutureMessage future, Exception e, IDictionary<string, string> header = null)
+        public void RespondToWithError<T>(IMessage message, Exception e, IDictionary<string, string> header = null)
         {
-            ((FutureMessage)future).Respond(new FutureError<T>(e, _pid, header));
+            if (message is FutureMessage future)
+                future.Respond(new FutureError<T>(e, _pid, header));
         }
     }
 }

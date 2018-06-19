@@ -77,7 +77,7 @@ namespace Sweet.Actors
                 {
                     if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred))
                     {
-                        var receivedMsg = ((IMessage)null, Aid.Unknown, WireMessageId.Empty);
+                        RemoteMessage receivedMsg = null;
                         try
                         {
                             if (_buffer.TryGetMessage(out receivedMsg))
@@ -85,10 +85,10 @@ namespace Sweet.Actors
                         }
                         catch (Exception e)
                         {
-                            var message = receivedMsg.Item1;
+                            var message = receivedMsg.Message;
                             if ((message != null) && (message.MessageType == MessageType.FutureMessage))
                             {
-                                var response = CreateResponseError(receivedMsg, e);
+                                var response = message.ToWireMessage(receivedMsg.To, receivedMsg.MessageId, e);
                                 _server.SendMessage(response, this);
                                 return;
                             }
@@ -101,11 +101,6 @@ namespace Sweet.Actors
                     _buffer.Dispose();
                     throw;
                 }
-            }
-
-            private (IMessage, Aid, WireMessageId) CreateResponseError((IMessage, Aid, WireMessageId) message, Exception exception)
-            {
-                return (null, Aid.Unknown, WireMessageId.Empty);
             }
         }
 
@@ -320,7 +315,7 @@ namespace Sweet.Actors
             }
         }
 
-        private static void CloseSocket(Socket socket)
+        protected static void CloseSocket(Socket socket)
         {
             if (socket != null)
             {
@@ -396,7 +391,7 @@ namespace Sweet.Actors
                             server.CloseConnection(connection);
                         else
                         {
-                            var readEventArgs = AcquireSocketAsyncEventArgs(connection);
+                            var readEventArgs = AcquireReceiveEventArgs(connection);
                             StartReceiveAsync(connection, readEventArgs);
                         }
                     }).Ignore();
@@ -423,11 +418,11 @@ namespace Sweet.Actors
             catch (Exception)
             {
                 CloseSocket(connection);
-                ReleaseSocketAsyncEventArgs(eventArgs);
+                ReleaseReceiveEventArgs(eventArgs);
             }
         }
 
-        protected SocketAsyncEventArgs AcquireSocketAsyncEventArgs(Socket connection)
+        private SocketAsyncEventArgs AcquireReceiveEventArgs(Socket connection)
         {
             var result = SocketAsyncEventArgsCache.Default.Acquire();
 
@@ -437,7 +432,7 @@ namespace Sweet.Actors
             return result;
         }
 
-        protected void ReleaseSocketAsyncEventArgs(SocketAsyncEventArgs eventArgs)
+        private void ReleaseReceiveEventArgs(SocketAsyncEventArgs eventArgs)
         {
             if (eventArgs != null)
             {
@@ -480,7 +475,7 @@ namespace Sweet.Actors
                 StartReceiveAsync(connection, eventArgs);
             else {
                 CloseSocket(connection);
-                ReleaseSocketAsyncEventArgs(eventArgs);
+                ReleaseReceiveEventArgs(eventArgs);
             }
         }
 
@@ -550,8 +545,8 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        protected abstract Task HandleMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection);
+        protected abstract Task HandleMessage(RemoteMessage receivedMsg, IRpcConnection connection);
 
-        protected abstract Task SendMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection);
+        protected abstract Task SendMessage(WireMessage message, IRpcConnection connection);
     }
 }

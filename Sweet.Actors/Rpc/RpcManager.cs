@@ -25,9 +25,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Net;
-using System.Threading;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace Sweet.Actors
@@ -187,78 +186,65 @@ namespace Sweet.Actors
             return false;
         }
 
-        protected override Task HandleMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection)
-        {
-            var message = receivedMsg.Item1;
-            if (message == null)
-                throw new Exception(RpcErrors.InvalidMessage);
-
-            var to = receivedMsg.Item2;
-            if (to == null || to == Aid.Unknown)
-                throw new Exception(RpcErrors.InvalidMessageReceiver);
-
-            var actor = to.Actor?.Trim();
-            var actorSystem = to.ActorSystem?.Trim();
-
-            if (String.IsNullOrEmpty(actor) ||
-                String.IsNullOrEmpty(actorSystem) ||
-                !TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem))
-                throw new Exception(RpcErrors.InvalidMessageReceiver);
-
-            var pid = bindedSystem.Get(actor);
-            if (pid == null || pid == Aid.Unknown)
-                throw new Exception(RpcErrors.InvalidMessageReceiver);
-
-            if (!(message is FutureMessage))
-                return pid.Tell(message);
-
-            var header = message.Header as IDictionary<string, string>;
-            if (header == null && message.Header != null)
-            {
-                header = new Dictionary<string, string>();
-                foreach (var kv in message.Header)
-                    header.Add(kv);
-            }
-
-            var response = pid.Request(message.Data, header);
-            if (response == null)
-                throw new Exception(RpcErrors.InvalidMessageResponse);
-
-            return response.ContinueWith((t) => {
-                SendMessage((t.Result, receivedMsg.Item2, receivedMsg.Item3), connection);
-            });
-        }
-
-        /* public Task Send(IMessage message, Aid to)
+        protected override Task HandleMessage(RemoteMessage receivedMsg, IRpcConnection connection)
         {
             ThrowIfDisposed();
 
+            var message = receivedMsg.Message;
             if (message == null)
-                return Task.FromException(new ArgumentNullException(nameof(message)));
+                throw new Exception(RpcErrors.InvalidMessage);
 
-            var tcs = new TaskCompletionSource<object>();
-
-            _requestQueue.Enqueue(new Request
+            var to = receivedMsg.To;
+            if (to != null && to != Aid.Unknown)
             {
-                Id = RpcMessageId.Next(),
-                To = to,
-                Message = message,
-                TaskCompletionSource = tcs
-            });
+                var actor = to.Actor?.Trim();
+                var actorSystem = to.ActorSystem?.Trim();
 
-            Schedule();
-            return tcs.Task;
-        } */
+                if (!(String.IsNullOrEmpty(actor) ||
+                    String.IsNullOrEmpty(actorSystem)) &&
+                    TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem))
+                {
+                    var pid = bindedSystem.Get(actor);
+                    if (pid != null && pid != Aid.Unknown)
+                    {
+                        if (!(message is FutureMessage))
+                            return pid.Tell(message);
 
-        protected override Task SendMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection)
-        {
-            var socket = connection.Connection;
-            if (socket.IsConnected())
-            {
-                var writeEventArgs = AcquireSocketAsyncEventArgs(socket);
-                
+                        var header = message.Header as IDictionary<string, string>;
+                        if (header == null && message.Header != null)
+                        {
+                            header = new Dictionary<string, string>();
+                            foreach (var kv in message.Header)
+                                header.Add(kv);
+                        }
+
+                        var response = pid.Request(message.Data, header);
+                        if (response == null)
+                            throw new Exception(RpcErrors.InvalidMessageResponse);
+
+                        return response.ContinueWith((t) =>
+                        {
+                            SendMessage(t.Result.ToWireMessage(receivedMsg.To, receivedMsg.MessageId), connection);
+                        });
+                    }
+                }
             }
-            return Receive.Completed;
+            throw new Exception(RpcErrors.InvalidMessageReceiver);
+        }
+
+        protected override Task SendMessage(WireMessage message, IRpcConnection connection)
+        {
+            try
+            {
+                ThrowIfDisposed();
+
+                _writer.Write(connection.Connection, message);
+                return Receive.Completed;
+            }
+            catch (Exception e)
+            {
+                return Task.FromException(e);
+            }
         }
     }
 }

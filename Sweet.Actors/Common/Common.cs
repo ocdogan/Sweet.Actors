@@ -423,40 +423,49 @@ namespace Sweet.Actors
 
         #region Wire Messages
 
-        public static (IMessage, Aid, WireMessageId) ToActualMessage(this WireMessage wireMsg)
+        public static RemoteMessage ToRemoteMessage(this WireMessage message)
         {
-            IMessage message = null;
+            IMessage msg = null;
             var wireMsgId = WireMessageId.Empty;
 
-            if (wireMsg != null)
+            if (message != null)
             {
-                switch (wireMsg.MessageType)
+                switch (message.MessageType)
                 {
                     case MessageType.Default:
-                        message = new Message(wireMsg.Data, Aid.Parse(wireMsg.From), wireMsg.Header);
+                        msg = new Message(message.Data, Aid.Parse(message.From), message.Header);
                         break;
                     case MessageType.FutureMessage:
-                        message = MessageFactory.CreateFutureMessage(Type.GetType(wireMsg.ResponseType), wireMsg.Data,
-                            Aid.Parse(wireMsg.From), wireMsg.Header, wireMsg.TimeoutMSec);
+                        msg = MessageFactory.CreateFutureMessage(Type.GetType(message.ResponseType), message.Data,
+                            Aid.Parse(message.From), message.Header, message.TimeoutMSec);
                         break;
                     case MessageType.FutureResponse:
-                        message = MessageFactory.CreateFutureResponse(Type.GetType(wireMsg.ResponseType), wireMsg.Data,
-                            Aid.Parse(wireMsg.From), wireMsg.Header);
+                        msg = MessageFactory.CreateFutureResponse(Type.GetType(message.ResponseType), message.Data,
+                            Aid.Parse(message.From), message.Header);
                         break;
                     case MessageType.FutureError:
-                        message = MessageFactory.CreateFutureError(Type.GetType(wireMsg.ResponseType), wireMsg.Exception,
-                            Aid.Parse(wireMsg.From), wireMsg.Header);
+                        msg = MessageFactory.CreateFutureError(Type.GetType(message.ResponseType), message.Exception,
+                            Aid.Parse(message.From), message.Header);
                         break;
                 }
 
-                if (!WireMessageId.TryParse(wireMsg.Id, out wireMsgId))
+                if (!WireMessageId.TryParse(message.Id, out wireMsgId))
                     wireMsgId = WireMessageId.Empty;
             }
 
-            return (message ?? Message.Empty, Aid.Parse(wireMsg?.To) ?? Aid.Unknown, wireMsgId ?? WireMessageId.Empty);
+            return new RemoteMessage(msg ?? Message.Empty, 
+                Aid.Parse(message?.To) ?? Aid.Unknown, 
+                wireMsgId ?? WireMessageId.Empty);
         }
 
-        public static WireMessage ToWireMessage(this IMessage message, Aid to, WireMessageId id = null)
+        public static WireMessage ToWireMessage(this RemoteMessage message, Exception exception = null)
+        {
+            if (message != null)
+                return ToWireMessage(message.Message, message.To, message.MessageId, exception);
+            return null;
+        }
+
+        public static WireMessage ToWireMessage(this IMessage message, Aid to, WireMessageId id = null, Exception exception = null)
         {
             var result = new WireMessage { To = to?.ToString(), Id = id?.ToString() ?? WireMessageId.NextAsString() };
             if (message != null)
@@ -492,7 +501,12 @@ namespace Sweet.Actors
                         state |= WireMessageState.Faulted;
                 }
 
-                if (message is IFutureError error)
+                if (exception != null)
+                {
+                    result.Exception = exception;
+                    state |= WireMessageState.Faulted;
+                }
+                else if (message is IFutureError error)
                 {
                     result.Exception = error.Exception;
 

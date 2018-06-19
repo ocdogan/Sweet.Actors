@@ -24,6 +24,7 @@
 
 using System;
 using System.IO;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
@@ -32,6 +33,7 @@ namespace Sweet.Actors
     internal class RpcMessageWriter : Disposable
     {
         private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
+        private static ByteArrayCache BufferCache = new ByteArrayCache(arraySize: RpcConstants.FrameSize);
 
         private int _messageIdSeed;
         private IWireSerializer _serializer;
@@ -62,13 +64,13 @@ namespace Sweet.Actors
             }
         }
 
-        public virtual bool Write(Stream stream, WireMessage wireMsg, bool flush = true)
+        public virtual bool Write(Stream stream, WireMessage message, bool flush = true)
         {
             ThrowIfDisposed();
 
             if (stream != null)
             {
-                var data = _serializer.Serialize(wireMsg);
+                var data = _serializer.Serialize(message);
                 if (data != null)
                 {
                     var dataLen = data.Length;
@@ -130,6 +132,106 @@ namespace Sweet.Actors
                         stream.Flush();
 
                     return true;
+                }
+            }
+            return false;
+        }
+
+        public virtual bool Write(Socket socket, WireMessage message)
+        {
+            ThrowIfDisposed();
+
+            if (socket.IsConnected())
+            {
+                var data = _serializer.Serialize(message);
+                if (data != null)
+                {
+                    var dataLen = data.Length;
+                    if (dataLen > RpcConstants.MaxDataSize)
+                        throw new Exception(Errors.MaxAllowedDataSizeExceeded);
+
+                    var buffer = BufferCache.Acquire();
+                    try
+                    {
+                        var offset = 0;
+
+                        /* Header */
+                        // Header sign
+                        buffer[0] = RpcConstants.HeaderSign;
+                        offset = 1;
+
+                        // Process Id
+                        Buffer.BlockCopy(ProcessIdBytes, 0, buffer, offset, ProcessIdBytes.Length);
+                        offset += ProcessIdBytes.Length;
+
+                        // Message Id
+                        var msgIdBytes = Interlocked.Increment(ref _messageIdSeed).ToBytes();
+
+                        Buffer.BlockCopy(msgIdBytes, 0, buffer, offset, msgIdBytes.Length);
+                        offset += msgIdBytes.Length;
+
+                        // Serialization type
+                        Buffer.BlockCopy(_serializerKeyBytes, 0, buffer, offset, _serializerKeyBytes.Length);
+                        offset += _serializerKeyBytes.Length;
+
+                        // Frame count
+                        var frameCount = (ushort)(dataLen > 0 ? ((dataLen / RpcConstants.FrameDataSize) + 1) : 0);
+
+                        var frameCntBytes = frameCount.ToBytes();
+
+                        Buffer.BlockCopy(frameCntBytes, 0, buffer, offset, frameCntBytes.Length);
+                        offset += frameCntBytes.Length;
+
+                        socket.Send(buffer, 0, offset, SocketFlags.None);
+
+                        var dataOffset = 0;
+
+                        /* Frames */
+                        for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
+                        {
+                            offset = 0;
+
+                            // Frame sign
+                            buffer[0] = RpcConstants.FrameSign;
+                            offset = 1;
+
+                            // Process Id
+                            Buffer.BlockCopy(ProcessIdBytes, 0, buffer, offset, ProcessIdBytes.Length);
+                            offset += ProcessIdBytes.Length;
+
+                            // Message Id
+                            Buffer.BlockCopy(msgIdBytes, 0, buffer, offset, msgIdBytes.Length);
+                            offset += msgIdBytes.Length;
+
+                            // Frame Id
+                            var frameIdBytes = frameIndex.ToBytes();
+
+                            Buffer.BlockCopy(frameIdBytes, 0, buffer, offset, frameIdBytes.Length);
+                            offset += frameIdBytes.Length;
+
+                            // Frame length
+                            var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
+
+                            var frameDataLenBytes = frameDataLen.ToBytes();
+
+                            Buffer.BlockCopy(frameDataLenBytes, 0, buffer, offset, frameDataLenBytes.Length);
+                            offset += frameDataLenBytes.Length;
+
+                            if (frameDataLen > 0)
+                            {
+                                Buffer.BlockCopy(data, dataOffset, buffer, offset, frameDataLen);
+                                offset += frameDataLen;
+
+                                dataOffset += frameDataLen;
+                            }
+                        }
+
+                        return true;
+                    }
+                    finally
+                    {
+                        BufferCache.Release(buffer);
+                    }
                 }
             }
             return false;

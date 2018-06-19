@@ -22,15 +22,21 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-
 namespace Sweet.Actors
 {
-    public interface IChunkedStreamReader : IStreamReader, IDisposable
+    public class RemoteMessage
     {
-        int ChunkSize { get; }
-        int Origin { get; }
+        public RemoteMessage(IMessage message, Aid to, WireMessageId messageId)
+        {
+            Message = message ?? Actors.Message.Empty;
+            To = to ?? Aid.Unknown;
+            MessageId = messageId ?? WireMessageId.Empty;
+        }
 
-        byte[] ToArray();
+        public IMessage Message { get; }
+
+        public Aid To { get; }
+
+        public WireMessageId MessageId { get; }
     }
 }

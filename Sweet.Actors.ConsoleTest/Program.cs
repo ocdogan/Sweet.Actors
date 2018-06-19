@@ -48,7 +48,7 @@ namespace Sweet.Actors.ConsoleTest
                 var i = Interlocked.Add(ref _state, 1);
                 if (message is IFutureMessage futureMessage)
                 {
-                    ((IFutureContext)ctx).RespondTo(futureMessage, i);
+                    ctx.RespondTo(futureMessage, i);
                 }
 
                 if (i >= loop)
@@ -94,10 +94,13 @@ namespace Sweet.Actors.ConsoleTest
                 .UsingName("remote-actor");
 
             remoteSystem.FromFunction((ctx, message) => {
-                    Console.WriteLine(message.Data);
-                    return Receive.Completed;
-                },
-                actorOptions);
+                Console.WriteLine(message.Data ?? "(null request)");
+
+                ctx.RespondTo(message, "world");
+
+                return Receive.Completed;
+            },
+            actorOptions);
         }
 
         private static void RunLocalSystem()
@@ -123,7 +126,13 @@ namespace Sweet.Actors.ConsoleTest
                 .UsingRemoteEndPoint("127.0.0.1", 17777);
 
             var remotePid = localSystem.FromRemote(remoteActorOptions);
-            remotePid.Tell("hello");
+            remotePid.Tell("hello (fire & forget)");
+
+            var task = remotePid.Request("hello (do not forget)");
+            task.ContinueWith((t) => {
+                var response = t.Result;
+                Console.WriteLine(response?.Data ?? "(null response)");
+            });
         }
 
         private static void RemoteTest()
@@ -236,9 +245,7 @@ namespace Sweet.Actors.ConsoleTest
             {
                 var i = Interlocked.Add(ref state, 1);
                 if (msg is IFutureMessage futureMessage)
-                {
-                    ((IFutureContext)ctx).RespondTo(futureMessage, i);
-                }
+                    ctx.RespondTo(futureMessage, i);
 
                 if (i >= loop)
                 {
