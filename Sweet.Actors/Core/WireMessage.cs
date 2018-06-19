@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -23,14 +23,39 @@
 #endregion License
 
 using System;
-using System.IO;
+using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
-    public interface IRpcSerializer
+    public enum WireMessageState : byte
     {
-        byte[] Serialize(RpcMessage message);
-        (IMessage, Aid) Deserialize(byte[] data);
-        (IMessage, Aid) Deserialize(Stream stream);
+        Default = 0,
+        Canceled = 1,
+        Completed = 2,
+        Empty = 4,
+        Faulted = 8
+    }
+
+    public class WireMessage
+    {
+        public string Id { get; set; }
+
+        public WireMessageState State { get; set; }
+
+        public MessageType MessageType { get; set; }
+
+        public object Data { get; set; }
+
+        public Dictionary<string, string> Header { get; set; }
+
+        public string From { get; set; }
+
+        public string To { get; set; }
+
+        public string ResponseType { get; set; }
+
+        public Exception Exception { get; set; }
+
+        public int TimeoutMSec { get; set; }
     }
 }

@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,6 +69,8 @@ namespace Sweet.Actors
 
         #endregion Constants
 
+        #region Platform
+
         public static bool IsWinPlatform
         {
             get
@@ -105,6 +108,8 @@ namespace Sweet.Actors
             }
         }
 
+        #endregion Platform
+
         public static int ValidateSequentialInvokeLimit(int sequentialInvokeLimit)
         {
             if (sequentialInvokeLimit < 1)
@@ -113,6 +118,8 @@ namespace Sweet.Actors
             return Math.Min(Constants.MaxSequentialInvokeLimit,
                         Math.Max(Constants.MinSequentialInvokeLimit, sequentialInvokeLimit));
         }
+
+        #region Atomic
 
         public static bool CompareAndSet(ref int value, int expectedValue, int newValue)
         {
@@ -140,6 +147,10 @@ namespace Sweet.Actors
             return Interlocked.CompareExchange(ref value, @new, expected) == expected;
         }
 
+        #endregion Atomic
+
+        #region IsEmpty
+
         internal static bool IsEmpty(this string obj)
         {
             return (obj == null || obj.Length == 0);
@@ -160,7 +171,11 @@ namespace Sweet.Actors
             return (endPoint is null || endPoint.IsEmpty);
         }
 
-		internal static void Ignore(this Task task)
+        #endregion IsEmpty
+
+        #region Threading.Task
+
+        internal static void Ignore(this Task task)
         {
             if (task.IsCompleted)
                 IgnoreTaskContinuation(task);
@@ -173,6 +188,10 @@ namespace Sweet.Actors
                     TaskScheduler.Default);
             }
         }
+
+        #endregion Threading.Task
+
+        #region Bytes
 
         internal static byte[] Clone(this byte[] bytes, int offset = 0, int length = -1)
         {
@@ -399,5 +418,99 @@ namespace Sweet.Actors
         }
 
         #endregion FromBytes
+
+        #endregion Bytes
+
+        #region Wire Messages
+
+        public static (IMessage, Aid, WireMessageId) ToActualMessage(this WireMessage wireMsg)
+        {
+            IMessage message = null;
+            var wireMsgId = WireMessageId.Empty;
+
+            if (wireMsg != null)
+            {
+                switch (wireMsg.MessageType)
+                {
+                    case MessageType.Default:
+                        message = new Message(wireMsg.Data, Aid.Parse(wireMsg.From), wireMsg.Header);
+                        break;
+                    case MessageType.FutureMessage:
+                        message = MessageFactory.CreateFutureMessage(Type.GetType(wireMsg.ResponseType), wireMsg.Data,
+                            Aid.Parse(wireMsg.From), wireMsg.Header, wireMsg.TimeoutMSec);
+                        break;
+                    case MessageType.FutureResponse:
+                        message = MessageFactory.CreateFutureResponse(Type.GetType(wireMsg.ResponseType), wireMsg.Data,
+                            Aid.Parse(wireMsg.From), wireMsg.Header);
+                        break;
+                    case MessageType.FutureError:
+                        message = MessageFactory.CreateFutureError(Type.GetType(wireMsg.ResponseType), wireMsg.Exception,
+                            Aid.Parse(wireMsg.From), wireMsg.Header);
+                        break;
+                }
+
+                if (!WireMessageId.TryParse(wireMsg.Id, out wireMsgId))
+                    wireMsgId = WireMessageId.Empty;
+            }
+
+            return (message ?? Message.Empty, Aid.Parse(wireMsg?.To) ?? Aid.Unknown, wireMsgId ?? WireMessageId.Empty);
+        }
+
+        public static WireMessage ToWireMessage(this IMessage message, Aid to, WireMessageId id = null)
+        {
+            var result = new WireMessage { To = to?.ToString(), Id = id?.ToString() ?? WireMessageId.NextAsString() };
+            if (message != null)
+            {
+                result.MessageType = message.MessageType;
+                result.From = message.From?.ToString();
+                result.Data = message.Data;
+
+                var msgHeader = message.Header;
+                if (msgHeader != null)
+                {
+                    var header = new Dictionary<string, string>(msgHeader.Count);
+                    foreach (var kv in msgHeader)
+                    {
+                        header.Add(kv.Key, kv.Value);
+                    }
+                    result.Header = header;
+                }
+
+                var state = WireMessageState.Default;
+                if (message is IFutureMessage future)
+                {
+                    result.TimeoutMSec = future.TimeoutMSec;
+                    result.ResponseType = future.ResponseType?.ToString();
+
+                    if (future.IsCanceled)
+                        state |= WireMessageState.Canceled;
+
+                    if (future.IsCompleted)
+                        state |= WireMessageState.Completed;
+
+                    if (future.IsFaulted)
+                        state |= WireMessageState.Faulted;
+                }
+
+                if (message is IFutureError error)
+                {
+                    result.Exception = error.Exception;
+
+                    if (error.IsFaulted)
+                        state |= WireMessageState.Faulted;
+                }
+
+                if (message is IFutureResponse resp)
+                {
+                    if (resp.IsEmpty)
+                        state |= WireMessageState.Empty;
+                }
+
+                result.State = state;
+            }
+            return result;
+        }
+
+        #endregion Wire Messages
     }
 }

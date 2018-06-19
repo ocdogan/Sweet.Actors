@@ -39,15 +39,13 @@ namespace Sweet.Actors
         private class Request
         {
             public Aid To;
-            public RpcMessageId Id;
+            public WireMessageId Id;
             public IMessage Message;
             public TaskCompletionSource<object> TaskCompletionSource;
         }
 
         private const object DefaultResponse = null;
         private const int SequentialSendLimit = 100;
-
-        private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
 
         private static readonly Task ProcessCompleted = Task.FromResult(0);
 
@@ -62,14 +60,11 @@ namespace Sweet.Actors
         private long _inProcess;
         private long _status = RpcClientStatus.Closed;
 
-        private int _messageIdSeed;
-
-        private IRpcSerializer _serializer;
-        private byte[] _serializerKey = new byte[RpcConstants.SerializerRegistryNameLength];
+        private RpcMessageWriter _writer;
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<Request> _requestQueue = new ConcurrentQueue<Request>();
-        private ConcurrentDictionary<RpcMessageId, Request> _responseList = new ConcurrentDictionary<RpcMessageId, Request>();
+        private ConcurrentDictionary<WireMessageId, Request> _responseList = new ConcurrentDictionary<WireMessageId, Request>();
 
         static RpcClient()
         {
@@ -80,7 +75,7 @@ namespace Sweet.Actors
         public RpcClient(RpcClientOptions options)
         {
             _options = options?.Clone() ?? RpcClientOptions.Default;
-            InitSerializer(_options.Serializer);
+            _writer = new RpcMessageWriter(_options.Serializer);
         }
 
         public long Status
@@ -112,6 +107,8 @@ namespace Sweet.Actors
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _inProcess, Constants.False);
+            using (var writer = Interlocked.Exchange(ref _writer, null))
+            { }
 
             ResetStreams();
 
@@ -119,26 +116,6 @@ namespace Sweet.Actors
             if (!disposing)
                 TryToClose();
             else Close();
-        }
-
-        private void InitSerializer(string serializerName)
-        {
-            serializerName = serializerName?.Trim();
-            if (String.IsNullOrEmpty(serializerName))
-                serializerName = Constants.DefaultSerializerKey;
-
-            _serializer = RpcSerializerRegistry.Get(serializerName);
-            if (_serializer == null && serializerName != Constants.DefaultSerializerKey)
-            {
-                serializerName = Constants.DefaultSerializerKey;
-                _serializer = RpcSerializerRegistry.Get(serializerName);
-            }
-
-            if (_serializer != null)
-            {
-                var serializerNameBytes = Encoding.UTF8.GetBytes(serializerName);
-                Buffer.BlockCopy(serializerNameBytes, 0, _serializerKey, 0, Math.Min(_serializerKey.Length, serializerNameBytes.Length));
-            }
         }
 
         private bool TryToClose()
@@ -311,7 +288,7 @@ namespace Sweet.Actors
             var tcs = new TaskCompletionSource<object>();
 
             _requestQueue.Enqueue(new Request {
-                Id = RpcMessageId.Next(),
+                Id = WireMessageId.Next(),
                 To = to,
                 Message = message,
                 TaskCompletionSource = tcs
@@ -410,7 +387,7 @@ namespace Sweet.Actors
 
         protected void CancelWaitingResponses()
         {
-            var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<RpcMessageId, Request>());
+            var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<WireMessageId, Request>());
             if (responses.Count > 0)
             {
                 var ids = responses.Keys.ToList();
@@ -431,78 +408,10 @@ namespace Sweet.Actors
             }
         }
 
-        protected virtual bool Write(RpcMessage message, bool flush = true)
+        protected virtual bool Write(WireMessage message, bool flush = true)
         {
             if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
-            {
-                var stream = _outStream;
-                if (stream != null)
-                {
-                    var data = _serializer.Serialize(message);
-                    if (data != null)
-                    {
-                        var dataLen = data.Length;
-                        if (dataLen > RpcConstants.MaxDataSize)
-                            throw new Exception(Errors.MaxAllowedDataSizeExceeded);
-
-                        /* Header */
-                        // Header sign
-                        stream.WriteByte(RpcConstants.HeaderSign);
-
-                        // Process Id
-                        stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
-                        
-                        // Message Id
-                        var msgIdBytes = Interlocked.Increment(ref _messageIdSeed).ToBytes();
-                        stream.Write(msgIdBytes, 0, msgIdBytes.Length);
-
-                        // Serialization type
-                        stream.Write(_serializerKey, 0, _serializerKey.Length);
-
-                        // Frame count
-                        var frameCount = (ushort)(dataLen > 0 ? ((dataLen / RpcConstants.FrameDataSize) + 1) : 0);
-
-                        var frameCntBytes = frameCount.ToBytes();
-                        stream.Write(frameCntBytes, 0, frameCntBytes.Length);
-
-                        var offset = 0;
-
-                        /* Frames */
-                        for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
-                        {
-                            // Frame sign
-                            stream.WriteByte(RpcConstants.FrameSign);
-
-                            // Process Id
-                            stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
-
-                            // Message Id
-                            stream.Write(msgIdBytes, 0, msgIdBytes.Length);
-
-                            // Frame Id
-                            var frameIdBytes = frameIndex.ToBytes();
-                            stream.Write(frameIdBytes, 0, frameIdBytes.Length);
-
-                            // Frame length
-                            var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
-
-                            var frameDataLenBytes = frameDataLen.ToBytes();
-                            stream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
-
-                            if (frameDataLen > 0)
-                            {
-                                stream.Write(data, offset, frameDataLen);
-                                offset += frameDataLen;
-                            }
-                        }
-
-                        if (flush)
-                            stream.Flush();
-
-                        return true;
-                    }
-                }
-            }
+                return _writer.Write(_outStream, message, flush);
             return false;
         }
 
@@ -511,8 +420,8 @@ namespace Sweet.Actors
             _responseList[request.Id] = request;
             try
             {
-                var rpcMsg = request.Message.ToRpcMessage(request.To, request.Id);
-                if (Write(rpcMsg, flush) && flush)
+                var wireMsg = request.Message.ToWireMessage(request.To, request.Id);
+                if (Write(wireMsg, flush) && flush)
                     BeginReceive();
             }
             catch (Exception e)

@@ -33,7 +33,7 @@ namespace Sweet.Actors
         private class Registry
         {
             public Type SerializerType;
-            public IRpcSerializer Instance;
+            public IWireSerializer Instance;
         }
 
         private static readonly ConcurrentDictionary<string, Registry> _serializerRegistry =
@@ -50,7 +50,7 @@ namespace Sweet.Actors
                 throw new ArgumentOutOfRangeException(nameof(registryName));
         }
 
-        public static IRpcSerializer Get(string registryName)
+        public static IWireSerializer Get(string registryName)
         {
             ValidateRegistryName(registryName);
 
@@ -62,21 +62,21 @@ namespace Sweet.Actors
                 lock (reg)
                 {
                     if (reg.Instance == null)
-                        reg.Instance = (IRpcSerializer)Activator.CreateInstance(reg.SerializerType);
+                        reg.Instance = (IWireSerializer)Activator.CreateInstance(reg.SerializerType);
                 }
             }
             return reg.Instance;
         }
 
         public static void Register<T>(string registryName)
-            where T : class, IRpcSerializer, new()
+            where T : class, IWireSerializer, new()
         {
             ValidateRegistryName(registryName);
             _serializerRegistry.GetOrAdd(registryName, NewRegistry<T>);
         }
 
         private static Registry NewRegistry<T>(string registryName) 
-            where T : class, IRpcSerializer, new()
+            where T : class, IWireSerializer, new()
         {
             return new Registry { SerializerType = typeof(T) };
         }

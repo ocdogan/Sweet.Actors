@@ -28,29 +28,29 @@ using Wire;
 
 namespace Sweet.Actors
 {
-    public class DefaultRpcSerializer : IRpcSerializer
+    public class DefaultRpcSerializer : IWireSerializer
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public (IMessage, Aid) Deserialize(byte[] data)
+        public (IMessage, Aid, WireMessageId) Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return (Message.Empty, Aid.Unknown);
+                return (Message.Empty, Aid.Unknown, WireMessageId.Empty);
 
             using (var stream = new ChunkedStream(data))
             {
-                return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
+                return (_serializer.Deserialize<WireMessage>(stream)).ToActualMessage();
             }
         }
 
-        public (IMessage, Aid) Deserialize(Stream stream)
+        public (IMessage, Aid, WireMessageId) Deserialize(Stream stream)
         {
             if (stream == null)
-                return (Message.Empty, Aid.Unknown);
-            return (_serializer.Deserialize<RpcMessage>(stream)).ToActualMessage();
+                return (Message.Empty, Aid.Unknown, WireMessageId.Empty);
+            return (_serializer.Deserialize<WireMessage>(stream)).ToActualMessage();
         }
 
-        public byte[] Serialize(RpcMessage message)
+        public byte[] Serialize(WireMessage message)
         {
             if (message != null)
             {

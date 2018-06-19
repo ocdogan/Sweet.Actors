@@ -22,40 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-using System.Collections.Generic;
+using System.IO;
 
 namespace Sweet.Actors
 {
-    public enum RpcMessageState : byte
+    public interface IWireSerializer
     {
-        Default = 0,
-        Canceled = 1,        
-        Completed = 2,
-        Empty = 4,
-        Faulted = 8
-    }
-
-    public class RpcMessage
-    {
-        public string Id { get; set; }
-
-        public RpcMessageState State { get; set; }
-        
-        public MessageType MessageType { get; set; }
-
-        public object Data { get; set; }
-
-        public Dictionary<string, string> Header { get; set; }
-
-        public string From { get; set; }
-
-        public string To { get; set; }
-
-        public string ResponseType { get; set; }
-
-        public Exception Exception { get; set; }
-
-        public int TimeoutMSec { get; set; }
+        byte[] Serialize(WireMessage message);
+        (IMessage, Aid, WireMessageId) Deserialize(byte[] data);
+        (IMessage, Aid, WireMessageId) Deserialize(Stream stream);
     }
 }

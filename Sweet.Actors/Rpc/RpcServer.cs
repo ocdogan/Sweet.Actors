@@ -77,20 +77,18 @@ namespace Sweet.Actors
                 {
                     if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred))
                     {
-                        IMessage message = null;
+                        var receivedMsg = ((IMessage)null, Aid.Unknown, WireMessageId.Empty);
                         try
                         {
-                            if (_buffer.TryGetMessage(out (IMessage, Aid) receivedMsg))
-                            {
-                                message = receivedMsg.Item1;
+                            if (_buffer.TryGetMessage(out receivedMsg))
                                 _server.HandleMessage(receivedMsg, this);
-                            }
                         }
                         catch (Exception e)
                         {
+                            var message = receivedMsg.Item1;
                             if ((message != null) && (message.MessageType == MessageType.FutureMessage))
                             {
-                                var response = CreateResponseError(message, e);
+                                var response = CreateResponseError(receivedMsg, e);
                                 _server.SendMessage(response, this);
                                 return;
                             }
@@ -105,9 +103,9 @@ namespace Sweet.Actors
                 }
             }
 
-            private IMessage CreateResponseError(IMessage message, Exception exception)
+            private (IMessage, Aid, WireMessageId) CreateResponseError((IMessage, Aid, WireMessageId) message, Exception exception)
             {
-                return null;
+                return (null, Aid.Unknown, WireMessageId.Empty);
             }
         }
 
@@ -154,6 +152,8 @@ namespace Sweet.Actors
 
             base.OnDispose(disposing);
         }
+
+        protected RpcServerOptions Options => _options;
 
         public IPEndPoint EndPoint => _localEndPoint ?? _options?.EndPoint;
 
@@ -427,7 +427,7 @@ namespace Sweet.Actors
             }
         }
 
-        private SocketAsyncEventArgs AcquireSocketAsyncEventArgs(Socket connection)
+        protected SocketAsyncEventArgs AcquireSocketAsyncEventArgs(Socket connection)
         {
             var result = SocketAsyncEventArgsCache.Default.Acquire();
 
@@ -437,7 +437,7 @@ namespace Sweet.Actors
             return result;
         }
 
-        private void ReleaseSocketAsyncEventArgs(SocketAsyncEventArgs eventArgs)
+        protected void ReleaseSocketAsyncEventArgs(SocketAsyncEventArgs eventArgs)
         {
             if (eventArgs != null)
             {
@@ -550,8 +550,8 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        protected abstract void HandleMessage((IMessage, Aid) receivedMsg, IRpcConnection connection);
+        protected abstract Task HandleMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection);
 
-        protected abstract void SendMessage(IMessage message, IRpcConnection connection);
+        protected abstract Task SendMessage((IMessage, Aid, WireMessageId) receivedMsg, IRpcConnection connection);
     }
 }

@@ -48,7 +48,7 @@ namespace Sweet.Actors
 		bool Expired { get; }
     }
 
-    public class Message : IMessage
+    internal class Message : IMessage
     {
         public static readonly Message Empty = new Message(new object(), Aid.Unknown);
 
@@ -58,7 +58,7 @@ namespace Sweet.Actors
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
-		internal Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             Data = data;
             From = from ?? Aid.Unknown;
@@ -99,7 +99,7 @@ namespace Sweet.Actors
 
     internal abstract class FutureMessage : Message, IFutureMessage
     {
-        internal FutureMessage(object data, Type responseType,
+        public FutureMessage(object data, Type responseType,
                                Aid from, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         {
@@ -129,16 +129,16 @@ namespace Sweet.Actors
     internal class FutureMessage<T> : FutureMessage, IFutureMessage
     {
         private CancellationTokenSource _cts;
-        private TaskCompletionSource<IFutureResponse<T>> _tcs;
+        private TaskCompletionSource<IFutureResponse> _tcs;
 
-        internal FutureMessage(object data,
+        public FutureMessage(object data,
                                CancellationTokenSource cancellationTokenSource,
-                               TaskCompletionSource<IFutureResponse<T>> taskCompletionSource,
+                               TaskCompletionSource<IFutureResponse> taskCompletionSource,
                                Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, typeof(T), from, header, timeoutMSec)
         {
             _cts = cancellationTokenSource ?? (timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : new CancellationTokenSource());
-            _tcs = taskCompletionSource ?? new TaskCompletionSource<IFutureResponse<T>>(_cts);
+            _tcs = taskCompletionSource ?? new TaskCompletionSource<IFutureResponse>(_cts);
         }
 
         public override MessageType MessageType => MessageType.FutureMessage;
@@ -174,7 +174,7 @@ namespace Sweet.Actors
             else _tcs.TrySetCanceled();
         }
     }
-    
+
     public interface IFutureResponse : IMessage
     {
         bool IsEmpty { get; }
@@ -187,13 +187,13 @@ namespace Sweet.Actors
     {
         protected bool _isEmpty;
 
-		internal FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(default(T), from, header, timeoutMSec)
         {
             _isEmpty = true;
         }
 
-		internal FutureResponse(T data, Aid from = null, IDictionary<string, string> header = null,
+        public FutureResponse(T data, Aid from = null, IDictionary<string, string> header = null,
                                 int timeoutMSec = -1)
 			: base(data, from, header, timeoutMSec)
         { }
@@ -201,6 +201,20 @@ namespace Sweet.Actors
         public override MessageType MessageType => MessageType.FutureResponse;
 
         public bool IsEmpty => _isEmpty;
+    }
+
+    internal class FutureResponse : FutureResponse<object>, IFutureResponse<object>
+    {
+        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+            : base(null, from, header, timeoutMSec)
+        {
+            _isEmpty = true;
+        }
+
+        public FutureResponse(object data, Aid from = null, IDictionary<string, string> header = null,
+                                int timeoutMSec = -1)
+            : base(data, from, header, timeoutMSec)
+        { }
     }
 
     public interface IFutureError : IMessage
@@ -213,7 +227,7 @@ namespace Sweet.Actors
     {
         private Exception _error;
 
-        internal FutureError(Exception e, Aid from = null, IDictionary<string, string> header = null)
+        public FutureError(Exception e, Aid from = null, IDictionary<string, string> header = null)
             : base(default(T), from, header)
         {
             _error = e;

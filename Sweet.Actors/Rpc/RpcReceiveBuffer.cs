@@ -52,7 +52,7 @@ namespace Sweet.Actors
         // private RecyclableMemoryStream _stream;
 
         private string _serializerKey;
-        private IRpcSerializer _serializer;
+        private IWireSerializer _serializer;
 
         public RpcReceiveBuffer()
         {
@@ -225,9 +225,9 @@ namespace Sweet.Actors
             return false;
         }
 
-		public bool TryGetMessage(out (IMessage, Aid) message)
+		public bool TryGetMessage(out (IMessage, Aid, WireMessageId) message)
 		{
-			message = (Message.Empty, Aid.Unknown);
+			message = (Message.Empty, Aid.Unknown, WireMessageId.Empty);
 
             if (!Disposed &&
                 _messageQueue.TryDequeue(out RpcPartitionedMessage receivedMsg))
@@ -240,7 +240,7 @@ namespace Sweet.Actors
                         var framesCnt = frames.Count;
                         if (framesCnt > 0)
                         {
-                            IRpcSerializer serializer = null;
+                            IWireSerializer serializer = null;
 
                             var serializerKey = receivedMsg.Header.SerializerKey;
                             if (String.IsNullOrEmpty(serializerKey))

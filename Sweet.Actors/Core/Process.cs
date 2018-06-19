@@ -133,7 +133,32 @@ namespace Sweet.Actors
             return Sended;
         }
 
-        public Task<IFutureResponse<T>> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        {
+            if (message != null)
+            {
+                try
+                {
+                    using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
+                    {
+                        var tcs = cts != null ? new TaskCompletionSource<IFutureResponse>(cts.Token) :
+                            new TaskCompletionSource<IFutureResponse>();
+
+                        _mailbox.Enqueue(new FutureMessage<object>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
+                        StartNewProcess();
+
+                        return tcs.Task;
+                    }
+                }
+                catch (Exception e)
+                {
+                    return Task.FromResult<IFutureResponse>(new FutureError<object>(e, _ctx.Pid));
+                }
+            }
+            return Task.FromResult<IFutureResponse>(new FutureResponse<object>(null, _ctx.Pid));
+        }
+
+        public Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             if (message != null)
             {
@@ -141,8 +166,8 @@ namespace Sweet.Actors
                 {
 					using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
 					{
-						var tcs = cts != null ? new TaskCompletionSource<IFutureResponse<T>>(cts.Token) :
-							new TaskCompletionSource<IFutureResponse<T>>();
+						var tcs = cts != null ? new TaskCompletionSource<IFutureResponse>(cts.Token) :
+							new TaskCompletionSource<IFutureResponse>();
 
 						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
 						StartNewProcess();
@@ -152,10 +177,10 @@ namespace Sweet.Actors
                 }
                 catch (Exception e)
                 {
-                    return Task.FromResult<IFutureResponse<T>>(new FutureError<T>(e, _ctx.Pid));
+                    return Task.FromResult<IFutureResponse>(new FutureError<T>(e, _ctx.Pid));
                 }
             }
-            return Task.FromResult<IFutureResponse<T>>(new FutureResponse<T>(default(T), _ctx.Pid));
+            return Task.FromResult<IFutureResponse>(new FutureResponse<T>(default(T), _ctx.Pid));
         }
 
         private void StartNewProcess()
