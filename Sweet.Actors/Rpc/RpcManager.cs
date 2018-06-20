@@ -35,6 +35,8 @@ namespace Sweet.Actors
     {
         private const int DefaultTimeout = 30000;
 
+        private static readonly Task Completed = Task.FromResult(0);
+
         private class EndPointResolver
         {
             private bool _isIPAddress;
@@ -237,7 +239,7 @@ namespace Sweet.Actors
                 ThrowIfDisposed();
 
                 _writer.Write(rpcConnection.Connection, wireMessage);
-                return Receive.Completed;
+                return Completed;
             }
             catch (Exception e)
             {

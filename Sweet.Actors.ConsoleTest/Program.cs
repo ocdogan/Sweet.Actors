@@ -42,6 +42,7 @@ namespace Sweet.Actors.ConsoleTest
         class DummyActor : IActor
         {
             private int _state;
+            private static readonly Task Completed = Task.FromResult(0);
 
             public Task OnReceive(IContext ctx, IMessage message)
             {
@@ -58,7 +59,7 @@ namespace Sweet.Actors.ConsoleTest
                     resetEvent.Set();
                     Console.WriteLine("Completed");
                 }
-                return Receive.Completed;
+                return Completed;
             }
         }
 
@@ -93,12 +94,15 @@ namespace Sweet.Actors.ConsoleTest
             var actorOptions = ActorOptions
                 .UsingName("remote-actor");
 
+            var Completed = Task.FromResult(0);
+
             remoteSystem.FromFunction((ctx, message) => {
                 Console.WriteLine(message.Data ?? "(null request)");
 
-                ctx.RespondTo(message, "world");
+                if (message.MessageType == MessageType.FutureMessage)
+                    ctx.RespondTo(message, "world");
 
-                return Receive.Completed;
+                return Completed;
             },
             actorOptions);
         }
@@ -240,6 +244,8 @@ namespace Sweet.Actors.ConsoleTest
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
             var actorPid = actorSystem.FromType<DummyActor>(actorOptions);
 
+            var Completed = Task.FromResult(0);
+
             var state = 0;
             var functionPid = actorSystem.FromFunction((ctx, msg) =>
             {
@@ -254,7 +260,7 @@ namespace Sweet.Actors.ConsoleTest
                     resetEvent.Set();
                     Console.WriteLine("Completed");
                 }
-                return Receive.Completed;
+                return Completed;
             });
 
             do

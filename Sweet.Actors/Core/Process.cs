@@ -25,7 +25,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,8 +42,7 @@ namespace Sweet.Actors
     {
         private const object DefaultResponse = null;
 
-        private static readonly Task Sended = Task.FromResult(0);
-        private static readonly Task ProcessCompleted = Task.FromResult(0);
+        private static readonly Task Completed = Task.FromResult(0);
 
         private static ConcurrentDictionary<Pid, Process> _processRegistery = new ConcurrentDictionary<Pid, Process>();
 
@@ -113,7 +111,7 @@ namespace Sweet.Actors
                     return Task.FromException(e);
                 }
             }
-            return Sended;
+            return Completed;
         }
 
         public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
@@ -130,7 +128,7 @@ namespace Sweet.Actors
                     return Task.FromException(e);
                 }
             }
-            return Sended;
+            return Completed;
         }
 
         public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
@@ -141,8 +139,9 @@ namespace Sweet.Actors
                 {
                     using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
                     {
-                        var tcs = cts != null ? new TaskCompletionSource<IFutureResponse>(cts.Token) :
-                            new TaskCompletionSource<IFutureResponse>();
+                        var tcs = (cts == null) ?
+                            new TaskCompletionSource<IFutureResponse>() :
+                            new TaskCompletionSource<IFutureResponse>(cts.Token);
 
                         _mailbox.Enqueue(new FutureMessage<object>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
                         StartProcessTask();
@@ -197,48 +196,16 @@ namespace Sweet.Actors
             {
                 for (var i = 0; i < _sequentialInvokeLimit; i++)
                 {
-                    var isFutureCall = false;
-                    FutureMessage future = null;
-
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
                         !_mailbox.TryDequeue(out IMessage message))
                         break;
-                    
-                    try
-                    {
-                        isFutureCall = (message.MessageType == MessageType.FutureMessage);
 
-                        if (isFutureCall)
-                        {
-                            future = (FutureMessage)message;
-                            if (future.IsCanceled || message.Expired)
-                            {
-                                future.Cancel();
-                                continue;
-                            }
-                        }
+                    if (message.Expired)
+                        continue;
 
-                        if (message.Expired)
-                            throw new Exception(Errors.MessageExpired);
-
-                        var t = Send(_ctx, message);
-
-                        if (t.IsFaulted)
-                            HandleError(message, t.Exception);
-
-                        if (isFutureCall &&
-                            !(future.IsCompleted || future.IsCanceled || future.IsFaulted))
-                            future.Respond(DefaultResponse, _ctx.Pid);
-                    }
-                    catch (Exception e)
-                    {
-                        HandleError(message, e);
-
-                        if (isFutureCall && (future != null))
-                            future.RespondToWithError(e, _ctx.Pid);
-
-                        return Task.FromException(e);
-                    }
+                    var t = ProcessMessage(message);
+                    if (t.IsFaulted)
+                        return t;
                 }
             }
             finally
@@ -247,22 +214,61 @@ namespace Sweet.Actors
                 if (_mailbox.Count > 0)
                     StartProcessTask();
             }
-            return ProcessCompleted;
+            return Completed;
         }
 
-        private void HandleError(IMessage message, Exception e)
+        protected virtual Task ProcessMessage(IMessage message)
+        {
+            var isFutureCall = false;
+            FutureMessage future = null;
+            try
+            {
+                isFutureCall = (message.MessageType == MessageType.FutureMessage);
+
+                if (isFutureCall)
+                {
+                    future = (FutureMessage)message;
+                    if (future.IsCanceled || message.Expired)
+                    {
+                        future.Cancel();
+                        return Completed;
+                    }
+                }
+
+                if (message.Expired)
+                    return Completed;
+
+                var t = SendToActor(_ctx, message);
+
+                if (t.IsFaulted)
+                    HandleError(message, t.Exception);
+
+                return t;
+            }
+            catch (Exception e)
+            {
+                HandleError(message, e);
+
+                if (isFutureCall && (future != null))
+                    future.RespondToWithError(e, _ctx.Pid);
+
+                return Task.FromException(e);
+            }
+        }
+
+        protected virtual Task SendToActor(IContext ctx, IMessage message)
+        {
+            return Actor.OnReceive(ctx, message);
+        }
+
+        protected virtual void HandleError(IMessage message, Exception e)
         {
             try
             {
-                _errorHandler.HandleError(this, message, e);
+                _errorHandler?.HandleError(this, message, e);
             }
             catch (Exception)
             { }
-        }
-
-        protected virtual Task Send(IContext ctx, IMessage message)
-        {
-            return Actor.OnReceive(ctx, message);
         }
     }
 
@@ -309,7 +315,7 @@ namespace Sweet.Actors
         {
             var remoteMngr = System?.RemoteManager;
             if (remoteMngr == null)
-                Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
+                return Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
 
             return remoteMngr.Send(message, _remoteAddress);
         }
