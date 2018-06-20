@@ -36,117 +36,131 @@ namespace Sweet.Actors
         {
             message = null;
 
-            var bufferedLen = input?.Position ?? 0;
-            if (bufferedLen >= RpcConstants.HeaderSize)
+            var inputLen = input?.Length ?? 0;
+            if (inputLen < RpcConstants.HeaderSize)
+                return false;
+
+            ChunkedStream chunkedStream;
+            using (var reader = (IStreamReader)(chunkedStream = input as ChunkedStream)?.NewReader() ?? new BinaryStreamReader(input))
             {
-                using (var reader = (IStreamReader)(input as ChunkedStream)?.NewReader() ?? new BinaryStreamReader(input))
+                var headerBuffer = new byte[RpcConstants.HeaderSize];
+
+                reader.Read(headerBuffer, 0, RpcConstants.HeaderSize);
+
+                var streamOffset = RpcConstants.HeaderSize;
+
+                if (headerBuffer[0] != RpcConstants.HeaderSign)
+                    throw new Exception(Errors.InvalidMessageType);
+
+                var bufferOffset = sizeof(byte);
+
+                message = new RpcPartitionedMessage();
+
+                message.Header.ProcessId = headerBuffer.ToInt(bufferOffset);
+                bufferOffset += sizeof(int);
+
+                message.Header.MessageId = headerBuffer.ToInt(bufferOffset);
+                bufferOffset += sizeof(int);
+
+                var serializerKey =
+                    Encoding.UTF8.GetString(headerBuffer, bufferOffset, RpcConstants.SerializerRegistryNameLength)?.TrimEnd();
+                bufferOffset += RpcConstants.SerializerRegistryNameLength;
+
+                if (serializerKey != null)
                 {
-                    var mainHeaderBuffer = new byte[RpcConstants.HeaderSize];
-                    var frameHeaderBuffer = new byte[RpcConstants.FrameHeaderSize];
+                    var pos = serializerKey.IndexOf('\0');
+                    if (pos > -1)
+                        serializerKey = serializerKey.Substring(0, pos);
+                }
 
-                    reader.Read(mainHeaderBuffer, 0, RpcConstants.HeaderSize);
+                if (String.IsNullOrEmpty(serializerKey))
+                    serializerKey = Constants.DefaultSerializerKey;
 
-                    if (mainHeaderBuffer[0] != RpcConstants.HeaderSign)
-                        throw new Exception(Errors.InvalidMessageType);
+                message.Header.SerializerKey = serializerKey;
 
-                    var headerIndex = sizeof(byte);
+                var frameCount = (message.Header.FrameCount = headerBuffer.ToUShort(bufferOffset));
 
-                    message = new RpcPartitionedMessage();
+                var completed = frameCount == 0;
+                if (!completed)
+                {
+                    inputLen -= RpcConstants.HeaderSize;
 
-                    message.Header.ProcessId = mainHeaderBuffer.ToInt(headerIndex);
-                    headerIndex += sizeof(int);
+                    if (inputLen < RpcConstants.FrameHeaderSize + (frameCount - 1) * RpcConstants.FrameSize)
+                        return false;
 
-                    message.Header.MessageId = mainHeaderBuffer.ToInt(headerIndex);
-                    headerIndex += sizeof(int);
-
-                    var serializerKey =
-                        Encoding.UTF8.GetString(mainHeaderBuffer, headerIndex, RpcConstants.SerializerRegistryNameLength)?.TrimEnd();
-                    headerIndex += RpcConstants.SerializerRegistryNameLength;
-
-                    if (serializerKey != null)
+                    try
                     {
-                        var pos = serializerKey.IndexOf('\0');
-                        if (pos > -1)
-                            serializerKey = serializerKey.Substring(0, pos);
-                    }
+                        headerBuffer = new byte[RpcConstants.FrameHeaderSize];
 
-                    if (String.IsNullOrEmpty(serializerKey))
-                        serializerKey = Constants.DefaultSerializerKey;
-
-                    message.Header.SerializerKey = serializerKey;
-
-                    var frameCount = (message.Header.FrameCount = mainHeaderBuffer.ToUShort(headerIndex));
-
-                    var completed = frameCount == 0;
-                    if (!completed)
-                    {
-                        bufferedLen -= RpcConstants.HeaderSize;
-
-                        if (bufferedLen < RpcConstants.FrameHeaderSize + (frameCount - 1) * RpcConstants.FrameSize)
-                            return false;
-
-                        try
+                        for (var i = (ushort)0; i < frameCount; i++)
                         {
-                            for (var i = (ushort)0; i < frameCount; i++)
+                            if (inputLen < RpcConstants.FrameHeaderSize)
+                                break;
+
+                            reader.Read(headerBuffer, 0, RpcConstants.FrameHeaderSize);
+                            inputLen -= RpcConstants.FrameHeaderSize;
+
+                            streamOffset += RpcConstants.FrameHeaderSize;
+
+                            if (headerBuffer[0] != RpcConstants.FrameSign)
+                                throw new Exception(Errors.InvalidMessageType);
+
+                            var frame = new RpcPartitionedFrame();
+
+                            bufferOffset = sizeof(byte);
+
+                            frame.ProcessId = headerBuffer.ToInt(bufferOffset);
+                            bufferOffset += sizeof(int);
+
+                            frame.MessageId = headerBuffer.ToInt(bufferOffset);
+                            bufferOffset += sizeof(int);
+
+                            if (frame.ProcessId != message.Header.ProcessId ||
+                                frame.MessageId != message.Header.MessageId)
+                                throw new Exception(RpcErrors.InvalidMessage);
+
+                            frame.FrameId = headerBuffer.ToUShort(bufferOffset);
+                            bufferOffset += sizeof(ushort);
+
+                            var frameDataLen = headerBuffer.ToUShort(bufferOffset);
+                            bufferOffset += sizeof(ushort);
+
+                            if (frameDataLen > 0)
                             {
-                                if (bufferedLen < RpcConstants.FrameHeaderSize)
+                                if (inputLen < frameDataLen)
                                     break;
 
-                                reader.Read(frameHeaderBuffer, 0, RpcConstants.FrameHeaderSize);
-                                bufferedLen -= RpcConstants.FrameHeaderSize;
+                                inputLen -= frameDataLen;
+                                var dataBuffer = FrameCache.Acquire();
 
-                                if (frameHeaderBuffer[0] != RpcConstants.FrameSign)
-                                    throw new Exception(Errors.InvalidMessageType);
+                                var readLen = reader.Read(dataBuffer, 0, frameDataLen);
+                                if (readLen < frameDataLen)
+                                    break;
 
-                                var frame = new RpcPartitionedFrame();
+                                streamOffset += frameDataLen;
 
-                                headerIndex = sizeof(byte);
-
-                                frame.ProcessId = frameHeaderBuffer.ToInt(headerIndex);
-                                headerIndex += sizeof(int);
-
-                                frame.MessageId = frameHeaderBuffer.ToInt(headerIndex);
-                                headerIndex += sizeof(int);
-
-                                if (frame.ProcessId != message.Header.ProcessId ||
-                                    frame.MessageId != message.Header.MessageId)
-                                    throw new Exception(RpcErrors.InvalidMessage);
-
-                                frame.FrameId = frameHeaderBuffer.ToUShort(headerIndex);
-                                headerIndex += sizeof(ushort);
-
-                                var frameDataLen = frameHeaderBuffer.ToUShort(headerIndex);
-                                headerIndex += sizeof(ushort);
-
-                                if (frameDataLen > 0)
-                                {
-                                    if (bufferedLen < frameDataLen)
-                                        break;
-
-                                    bufferedLen -= frameDataLen;
-                                    var dataBuffer = FrameCache.Acquire();
-
-                                    var readLen = reader.Read(dataBuffer, 0, frameDataLen);
-                                    if (readLen < frameDataLen)
-                                        break;
-
-                                    frame.Data = dataBuffer;
-                                    frame.DataLength = frameDataLen;
-                                }
-
-                                message.Frames.Add(frame);
-
-                                if (i == frameCount - 1)
-                                    completed = true;
+                                frame.Data = dataBuffer;
+                                frame.DataLength = frameDataLen;
                             }
-                        }
-                        catch (Exception)
-                        {
-                            ReleaseFrames(message);
-                            throw;
+
+                            message.Frames.Add(frame);
+
+                            if (i == frameCount - 1)
+                                completed = true;
                         }
                     }
-                    return completed;
+                    catch (Exception)
+                    {
+                        ReleaseFrames(message);
+                        throw;
+                    }
+                }
+
+                if (completed)
+                {
+                    if (chunkedStream != null)
+                        chunkedStream.TrimLeft(streamOffset);
+                    return true;
                 }
             }
             return false;

@@ -661,12 +661,14 @@ namespace Sweet.Actors
 
         private void OnLengthChanged(long oldValue, long newValue)
         {
-            Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Length, (oldValue, newValue)));
+            if (oldValue != newValue)
+                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Length, (oldValue, newValue)));
         }
 
         private void OnOriginChanged(long oldValue, long newValue)
         {
-            Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Origin, (oldValue, newValue)));
+            if (oldValue != newValue)
+                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Origin, (oldValue, newValue)));
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -749,8 +751,7 @@ namespace Sweet.Actors
                 }
                 finally
                 {
-                    if (initialLen != _length)
-                        OnLengthChanged(initialLen, _length);
+                    OnLengthChanged(initialLen, _length);
                 }
             }
         }
@@ -813,8 +814,7 @@ namespace Sweet.Actors
             }
             finally
             {
-                if (initialLen != _length)
-                    OnLengthChanged(initialLen, _length);
+                OnLengthChanged(initialLen, _length);
             }
         }
 
@@ -827,18 +827,20 @@ namespace Sweet.Actors
         protected void ReleaseChunks(bool reinit)
         {
             var chunks = _chunks;
-            _chunks = reinit ? new List<byte[]>() : null;
 
             var initialLen = _length;
             var initialOrigin = _origin;
             try
             {
+                _chunks = reinit ? ((chunks.Count > 1) ? new List<byte[]>() : chunks) : null;
+
                 _origin = 0;
                 _length = 0L;
 
                 _position = 0L;
 
-                if (chunks != null && chunks.Count > 0)
+                if (chunks != _chunks && 
+                    chunks != null && chunks.Count > 0)
                 {
                     if (_release)
                         _cache.Release(chunks);
@@ -847,11 +849,8 @@ namespace Sweet.Actors
             }
             finally
             {
-                if (initialOrigin != _origin)
-                    OnLengthChanged(initialLen, _origin);
-
-                if (initialLen != _length)
-                    OnLengthChanged(initialLen, _length);
+                OnOriginChanged(initialOrigin, _origin);
+                OnLengthChanged(initialLen, _length);
             }
         }
 
@@ -907,7 +906,7 @@ namespace Sweet.Actors
 
             if (trimLength > 0)
             {
-                if (trimLength >= _length)
+                if (trimLength >= _length + _origin)
                     ReleaseChunks(true);
                 else
                 {
@@ -950,11 +949,8 @@ namespace Sweet.Actors
                     }
                     finally
                     {
-                        if (initialOrigin != _origin)
-                            OnOriginChanged(initialOrigin, _origin);
-
-                        if (initialLen != _length)
-                            OnLengthChanged(initialLen, _length);
+                        OnOriginChanged(initialOrigin, _origin);
+                        OnLengthChanged(initialLen, _length);
                     }
                 }
             }

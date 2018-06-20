@@ -38,30 +38,30 @@ namespace Sweet.Actors
         public static IFutureMessage CreateFutureMessage(Type responseType, object data, 
                                Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
-            var repositoryType = _futureMessageRepository.GetOrAdd(responseType, (t) => {
-                var elementType = t.GetGenericArguments()[0];
-                return typeof(FutureMessage<>).MakeGenericType(elementType);
-            });
+            var repositoryType = _futureMessageRepository.GetOrAdd(responseType, 
+                (elementType) => {
+                    return typeof(FutureMessage<>).MakeGenericType(elementType);
+                });
             return (IFutureMessage)Activator.CreateInstance(repositoryType, new object[] {data, null, null, from, header, timeoutMSec});
         }
 
         public static IFutureResponse CreateFutureResponse(Type responseType, object data,
                                Aid from = null, IDictionary<string, string> header = null)
         {
-            var repositoryType = _futureResponseRepository.GetOrAdd(responseType, (t) => {
-                var elementType = t.GetGenericArguments()[0];
-                return typeof(FutureResponse<>).MakeGenericType(elementType);
-            });
+            var repositoryType = _futureResponseRepository.GetOrAdd(responseType, 
+                (elementType) => {
+                    return typeof(FutureResponse<>).MakeGenericType(elementType);
+                });
             return (IFutureResponse)Activator.CreateInstance(repositoryType, new object[] {data, from, header});
         }
 
         public static IFutureError CreateFutureError(Type responseType, Exception error,
                                Aid from = null, IDictionary<string, string> header = null)
         {
-            var repositoryType = _futureErrorRepository.GetOrAdd(responseType, (t) => {
-                var elementType = t.GetGenericArguments()[0];
-                return typeof(FutureError<>).MakeGenericType(elementType);
-            });
+            var repositoryType = _futureErrorRepository.GetOrAdd(responseType, 
+                (elementType) => {
+                    return typeof(FutureError<>).MakeGenericType(elementType);
+                });
             return (IFutureError)Activator.CreateInstance(repositoryType, new object[] {error, from, header});
         }    
     }

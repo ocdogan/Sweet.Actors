@@ -90,13 +90,13 @@ namespace Sweet.Actors
             }
         }
 
-        private static readonly ConcurrentDictionary<string, EndPointResolver> _resolvers =
+        private static readonly ConcurrentDictionary<string, EndPointResolver> _endPointResolvers =
             new ConcurrentDictionary<string, EndPointResolver>();
 
         private RpcMessageWriter _writer;
         private IResponseHandler _responseHandler;
 
-        private ConcurrentDictionary<RemoteEndPoint, RpcManagedClient> _clients = 
+        private ConcurrentDictionary<RemoteEndPoint, RpcManagedClient> _rpcManagedClients = 
             new ConcurrentDictionary<RemoteEndPoint, RpcManagedClient>();
 
         public RpcManager(RpcServerOptions options = null)
@@ -109,15 +109,15 @@ namespace Sweet.Actors
         {
             if (disposing)
             {
-                foreach (var client in _clients.Values)
+                foreach (var client in _rpcManagedClients.Values)
                     using (client) { }
             }
             base.OnDispose(disposing);
         }
 
-        public void SetResponseHandler(IResponseHandler handler)
+        public void SetResponseHandler(IResponseHandler responseHandler)
         {
-            _responseHandler = handler;
+            _responseHandler = responseHandler;
         }
 
         private RpcClient GetClient(RemoteEndPoint endPoint)
@@ -125,12 +125,12 @@ namespace Sweet.Actors
             if (endPoint == null)
                 throw new ArgumentNullException(nameof(endPoint));
 
-            return _clients.GetOrAdd(endPoint, NewClient);
+            return _rpcManagedClients.GetOrAdd(endPoint, NewClient);
         }
 
         private static RpcManagedClient NewClient(RemoteEndPoint endPoint)
         {
-            var addresses = _resolvers.GetOrAdd(endPoint.Host,
+            var addresses = _endPointResolvers.GetOrAdd(endPoint.Host,
                                 (host) => new EndPointResolver(host)).Resolve();
 
             if (addresses.IsEmpty())
@@ -186,15 +186,15 @@ namespace Sweet.Actors
             return false;
         }
 
-        protected override Task HandleMessage(RemoteMessage receivedMsg, IRpcConnection connection)
+        protected override Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection)
         {
             ThrowIfDisposed();
 
-            var message = receivedMsg.Message;
+            var message = remoteMessage.Message;
             if (message == null)
                 throw new Exception(RpcErrors.InvalidMessage);
 
-            var to = receivedMsg.To;
+            var to = remoteMessage.To;
             if (to != null && to != Aid.Unknown)
             {
                 var actor = to.Actor?.Trim();
@@ -223,22 +223,20 @@ namespace Sweet.Actors
                             throw new Exception(RpcErrors.InvalidMessageResponse);
 
                         return response.ContinueWith((t) =>
-                        {
-                            SendMessage(t.Result.ToWireMessage(receivedMsg.To, receivedMsg.MessageId), connection);
-                        });
+                            SendMessage(t.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
                     }
                 }
             }
             throw new Exception(RpcErrors.InvalidMessageReceiver);
         }
 
-        protected override Task SendMessage(WireMessage message, IRpcConnection connection)
+        protected override Task SendMessage(WireMessage wireMessage, IRpcConnection rpcConnection)
         {
             try
             {
                 ThrowIfDisposed();
 
-                _writer.Write(connection.Connection, message);
+                _writer.Write(rpcConnection.Connection, wireMessage);
                 return Receive.Completed;
             }
             catch (Exception e)

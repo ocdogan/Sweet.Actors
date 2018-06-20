@@ -106,7 +106,7 @@ namespace Sweet.Actors
                 try
                 {
                     _mailbox.Enqueue(message);
-                    StartNewProcess();
+                    StartProcessTask();
                 }
                 catch (Exception e)
                 {
@@ -123,7 +123,7 @@ namespace Sweet.Actors
                 try
                 {
                     _mailbox.Enqueue(new Message(message, _ctx.Pid, header));
-                    StartNewProcess();
+                    StartProcessTask();
                 }
                 catch (Exception e)
                 {
@@ -145,7 +145,7 @@ namespace Sweet.Actors
                             new TaskCompletionSource<IFutureResponse>();
 
                         _mailbox.Enqueue(new FutureMessage<object>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
-                        StartNewProcess();
+                        StartProcessTask();
 
                         return tcs.Task;
                     }
@@ -170,7 +170,7 @@ namespace Sweet.Actors
 							new TaskCompletionSource<IFutureResponse>();
 
 						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
-						StartNewProcess();
+						StartProcessTask();
 
 						return tcs.Task;
 					}
@@ -183,7 +183,7 @@ namespace Sweet.Actors
             return Task.FromResult<IFutureResponse>(new FutureResponse<T>(default(T), _ctx.Pid));
         }
 
-        private void StartNewProcess()
+        private void StartProcessTask()
         {
             if (Common.CompareAndSet(ref _inProcess, false, true))
             {
@@ -245,7 +245,7 @@ namespace Sweet.Actors
             {
 				Interlocked.Exchange(ref _inProcess, Constants.False);
                 if (_mailbox.Count > 0)
-                    StartNewProcess();
+                    StartProcessTask();
             }
             return ProcessCompleted;
         }

@@ -355,66 +355,66 @@ namespace Sweet.Actors
             return (value != null) ? UTF8.GetString(value, index, count) : null;
         }
 
-        internal static short ToShort(this byte[] value, int index)
+        internal static short ToShort(this byte[] value, int offset)
         {
-            return BitConverter.ToInt16(value, index);
+            return BitConverter.ToInt16(value, offset);
         }
 
-        internal static int ToInt(this byte[] value, int index)
+        internal static int ToInt(this byte[] value, int offset)
         {
-            return BitConverter.ToInt32(value, index);
+            return BitConverter.ToInt32(value, offset);
         }
 
-        internal static long ToLong(this byte[] value, int index)
+        internal static long ToLong(this byte[] value, int offset)
         {
-            return BitConverter.ToInt64(value, index);
+            return BitConverter.ToInt64(value, offset);
         }
 
-        internal static ulong ToULong(this byte[] value, int index)
+        internal static ulong ToULong(this byte[] value, int offset)
         {
-            return BitConverter.ToUInt64(value, index);
+            return BitConverter.ToUInt64(value, offset);
         }
 
-        internal static ushort ToUShort(this byte[] value, int index)
+        internal static ushort ToUShort(this byte[] value, int offset)
         {
-            return BitConverter.ToUInt16(value, index);
+            return BitConverter.ToUInt16(value, offset);
         }
 
-        internal static uint ToUInt(this byte[] value, int index)
+        internal static uint ToUInt(this byte[] value, int offset)
         {
-            return BitConverter.ToUInt32(value, index);
+            return BitConverter.ToUInt32(value, offset);
         }
 
-        internal static decimal ToDecimal(this byte[] value, int index)
+        internal static decimal ToDecimal(this byte[] value, int offset)
         {
-            var dbl = BitConverter.ToDouble(value, index);
+            var dbl = BitConverter.ToDouble(value, offset);
             return Convert.ToDecimal(dbl);
         }
 
-        internal static double ToDouble(this byte[] value, int index)
+        internal static double ToDouble(this byte[] value, int offset)
         {
-            return BitConverter.ToDouble(value, index);
+            return BitConverter.ToDouble(value, offset);
         }
 
-        internal static float ToFloat(this byte[] value, int index)
+        internal static float ToFloat(this byte[] value, int offset)
         {
-            return BitConverter.ToSingle(value, index);
+            return BitConverter.ToSingle(value, offset);
         }
 
-        internal static DateTime? ToDateTime(this byte[] value, int index)
+        internal static DateTime? ToDateTime(this byte[] value, int offset)
         {
-            var ticks = BitConverter.ToInt64(value, index);
-            if (value.Length >= index + 9)
+            var ticks = BitConverter.ToInt64(value, offset);
+            if (value.Length >= offset + 9)
             {
-                var kind = (DateTimeKind)value[index + 8];
+                var kind = (DateTimeKind)value[offset + 8];
                 return new DateTime(ticks, kind);
             }
             return new DateTime(ticks);
         }
 
-        internal static char ToChar(this byte[] value, int index)
+        internal static char ToChar(this byte[] value, int offset)
         {
-            return BitConverter.ToChar(value, index);
+            return BitConverter.ToChar(value, offset);
         }
 
         #endregion FromBytes

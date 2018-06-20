@@ -75,20 +75,20 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.BytesTransferred))
+                    if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.Offset, eventArgs.BytesTransferred))
                     {
-                        RemoteMessage receivedMsg = null;
+                        RemoteMessage remoteMsg = null;
                         try
                         {
-                            if (_buffer.TryGetMessage(out receivedMsg))
-                                _server.HandleMessage(receivedMsg, this);
+                            if (_buffer.TryGetMessage(out remoteMsg))
+                                _server.HandleMessage(remoteMsg, this);
                         }
                         catch (Exception e)
                         {
-                            var message = receivedMsg.Message;
+                            var message = remoteMsg.Message;
                             if ((message != null) && (message.MessageType == MessageType.FutureMessage))
                             {
-                                var response = message.ToWireMessage(receivedMsg.To, receivedMsg.MessageId, e);
+                                var response = message.ToWireMessage(remoteMsg.To, remoteMsg.MessageId, e);
                                 _server.SendMessage(response, this);
                                 return;
                             }
@@ -408,26 +408,26 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartReceiveAsync(Socket connection, SocketAsyncEventArgs eventArgs)
+        private void StartReceiveAsync(Socket clientConnection, SocketAsyncEventArgs eventArgs)
         {
             try
             {
-                if (!connection.ReceiveAsync(eventArgs))
+                if (!clientConnection.ReceiveAsync(eventArgs))
                     ProcessReceived(eventArgs);
             }
             catch (Exception)
             {
-                CloseSocket(connection);
+                CloseSocket(clientConnection);
                 ReleaseReceiveEventArgs(eventArgs);
             }
         }
 
-        private SocketAsyncEventArgs AcquireReceiveEventArgs(Socket connection)
+        private SocketAsyncEventArgs AcquireReceiveEventArgs(Socket clientConnection)
         {
             var result = SocketAsyncEventArgsCache.Default.Acquire();
 
             result.Completed += OnReceiveCompleted;
-            result.UserToken = new ReceiveContext(this, connection);
+            result.UserToken = new ReceiveContext(this, clientConnection);
 
             return result;
         }
@@ -457,7 +457,7 @@ namespace Sweet.Actors
             var receiveContext = (ReceiveContext)eventArgs.UserToken;
 
             var continueReceiving = false;
-            var connection = receiveContext.Connection;
+            var clientConnection = receiveContext.Connection;
 
             if (eventArgs.BytesTransferred > 0 &&
                 eventArgs.SocketError == SocketError.Success)
@@ -472,42 +472,42 @@ namespace Sweet.Actors
             }
             
             if (continueReceiving)
-                StartReceiveAsync(connection, eventArgs);
+                StartReceiveAsync(clientConnection, eventArgs);
             else {
-                CloseSocket(connection);
+                CloseSocket(clientConnection);
                 ReleaseReceiveEventArgs(eventArgs);
             }
         }
 
-        private void CloseConnection(Socket connection)
+        private void CloseConnection(Socket clientConnection)
         {
-            if (connection != null)
+            if (clientConnection != null)
             {
-                UnregisterConnection(connection);
+                UnregisterConnection(clientConnection);
 
-                if ((connection is NativeSocket nativeSocket) &&
+                if ((clientConnection is NativeSocket nativeSocket) &&
                     nativeSocket.Disposed)
                     return;
 
-                using (connection)
-                    connection.Close();
+                using (clientConnection)
+                    clientConnection.Close();
             }
         }
 
-        protected virtual bool RegisterConnection(Socket connection)
+        protected virtual bool RegisterConnection(Socket clientConnection)
         {
-            if (connection != null)
+            if (clientConnection != null)
             {
-                _receivingSockets[connection] = null;
+                _receivingSockets[clientConnection] = null;
                 return true;
             }
             return false;
         }
 
-        protected virtual bool UnregisterConnection(Socket connection)
+        protected virtual bool UnregisterConnection(Socket clientConnection)
         {
-            if (connection != null)
-                return _receivingSockets.TryRemove(connection, out object obj);
+            if (clientConnection != null)
+                return _receivingSockets.TryRemove(clientConnection, out object obj);
             return false;
         }
 
@@ -516,7 +516,7 @@ namespace Sweet.Actors
             _receivingSockets.Clear();
         }
 
-        private byte[] ReadData(Socket connection, int expected)
+        private byte[] ReadData(Socket clientConnection, int expected)
         {
             if (expected < 1)
                 return null;
@@ -531,7 +531,7 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    int bytesRead = connection.Receive(buffer, offset, buffer.Length - offset, SocketFlags.None);
+                    int bytesRead = clientConnection.Receive(buffer, offset, buffer.Length - offset, SocketFlags.None);
                     if (bytesRead == 0)
                         return null;
 
@@ -545,8 +545,8 @@ namespace Sweet.Actors
             return buffer;
         }
 
-        protected abstract Task HandleMessage(RemoteMessage receivedMsg, IRpcConnection connection);
+        protected abstract Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection);
 
-        protected abstract Task SendMessage(WireMessage message, IRpcConnection connection);
+        protected abstract Task SendMessage(WireMessage wireMessage, IRpcConnection rpcConnection);
     }
 }

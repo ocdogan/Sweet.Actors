@@ -126,7 +126,7 @@ namespace Sweet.Actors.ConsoleTest
                 .UsingRemoteEndPoint("127.0.0.1", 17777);
 
             var remotePid = localSystem.FromRemote(remoteActorOptions);
-            remotePid.Tell("hello (fire & forget)");
+            // remotePid.Tell("hello (fire & forget)");
 
             var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((t) => {

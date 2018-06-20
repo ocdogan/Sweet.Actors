@@ -26,9 +26,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using System.Text;
-
-// using Microsoft.IO;
 
 namespace Sweet.Actors
 {
@@ -40,21 +37,16 @@ namespace Sweet.Actors
 
         public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcConstants.FrameDataSize);
 
-        /* private static readonly RecyclableMemoryStreamManager StreamManager = 
-            new RecyclableMemoryStreamManager(BlockSize, LargeBufferMultiple, MaximumBufferSize); */
-
         private ConcurrentQueue<RpcPartitionedMessage> _messageQueue = new ConcurrentQueue<RpcPartitionedMessage>();
 
         private ChunkedStream _stream;
         private RpcMessageParser _parser;
-        // private RecyclableMemoryStream _stream;
 
         private string _serializerKey;
         private IWireSerializer _serializer;
 
         public RpcReceiveBuffer()
         {
-           //  _stream = new RecyclableMemoryStream(StreamManager);
            _stream = new ChunkedStream();
            _parser = new RpcMessageParser();
         }
@@ -71,11 +63,11 @@ namespace Sweet.Actors
             }
         }
 
-        public bool OnReceiveData(byte[] buffer, int bytesTransferred)
+        public bool OnReceiveData(byte[] buffer, int offset, int bytesTransferred)
 		{
             if ((buffer != null) && (bytesTransferred > 0))
             {
-                _stream.Write(buffer, 0, bytesTransferred);
+                _stream.Write(buffer, offset, bytesTransferred);
                 if (_parser.TryParse(_stream, out RpcPartitionedMessage message))
                 {
                     _messageQueue.Enqueue(message);
@@ -88,15 +80,15 @@ namespace Sweet.Actors
 		private void ReleaseMessages(ConcurrentQueue<RpcPartitionedMessage> queue)
 		{
             if (queue != null)
-                while (queue.TryDequeue(out RpcPartitionedMessage receivedMsg))
-                    ReleaseFrames(receivedMsg);
+                while (queue.TryDequeue(out RpcPartitionedMessage rpcMessage))
+                    ReleaseFrames(rpcMessage);
         }
 
-        private static void ReleaseFrames(RpcPartitionedMessage receivedMsg)
+        private static void ReleaseFrames(RpcPartitionedMessage rpcMessage)
         {
-            if (receivedMsg != null)
+            if (rpcMessage != null)
             {
-                var frames = receivedMsg.Frames;
+                var frames = rpcMessage.Frames;
                 if (frames != null)
                 {
                     var frameCnt = frames.Count;
@@ -106,43 +98,48 @@ namespace Sweet.Actors
             }
         }
 
-		public bool TryGetMessage(out RemoteMessage message)
+		public bool TryGetMessage(out RemoteMessage remoteMessage)
 		{
-			message = null;
+			remoteMessage = null;
             if (!Disposed &&
-                _messageQueue.TryDequeue(out RpcPartitionedMessage receivedMsg))
+                _messageQueue.TryDequeue(out RpcPartitionedMessage rpcMessage))
             {
                 try
                 {
-                    var frames = receivedMsg.Frames;
-                    if (frames != null)
+                    var rpcMessageFrames = rpcMessage.Frames;
+                    if (rpcMessageFrames != null)
                     {
-                        var framesCnt = frames.Count;
-                        if (framesCnt > 0)
+                        var rpcMessageFrameCnt = rpcMessageFrames.Count;
+                        if (rpcMessageFrameCnt > 0)
                         {
-                            var serializer = GetSerializer(receivedMsg);
+                            var serializer = GetSerializer(rpcMessage);
                             if (serializer == null)
                                 throw new Exception(RpcErrors.InvalidSerializerKey);
 
-                            var dataList = new List<ArraySegment<byte>>(framesCnt);
-                            foreach (var frame in frames)
+                            var frameDataList = new List<ArraySegment<byte>>(rpcMessageFrameCnt);
+                            foreach (var rpcMessageFrame in rpcMessageFrames)
                             {
-                                var frameData = frame.Data;
-                                if (frameData != null)
+                                var data = rpcMessageFrame.Data;
+                                if (data != null)
                                 {
-                                    if (frame.DataLength == frameData.Length)
-                                        dataList.Add(new ArraySegment<byte>(frameData));
-                                    else
-                                        dataList.Add(new ArraySegment<byte>(frameData, 0, frame.DataLength));
+                                    var dataLen = data.Length;
+                                    if (dataLen > 0)
+                                    {
+                                        var frameDataLen = rpcMessageFrame.DataLength;
+
+                                        frameDataList.Add((frameDataLen == dataLen) ?
+                                            new ArraySegment<byte>(data) :
+                                            new ArraySegment<byte>(data, 0, frameDataLen));
+                                    }
                                 }
                             }
 
-                            using (var stream = new ChunkedStream(dataList, false))
+                            using (var stream = new ChunkedStream(frameDataList, false))
                             {
-                                message = serializer.Deserialize(stream);
+                                remoteMessage = serializer.Deserialize(stream);
 
-                                if (message.Message != null && message.Message != Message.Empty &&
-                                    message.To != Aid.Unknown)
+                                if (remoteMessage.Message != null && remoteMessage.Message != Message.Empty &&
+                                    remoteMessage.To != Aid.Unknown)
                                     return true;
                             }
                         }
@@ -150,17 +147,17 @@ namespace Sweet.Actors
                 }
                 finally
                 {
-                    ReleaseFrames(receivedMsg);
+                    ReleaseFrames(rpcMessage);
                 }
             };
 			return false;
         }
 
-        private IWireSerializer GetSerializer(RpcPartitionedMessage message)
+        private IWireSerializer GetSerializer(RpcPartitionedMessage rpcMessage)
         {
             IWireSerializer serializer = null;
 
-            var serializerKey = message.Header.SerializerKey;
+            var serializerKey = rpcMessage.Header.SerializerKey;
             if (String.IsNullOrEmpty(serializerKey))
                 serializerKey = Constants.DefaultSerializerKey;
 
