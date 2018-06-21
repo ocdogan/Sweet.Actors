@@ -80,7 +80,7 @@ namespace Sweet.Actors
                         RemoteMessage remoteMsg = null;
                         try
                         {
-                            if (_buffer.TryGetMessage(out remoteMsg))
+                            while (_buffer.TryGetMessage(out remoteMsg))
                                 _server.HandleMessage(remoteMsg, this);
                         }
                         catch (Exception e)

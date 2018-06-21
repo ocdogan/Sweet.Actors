@@ -68,11 +68,14 @@ namespace Sweet.Actors
             if ((buffer != null) && (bytesTransferred > 0))
             {
                 _stream.Write(buffer, offset, bytesTransferred);
-                if (_parser.TryParse(_stream, out RpcPartitionedMessage message))
+
+                var parsed = false;
+                while (_parser.TryParse(_stream, out RpcPartitionedMessage message))
                 {
                     _messageQueue.Enqueue(message);
-                    return true;
+                    parsed = true;
                 }
+                return parsed;
             }
             return false;
         }

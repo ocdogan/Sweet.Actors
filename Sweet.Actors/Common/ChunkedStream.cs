@@ -937,12 +937,8 @@ namespace Sweet.Actors
                         if (_origin > 0 && _length > 0 &&
                             _chunks.Count == 1)
                         {
-                            var copySize = (int)(_length - _origin);
-                            if (copySize > 0)
-                            {
-                                var chunk = _chunks[0];
-                                Buffer.BlockCopy(chunk, _origin, chunk, 0, copySize);
-                            }
+                            var chunk = _chunks[0];
+                            Buffer.BlockCopy(chunk, _origin, chunk, 0, (int)_length);
 
                             _origin = 0;
                         }

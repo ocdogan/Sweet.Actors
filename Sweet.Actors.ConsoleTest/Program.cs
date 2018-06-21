@@ -24,13 +24,9 @@
 
 using System;
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Sweet.Actors;
 
 namespace Sweet.Actors.ConsoleTest
 {
@@ -69,113 +65,10 @@ namespace Sweet.Actors.ConsoleTest
             // AverageTest();
 
             // ChunkedStreamTest();
-            // ClientServerTest();
-            RemoteTest();
 
-            // ActorTest();
-        }
-
-        private static void RunRemoteSystem()
-        {
-            var remoteServerOptions = (new RpcServerOptions())
-                .UsingIPAddress("127.0.0.1")
-                .UsingPort(17777);
-
-            var remoteManager = new RpcManager(remoteServerOptions);
-            remoteManager.Start();
-
-            var remoteSystemOptions = ActorSystemOptions
-                .UsingName("remote-system")
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
-
-            var remoteSystem = ActorSystem.GetOrAdd(remoteSystemOptions);
-            remoteManager.Bind(remoteSystem);
-
-            var actorOptions = ActorOptions
-                .UsingName("remote-actor");
-
-            var Completed = Task.FromResult(0);
-
-            remoteSystem.FromFunction((ctx, message) => {
-                Console.WriteLine(message.Data ?? "(null request)");
-
-                if (message.MessageType == MessageType.FutureMessage)
-                    ctx.RespondTo(message, "world");
-
-                return Completed;
-            },
-            actorOptions);
-        }
-
-        private static void RunLocalSystem()
-        {
-            var localServerOptions = (new RpcServerOptions())
-                .UsingIPAddress("127.0.0.1")
-                .UsingPort(18888);
-
-            var localManager = new RpcManager(localServerOptions);
-            localManager.Start();
-
-            var localSystemOptions = ActorSystemOptions
-                .UsingName("local-system")
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
-
-            var localSystem = ActorSystem.GetOrAdd(localSystemOptions);
-
-            localManager.Bind(localSystem);
-
-            var remoteActorOptions = ActorOptions
-                .UsingName("remote-actor")
-                .UsingRemoteActorSystem("remote-system")
-                .UsingRemoteEndPoint("127.0.0.1", 17777);
-
-            var remotePid = localSystem.FromRemote(remoteActorOptions);
-            // remotePid.Tell("hello (fire & forget)");
-
-            var task = remotePid.Request("hello (do not forget)");
-            task.ContinueWith((previousTask) => {
-                var response = previousTask.Result;
-                Console.WriteLine(response?.Data ?? "(null response)");
-            });
-        }
-
-        private static void RemoteTest()
-        {
-            RunRemoteSystem();
-            RunLocalSystem();
-
-            Console.WriteLine("Press any key to exit");
-            Console.Read();
-
-            /* var remoteManager = new RpcManager((new RpcServerOptions()).UsingIPAddress("127.0.0.1"));
-            remoteManager.Start();
-
-            var systemOptions = ActorSystemOptions
-                .UsingName("system")
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
-
-            var actorSystem = ActorSystem.GetOrAdd(systemOptions);
-
-            remoteManager.Bind(actorSystem);
-
-            Thread.Sleep(2000);
-
-            Console.WriteLine(remoteManager.EndPoint);
-
-            var actorOptions = ActorOptions
-                .UsingName("actor")
-                .UsingSequentialInvokeLimit(1000)
-                .UsingRemoteActorSystem("system")
-                .UsingRemoteEndPoint(remoteManager.EndPoint);
-
-            var remotePid = actorSystem.FromRemote(actorOptions);
-            remotePid.Tell("hello");
-
-            Console.WriteLine("Press any key to exit");
-            Console.Read();
-            */
-        }
-
+            ActorTest();
+        }       
+        
         private static void ChunkedStreamTest()
         {
             var buffer = new byte[100];

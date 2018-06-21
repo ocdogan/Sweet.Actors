@@ -202,31 +202,27 @@ namespace Sweet.Actors
                 var actor = to.Actor?.Trim();
                 var actorSystem = to.ActorSystem?.Trim();
 
-                if (!(String.IsNullOrEmpty(actor) ||
-                    String.IsNullOrEmpty(actorSystem)) &&
-                    TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem))
+                if (!(String.IsNullOrEmpty(actor) || String.IsNullOrEmpty(actorSystem)) &&
+                    TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem) &&
+                    bindedSystem.TryGet(actor, out Pid pid) && pid != null && pid != Aid.Unknown)
                 {
-                    var pid = bindedSystem.Get(actor);
-                    if (pid != null && pid != Aid.Unknown)
+                    if (!(message is FutureMessage))
+                        return pid.Tell(message);
+
+                    var header = message.Header as IDictionary<string, string>;
+                    if (header == null && message.Header != null)
                     {
-                        if (!(message is FutureMessage))
-                            return pid.Tell(message);
-
-                        var header = message.Header as IDictionary<string, string>;
-                        if (header == null && message.Header != null)
-                        {
-                            header = new Dictionary<string, string>();
-                            foreach (var kv in message.Header)
-                                header.Add(kv);
-                        }
-
-                        var response = pid.Request(message.Data, header);
-                        if (response == null)
-                            throw new Exception(RpcErrors.InvalidMessageResponse);
-
-                        return response.ContinueWith((previousTask) =>
-                            SendMessage(previousTask.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
+                        header = new Dictionary<string, string>();
+                        foreach (var kv in message.Header)
+                            header.Add(kv);
                     }
+
+                    var response = pid.Request(message.Data, header);
+                    if (response == null)
+                        throw new Exception(RpcErrors.InvalidMessageResponse);
+
+                    return response.ContinueWith((previousTask) =>
+                        SendMessage(previousTask.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
                 }
             }
             throw new Exception(RpcErrors.InvalidMessageReceiver);

@@ -130,20 +130,31 @@ namespace Sweet.Actors
             return _systemRegistery.TryGetValue(actorSystemName, out actorSystem);
         }
 
-        public static bool TryGet(Aid actorId, out Pid pid)
+        public static bool TryGetLocal(Aid localAid, out Pid pid)
         {
             pid = null;
-            if (actorId != null)
+            if (localAid != null)
             {
-                pid = actorId as Pid;
+                pid = localAid as Pid;
                 if (pid?.Process != null)
                     return true;
 
-                if (TryGet(actorId.ActorSystem, out ActorSystem actorSystem))
-                {
-                    pid = actorSystem.Get(actorId.Actor);
-                    return (pid?.Process != null);
-                }
+                if (TryGet(localAid.ActorSystem, out ActorSystem actorSystem))
+                    return actorSystem.TryGet(localAid.Actor, out pid);
+            }
+            return false;
+        }
+
+        public bool TryGetRemote(Aid remoteAid, out Pid pid)
+        {
+            pid = null;
+            if (remoteAid != null)
+            {
+                pid = remoteAid as Pid;
+                if (pid?.Process != null)
+                    return true;
+
+                return TryGet($"{remoteAid.ActorSystem}/{remoteAid.Actor}", out pid);
             }
             return false;
         }
@@ -151,16 +162,27 @@ namespace Sweet.Actors
         public static ActorSystem GetOrAdd(ActorSystemOptions options = null)
         {
             options = (options ?? ActorSystemOptions.Default);
+
+            var actorSystemName = options.Name?.Trim();
+            if (String.IsNullOrEmpty(actorSystemName))
+                throw new ArgumentNullException(nameof(options.Name));
+
             return _systemRegistery.GetOrAdd(options.Name,
                 (sn) => new ActorSystem(options));
         }
 
-        public Pid Get(string actorName)
+        public bool TryGet(string actorName, out Pid pid)
         {
+            pid = null;
             actorName = actorName?.Trim();
-            if (_processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
-                return registery.Process.Pid;
-            return null;
+
+            if (!String.IsNullOrEmpty(actorName) &&
+                _processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
+            {
+                pid = registery.Process?.Pid;
+                return pid != null;
+            }
+            return false;
         }
 
         public Pid From(ActorOptions options)
@@ -305,21 +327,21 @@ namespace Sweet.Actors
             if (options == null)
                 throw new ArgumentNullException(nameof(options));
 
-            var remoteActorSystem = options.RemoteActorSystem;
+            var remoteActorSystem = options.RemoteActorSystem?.Trim();
             if (String.IsNullOrEmpty(remoteActorSystem))
                 throw new ArgumentNullException(nameof(options.RemoteActorSystem));
 
-            var actorName = options.Name?.Trim();
-            if (String.IsNullOrEmpty(actorName))
+            var remoteActor = options.Name?.Trim();
+            if (String.IsNullOrEmpty(remoteActor))
                 throw new ArgumentNullException(nameof(options.Name));
 
             var isNew = false;
-            var registery = _processRegistery.GetOrAdd(actorName,
+            var registery = _processRegistery.GetOrAdd($"{remoteActorSystem}/{remoteActor}",
                 (an) =>
                 {
                     isNew = true;
-                    var p = new RemoteProcess(options.Name, this, 
-                            new RemoteAddress(options.EndPoint, remoteActorSystem, options.Name));
+                    var p = new RemoteProcess(remoteActor, this, 
+                            new RemoteAddress(options.EndPoint, remoteActorSystem, remoteActor));
 
                     return new ProcessRegistery(p, typeof(RemoteProcess), ProcessType.Remote);
                 });
