@@ -55,15 +55,21 @@ namespace Sweet.Actors.RpcTestServer1
             var Completed = Task.FromResult(0);
 
             var sw = new Stopwatch();
-            var resetEvent = new ManualResetEvent(false);
-
-            sw.Restart();
 
             actorSystem.FromFunction((ctx, message) => {
-                if (Interlocked.Increment(ref counter) == 5000)
-                    resetEvent.Set();
+                var count = Interlocked.Increment(ref counter);
 
-                Console.WriteLine(message.Data ?? "(null request)");
+                if (count == 1)
+                    sw.Restart();
+                else if (count == 100000)
+                {
+                    Interlocked.Exchange(ref counter, 0);
+
+                    sw.Stop();
+                    Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                }
+
+                // Console.WriteLine(message.Data ?? "(null request)");
 
                 if (message.MessageType == MessageType.FutureMessage)
                     ctx.RespondTo(message, "world");
@@ -71,11 +77,6 @@ namespace Sweet.Actors.RpcTestServer1
                 return Completed;
             },
             actorOptions);
-
-            resetEvent.WaitOne();
-            sw.Stop();
-
-            Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
         }
 
         static void Main(string[] args)
