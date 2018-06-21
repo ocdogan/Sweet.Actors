@@ -23,12 +23,16 @@
 #endregion License
 
 using System;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sweet.Actors.RpcTestServer1
 {
     class Program
     {
+        private static int counter;
+
         private static void RunRemoteSystem(int port)
         {
             var serverOptions = (new RpcServerOptions())
@@ -50,7 +54,15 @@ namespace Sweet.Actors.RpcTestServer1
 
             var Completed = Task.FromResult(0);
 
+            var sw = new Stopwatch();
+            var resetEvent = new ManualResetEvent(false);
+
+            sw.Restart();
+
             actorSystem.FromFunction((ctx, message) => {
+                if (Interlocked.Increment(ref counter) == 5000)
+                    resetEvent.Set();
+
                 Console.WriteLine(message.Data ?? "(null request)");
 
                 if (message.MessageType == MessageType.FutureMessage)
@@ -59,6 +71,11 @@ namespace Sweet.Actors.RpcTestServer1
                 return Completed;
             },
             actorOptions);
+
+            resetEvent.WaitOne();
+            sw.Stop();
+
+            Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
         }
 
         static void Main(string[] args)

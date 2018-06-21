@@ -51,13 +51,14 @@ namespace Sweet.Actors.RpcTestServer2
                 .UsingRemoteEndPoint("127.0.0.1", 17777);
 
             var remotePid = actorSystem.FromRemote(remoteActorOptions);
-            remotePid.Tell("hello (fire & forget)");
+            for (var i = 0; i < 5000; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("000"));
 
-            var task = remotePid.Request("hello (do not forget)");
+            /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
                 var response = previousTask.Result;
                 Console.WriteLine(response?.Data ?? "(null response)");
-            });
+            }); */
         }
 
         static void Main(string[] args)
