@@ -137,17 +137,23 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
+                    CancellationTokenSource cts = null;
+                    TaskCompletionSource<IFutureResponse> tcs;
+
+                    if (timeoutMSec < 1)
+                        tcs = new TaskCompletionSource<IFutureResponse>();
+                    else
                     {
-                        var tcs = (cts == null) ?
-                            new TaskCompletionSource<IFutureResponse>() :
-                            new TaskCompletionSource<IFutureResponse>(cts.Token);
+                        cts = new CancellationTokenSource();
+                        tcs = new TaskCompletionSource<IFutureResponse>(cts.Token);
 
-                        _mailbox.Enqueue(new FutureMessage<object>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
-                        StartProcessTask();
-
-                        return tcs.Task;
+                        TimeoutHandler.TryRegister(cts, timeoutMSec);
                     }
+
+                    _mailbox.Enqueue(new FutureMessage<object>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
+                    StartProcessTask();
+
+                    return tcs.Task;
                 }
                 catch (Exception e)
                 {
@@ -163,16 +169,23 @@ namespace Sweet.Actors
             {
                 try
                 {
-					using (var cts = (timeoutMSec > 0) ? new CancellationTokenSource(timeoutMSec) : null)
-					{
-						var tcs = cts != null ? new TaskCompletionSource<IFutureResponse>(cts.Token) :
-							new TaskCompletionSource<IFutureResponse>();
+                    CancellationTokenSource cts = null;
+                    TaskCompletionSource<IFutureResponse> tcs;
 
-						_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
-						StartProcessTask();
+                    if (timeoutMSec < 1)
+                        tcs = new TaskCompletionSource<IFutureResponse>();
+                    else
+                    {
+                        cts = new CancellationTokenSource();
+                        tcs = new TaskCompletionSource<IFutureResponse>(cts.Token);
 
-						return tcs.Task;
-					}
+                        TimeoutHandler.TryRegister(cts, timeoutMSec);
+                    }
+
+					_mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
+					StartProcessTask();
+
+  				    return tcs.Task;
                 }
                 catch (Exception e)
                 {

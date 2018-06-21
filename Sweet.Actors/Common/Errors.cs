@@ -43,6 +43,6 @@ namespace Sweet.Actors
 
         public const string ExpectingReceiveCompletedOperation = "Expecting receive completed operation";
 
-        public const string UnknownProcess = "Unknown process";
+        public const string UnknownProcess = "Unknown process";        
     }
 }

@@ -188,11 +188,11 @@ namespace Sweet.Actors
                     Configure(socket);
 
                     socket.ConnectAsync(remoteEP)
-                        .ContinueWith((t) =>
+                        .ContinueWith((previousTask) =>
                         {
                             try
                             {
-                                if (t.IsFaulted || t.IsCanceled || !socket.IsConnected())
+                                if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
                                 {
                                     Close(socket);
                                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);

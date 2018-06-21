@@ -224,8 +224,8 @@ namespace Sweet.Actors
                         if (response == null)
                             throw new Exception(RpcErrors.InvalidMessageResponse);
 
-                        return response.ContinueWith((t) =>
-                            SendMessage(t.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
+                        return response.ContinueWith((previousTask) =>
+                            SendMessage(previousTask.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
                     }
                 }
             }

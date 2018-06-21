@@ -133,8 +133,8 @@ namespace Sweet.Actors.ConsoleTest
             // remotePid.Tell("hello (fire & forget)");
 
             var task = remotePid.Request("hello (do not forget)");
-            task.ContinueWith((t) => {
-                var response = t.Result;
+            task.ContinueWith((previousTask) => {
+                var response = previousTask.Result;
                 Console.WriteLine(response?.Data ?? "(null response)");
             });
         }
@@ -266,11 +266,11 @@ namespace Sweet.Actors.ConsoleTest
             do
             {
                 var t = actorPid.Request<int>("hello");
-                t.ContinueWith((ca) =>
+                t.ContinueWith((previousTask) =>
                 {
-                    if (ca.IsCompleted)
+                    if (previousTask.IsCompleted)
                     {
-                        var r = ca.Result;
+                        var r = previousTask.Result;
                         if (r is IFutureError fe)
                             Console.WriteLine(fe.Exception);
                         else

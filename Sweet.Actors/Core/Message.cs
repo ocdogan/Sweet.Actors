@@ -137,8 +137,10 @@ namespace Sweet.Actors
                                Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
 			: base(data, typeof(T), from, header, timeoutMSec)
         {
-            _cts = cancellationTokenSource ?? (timeoutMSec > 0 ? new CancellationTokenSource(timeoutMSec) : new CancellationTokenSource());
+            _cts = cancellationTokenSource ?? new CancellationTokenSource();
             _tcs = taskCompletionSource ?? new TaskCompletionSource<IFutureResponse>(_cts);
+
+            TimeoutHandler.TryRegister(_cts, timeoutMSec);
         }
 
         public override MessageType MessageType => MessageType.FutureMessage;
