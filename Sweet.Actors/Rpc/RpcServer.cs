@@ -104,6 +104,12 @@ namespace Sweet.Actors
             }
         }
 
+        protected struct LRUItem<T, K>
+        {
+            public K Key;
+            public T Value;
+        }
+
         private const int MaxBufferSize = 4 * Constants.KB;
         private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
 
@@ -116,8 +122,10 @@ namespace Sweet.Actors
 		private IPEndPoint _localEndPoint;
         private RpcServerOptions _options;
 
+        private LRUItem<ActorSystem, string> _lastBinding;
+
         private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
-        private readonly ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
+        private ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
 
         static RpcServer()
         {
@@ -132,12 +140,10 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
-            if (_actorSystemBindings.Count > 0)
+            var bindings = Interlocked.Exchange(ref _actorSystemBindings, null);
+            if (bindings != null)
             {
-                var actorSystems = _actorSystemBindings.Values.ToArray();
-                _actorSystemBindings.Clear();
-
-                foreach (var actorSystem in actorSystems)
+                foreach (var actorSystem in bindings.Values)
                     actorSystem.SetRemoteManager(null);
             }
 
@@ -172,7 +178,18 @@ namespace Sweet.Actors
         protected bool TryGetBindedSystem(string actorSystem, out ActorSystem bindedSystem)
         {
             bindedSystem = null;
-            return !Disposed && _actorSystemBindings.TryGetValue(actorSystem, out bindedSystem);
+            if (actorSystem == _lastBinding.Key)
+            {
+                bindedSystem = _lastBinding.Value;
+                return true;
+            }
+
+            var result = (_actorSystemBindings?.TryGetValue(actorSystem, out bindedSystem) ?? false);
+            _lastBinding = new LRUItem<ActorSystem, string> {
+                Key = actorSystem,
+                Value = bindedSystem
+            };
+            return result;
         }
 
         public virtual bool Bind(ActorSystem actorSystem)
@@ -180,10 +197,18 @@ namespace Sweet.Actors
             ThrowIfDisposed();
 
             if (actorSystem != null &&
-                (!_actorSystemBindings.TryGetValue(actorSystem.Name, out ActorSystem bindedSystem) || 
+                (!TryGetBindedSystem(actorSystem.Name, out ActorSystem bindedSystem) || 
                 bindedSystem == actorSystem))
             {
                 _actorSystemBindings[actorSystem.Name] = actorSystem;
+
+                if (_lastBinding.Key == actorSystem.Name)
+                    _lastBinding = new LRUItem<ActorSystem, string>
+                    {
+                        Key = actorSystem.Name,
+                        Value = actorSystem
+                    };
+
                 return true;
             }
             return false;
@@ -194,10 +219,13 @@ namespace Sweet.Actors
             ThrowIfDisposed();
 
             if (actorSystem != null &&
-                _actorSystemBindings.TryGetValue(actorSystem.Name, out ActorSystem bindedSystem) &&
-                bindedSystem == actorSystem)
-                return _actorSystemBindings.TryRemove(actorSystem.Name, out bindedSystem);
+                TryGetBindedSystem(actorSystem.Name, out ActorSystem bindedSystem) && bindedSystem == actorSystem)
+            {
+                if (_lastBinding.Key == actorSystem.Name)
+                    _lastBinding = new LRUItem<ActorSystem, string> { };
 
+                return (_actorSystemBindings?.TryRemove(actorSystem.Name, out bindedSystem) ?? false);
+            }
             return false;
         }
 

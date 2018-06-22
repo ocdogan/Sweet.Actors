@@ -6,6 +6,7 @@ namespace Sweet.Actors
     public abstract class Disposable : IDisposable
     {
         private int _disposed;
+        private bool _doNotSuppressFinalizeOnDispose;
 
         ~Disposable()
         {
@@ -20,10 +21,16 @@ namespace Sweet.Actors
                  throw new ObjectDisposedException(String.IsNullOrEmpty(name) ? GetType().Name : name);
         }
 
+        protected void SuppressFinalizeOnDispose(bool value)
+        {
+            _doNotSuppressFinalizeOnDispose = !value;
+        }
+
         public void Dispose()
         {
             Dispose(true);
-            GC.SuppressFinalize(this);
+            if (!_doNotSuppressFinalizeOnDispose)
+                GC.SuppressFinalize(this);
         }
 
         private void Dispose(bool disposing)
