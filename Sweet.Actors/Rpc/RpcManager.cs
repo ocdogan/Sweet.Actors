@@ -199,12 +199,11 @@ namespace Sweet.Actors
             var to = remoteMessage.To;
             if (to != null && to != Aid.Unknown)
             {
-                var actor = to.Actor?.Trim();
                 var actorSystem = to.ActorSystem?.Trim();
 
-                if (!(String.IsNullOrEmpty(actor) || String.IsNullOrEmpty(actorSystem)) &&
+                if (!String.IsNullOrEmpty(actorSystem) &&
                     TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem) &&
-                    bindedSystem.TryGet(actor, out Pid pid) && pid != null && pid != Aid.Unknown)
+                    bindedSystem.TryGetInternal(to.Actor, out Pid pid) && pid != null && pid != Aid.Unknown)
                 {
                     if (!(message is FutureMessage))
                         return pid.Tell(message);

@@ -32,6 +32,7 @@ namespace Sweet.Actors.RpcTestServer1
     class Program
     {
         private static int counter;
+        private const int loop = 20000;
 
         private static void RunRemoteSystem(int port)
         {
@@ -56,32 +57,60 @@ namespace Sweet.Actors.RpcTestServer1
 
             var sw = new Stopwatch();
 
-            actorSystem.FromFunction((ctx, message) => {
+            var pid = actorSystem.FromFunction((ctx, message) => {
                 var count = Interlocked.Increment(ref counter);
 
                 if (count == 1)
                     sw.Restart();
-                else if (count == 100000)
+                else
                 {
-                    Interlocked.Exchange(ref counter, 0);
+                    if (count % 1000 == 0)
+                        Console.WriteLine(count);
 
-                    sw.Stop();
-                    Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                    if (count == loop)
+                    {
+                        Interlocked.Exchange(ref counter, 0);
+
+                        sw.Stop();
+                        Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                    }
                 }
 
-                // Console.WriteLine(message.Data ?? "(null request)");
-
-                if (message.MessageType == MessageType.FutureMessage)
-                    ctx.RespondTo(message, "world");
+                /* if (message.MessageType == MessageType.FutureMessage)
+                    ctx.RespondTo(message, "world"); */
 
                 return Completed;
             },
             actorOptions);
         }
 
+        static void FunctionTest()
+        {
+            var sw = new Stopwatch();
+
+            int counter = 0;
+            Action a = () => {
+                var count = Interlocked.Increment(ref counter);
+
+                if (count == 1)
+                    sw.Restart();
+                else if (count == loop)
+                {
+                    Interlocked.Exchange(ref counter, 0);
+
+                    sw.Stop();
+                    Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                }
+            };
+
+            for (var i = 0; i < loop; i++)
+                a();
+        }
+
         static void Main(string[] args)
         {
             RunRemoteSystem(17777);
+            // FunctionTest();
 
             Console.WriteLine("Press any key to exit");
             Console.Read();

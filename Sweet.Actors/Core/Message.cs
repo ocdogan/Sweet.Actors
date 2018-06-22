@@ -52,24 +52,28 @@ namespace Sweet.Actors
     {
         public static readonly Message Empty = new Message(new object(), Aid.Unknown);
 
-		private int _creationTime;
-		private int _timeoutMSec = -1;
-        private IReadOnlyDictionary<string, string> _header;
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
+
+        private int _creationTime;
+		private int _timeoutMSec = -1;
+        private IReadOnlyDictionary<string, string> _header = _defaultHeader;
 
 		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
         {
             Data = data;
             From = from ?? Aid.Unknown;
-            _header = (header != null) ? new ReadOnlyDictionary<string, string>(header) : _defaultHeader;
 
-			_timeoutMSec = timeoutMSec;
+            if (header != null)
+            {
+                if (header is IReadOnlyDictionary<string, string> roHeader)
+                    _header = roHeader;
+                else
+                    _header = new ReadOnlyDictionary<string, string>(header);
+            }
 
-			if (_timeoutMSec < -1)
-                _timeoutMSec = -1;
-			else if (_timeoutMSec > 0)
-				_creationTime = Environment.TickCount;
+			if ((_timeoutMSec = timeoutMSec < -1 ? -1 : timeoutMSec) > 0)
+                _creationTime = Environment.TickCount;
         }
 
         public object Data { get; }

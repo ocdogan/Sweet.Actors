@@ -28,6 +28,8 @@ namespace Sweet.Actors.RpcTestServer2
 {
     class Program
     {
+        private const int loop = 20000;
+
         private static void RunRemoteSystem(int port)
         {
             var serverOptions = (new RpcServerOptions())
@@ -51,8 +53,8 @@ namespace Sweet.Actors.RpcTestServer2
                 .UsingRemoteEndPoint("127.0.0.1", 17777);
 
             var remotePid = actorSystem.FromRemote(remoteActorOptions);
-            for (var i = 0; i < 100000; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000"));
+            for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000"));
 
             /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {

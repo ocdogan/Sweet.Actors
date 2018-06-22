@@ -39,30 +39,16 @@ namespace Sweet.Actors
         }
 
         private class ProcessRegistery : IDisposable
-        {            
-            public ProcessRegistery(Process process, Type actorType, 
-                ProcessType processType = ProcessType.Class,
-                RemoteAddress remoteAddress = null)
-            {
-                Process = process;
-                ActorType = actorType;
-                ProcessType = processType;
-                RemoteAddress = remoteAddress;
-            }
-            
+        {
+            public Type ActorType;
+            public Process Process;
+            public ProcessType ProcessType = ProcessType.Class;
+
             public void Dispose()
             {
                 using (var process = Process)
                     Process = null;
             }
-
-            public Type ActorType { get; }
-
-            public Process Process { get; private set; }
-
-            public ProcessType ProcessType { get; }
-
-            public RemoteAddress RemoteAddress { get; }
         }
 
         private class AnonymousNameGenerator : Id<ActorSystem>
@@ -89,7 +75,7 @@ namespace Sweet.Actors
         private ActorSystem(ActorSystemOptions options)
         {
             Options = options ?? ActorSystemOptions.Default;
-            Name = options.Name;
+            Name = Options.Name?.Trim();
         }
 
         public string Name { get; }
@@ -127,10 +113,26 @@ namespace Sweet.Actors
         public static bool TryGet(string actorSystemName, out ActorSystem actorSystem)
         {
             actorSystem = null;
-            return _systemRegistery.TryGetValue(actorSystemName, out actorSystem);
+            return _systemRegistery.TryGetValue(actorSystemName?.Trim(), out actorSystem);
         }
 
-        public static bool TryGetLocal(Aid localAid, out Pid pid)
+        public static bool TryGet(Aid aid, out Pid pid)
+        {
+            pid = null;
+            if (aid != null)
+            {
+                pid = aid as Pid;
+                if (pid?.Process != null)
+                    return true;
+
+                if (TryGet(aid.ActorSystem, out ActorSystem actorSystem))
+                    return actorSystem.TryGetInternal(aid.Actor, out pid) ||
+                        actorSystem.TryGetInternal($"remote://{aid.ActorSystem}/{aid.Actor}", out pid);
+            }
+            return false;
+        }
+
+        public bool TryGetLocal(Aid localAid, out Pid pid)
         {
             pid = null;
             if (localAid != null)
@@ -139,8 +141,7 @@ namespace Sweet.Actors
                 if (pid?.Process != null)
                     return true;
 
-                if (TryGet(localAid.ActorSystem, out ActorSystem actorSystem))
-                    return actorSystem.TryGet(localAid.Actor, out pid);
+                return TryGetInternal(localAid.Actor, out pid);
             }
             return false;
         }
@@ -154,7 +155,7 @@ namespace Sweet.Actors
                 if (pid?.Process != null)
                     return true;
 
-                return TryGet($"{remoteAid.ActorSystem}/{remoteAid.Actor}", out pid);
+                return TryGetInternal($"remote://{remoteAid.ActorSystem}/{remoteAid.Actor}", out pid);
             }
             return false;
         }
@@ -176,8 +177,15 @@ namespace Sweet.Actors
             pid = null;
             actorName = actorName?.Trim();
 
-            if (!String.IsNullOrEmpty(actorName) &&
-                _processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
+            if (!String.IsNullOrEmpty(actorName))
+                return TryGetInternal(actorName, out pid);
+            return false;
+        }
+
+        internal bool TryGetInternal(string actorName, out Pid pid)
+        {
+            pid = null;
+            if (_processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
             {
                 pid = registery.Process?.Pid;
                 return pid != null;
@@ -209,8 +217,8 @@ namespace Sweet.Actors
 
         private bool IsRemote(ActorOptions options)
         {
-            return (options != null) && (options.EndPoint != null) &&
-                !String.IsNullOrEmpty(options.RemoteActorSystem?.Trim());
+            return (options?.EndPoint != null) &&
+                !String.IsNullOrEmpty(options?.RemoteActorSystem?.Trim());
         }
 
         public Pid FromType<T>(ActorOptions options = null)
@@ -242,6 +250,8 @@ namespace Sweet.Actors
                 actorName = actorType.ToString();
 
             var isNew = false;
+            var processType = ProcessType.Class;
+
             var registery = _processRegistery.GetOrAdd(actorName,
                 (an) =>
                 {
@@ -255,11 +265,16 @@ namespace Sweet.Actors
                                     actor ?? (IActor)Activator.CreateInstance(actorType),
                                     options.ErrorHandler ?? Options.ErrorHandler,
                                     GetSequentialInvokeLimit(options), options.InitialContextData);
-                    return new ProcessRegistery(p, actorType);
+
+                    return new ProcessRegistery {
+                        Process = p,
+                        ActorType = actorType,
+                        ProcessType = processType
+                    };
                 });
 
             if (!isNew && 
-                ((registery.ProcessType != ProcessType.Class) || (registery.ActorType != actorType)))
+                ((registery.ProcessType != processType) || (registery.ActorType != actorType)))
                 throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
             return registery.Process.Pid;
@@ -288,6 +303,10 @@ namespace Sweet.Actors
                 actorName = AnonymousNameGenerator.Next();
 
             var isNew = false;
+
+            var actorType = typeof(FunctionCallProcess);
+            var processType = ProcessType.Function;
+
             var registery = _processRegistery.GetOrAdd(actorName,
                 (an) =>
                 {
@@ -301,12 +320,16 @@ namespace Sweet.Actors
                                 options.ErrorHandler ?? Options.ErrorHandler,
                                 GetSequentialInvokeLimit(options), options.InitialContextData);
 
-                    return new ProcessRegistery(p, typeof(FunctionCallProcess), ProcessType.Function);
+                    return new ProcessRegistery {
+                        Process = p,
+                        ActorType = actorType,
+                        ProcessType = processType
+                    };
                 });
 
             if (!isNew)
             {
-                if (registery.ProcessType != ProcessType.Function)
+                if (registery.ProcessType != processType)
                     throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
                 var fp = registery.Process as FunctionCallProcess;
@@ -336,6 +359,10 @@ namespace Sweet.Actors
                 throw new ArgumentNullException(nameof(options.Name));
 
             var isNew = false;
+
+            var actorType = typeof(RemoteProcess);
+            var processType = ProcessType.Remote;
+
             var registery = _processRegistery.GetOrAdd($"{remoteActorSystem}/{remoteActor}",
                 (an) =>
                 {
@@ -343,11 +370,15 @@ namespace Sweet.Actors
                     var p = new RemoteProcess(remoteActor, this, 
                             new RemoteAddress(options.EndPoint, remoteActorSystem, remoteActor));
 
-                    return new ProcessRegistery(p, typeof(RemoteProcess), ProcessType.Remote);
+                    return new ProcessRegistery {
+                        Process = p,
+                        ActorType = actorType,
+                        ProcessType = processType
+                    };
                 });
 
             if (!isNew &&
-                (registery.ProcessType != ProcessType.Remote) || (registery.ActorType != typeof(RemoteProcess)))
+                (registery.ProcessType != processType) || (registery.ActorType != actorType))
                 throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
             return registery.Process.Pid;
