@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,15 +22,42 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+
 namespace Sweet.Actors
 {
-    public static class RpcErrors
+    public class RemoteRequest : RemoteMessage, IDisposable
     {
-        public const string InvalidMessage = "Invalid message";
-        public const string InvalidMessageResponse = "Invalid message response";
-        public const string InvalidMessageReceiver = "Invalid message receiver";
-        public const string InvalidSerializerKey = "Invalid serializer key";
-        public const string CannotResolveEndPoint = "Can not resolve end-point";
-        public const string AnotherActorSystemAlreadyBindedWithName = "Another actor system is already binded with the same name";
+        private TaskCompletor<object> _taskCompletor;
+
+        internal event EventHandler OnTimeout;
+
+        internal RemoteRequest(IMessage message, Aid to, int timeoutMSec = -1)
+            : base(message, to, WireMessageId.Next())
+        {
+            _taskCompletor = new TaskCompletor<object>(timeoutMSec);
+            _taskCompletor.OnTimeout += DoTimedOut;
+        }
+
+        public TaskCompletor<object> TaskCompletor => _taskCompletor;
+
+        public void Dispose()
+        {
+            _taskCompletor.Dispose();
+        }
+
+        protected virtual void DoTimedOut(object sender, EventArgs e)
+        {
+            try
+            {
+                _taskCompletor.OnTimeout -= DoTimedOut;
+                if (Message is IFutureMessage future)
+                    future.Cancel();
+            }
+            finally
+            {
+                OnTimeout?.Invoke(this, e);
+            }
+        }
     }
 }

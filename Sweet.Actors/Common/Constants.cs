@@ -54,5 +54,8 @@ namespace Sweet.Actors
         public const string DefaultSerializerKey = "default";
 
         public static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
+
+        public const int MaxRequestTimeoutMSec = 300000; // 5 minutes
+        public const int DefaultRequestTimeoutMSec = 60000; // 1 minute
     }
 }

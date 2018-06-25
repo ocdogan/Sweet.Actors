@@ -50,17 +50,20 @@ namespace Sweet.Actors.RpcTestServer2
             var remoteActorOptions = ActorOptions
                 .UsingName("system-1-actor-1")
                 .UsingRemoteActorSystem("system-1")
-                .UsingRemoteEndPoint("127.0.0.1", 17777);
+                .UsingRemoteEndPoint("127.0.0.1", 17777)
+                .UsingRequestTimeoutMSec(1000);
 
             var remotePid = actorSystem.FromRemote(remoteActorOptions);
-            for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000"));
+            /* for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000")); */
 
-            /* var task = remotePid.Request("hello (do not forget)");
+            var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
-                var response = previousTask.Result;
+                IFutureResponse response = null;
+                if (previousTask.IsCompleted && !(previousTask.IsCanceled || previousTask.IsFaulted))
+                    response = previousTask.Result;
                 Console.WriteLine(response?.Data ?? "(null response)");
-            }); */
+            });
         }
 
         static void Main(string[] args)

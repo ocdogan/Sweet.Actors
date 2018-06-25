@@ -171,7 +171,7 @@ namespace Sweet.Actors.ConsoleTest
                     }
                 });
 
-                actorPid.Tell(message: "hello", timeoutMSec: 1);
+                actorPid.Tell("hello");
 
                 resetEvent.Reset();
 

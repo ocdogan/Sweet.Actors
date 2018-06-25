@@ -36,15 +36,6 @@ namespace Sweet.Actors
 {
     internal class RpcClient : Disposable, IRemoteClient
     {
-        private class Request : RemoteMessage
-        {
-            public Request(IMessage message, Aid to)
-                : base(message, to, WireMessageId.Next())
-            { }
-
-            public TaskCompletionSource<object> TaskCompletionSource;
-        }
-
         private const object DefaultResponse = null;
         private const int SequentialSendLimit = 100;
 
@@ -64,8 +55,7 @@ namespace Sweet.Actors
         private RpcMessageWriter _writer;
 
         private TaskCompletionSource<int> _connectionTcs;
-        private ConcurrentQueue<Request> _requestQueue = new ConcurrentQueue<Request>();
-        private ConcurrentDictionary<WireMessageId, Request> _responseList = new ConcurrentDictionary<WireMessageId, Request>();
+        private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
 
         static RpcClient()
         {
@@ -279,22 +269,17 @@ namespace Sweet.Actors
             { }
         }
 
-        public Task Send(IMessage message, Aid to)
+        public Task Send(RemoteRequest request)
         {
             ThrowIfDisposed();
 
-            if (message == null)
-                return Task.FromException(new ArgumentNullException(nameof(message)));
+            if (request == null)
+                return Task.FromException(new ArgumentNullException(nameof(request)));
 
-            var tcs = new TaskCompletionSource<object>();
-
-            _requestQueue.Enqueue(
-                new Request(message, to) {
-                    TaskCompletionSource = tcs
-                });
+            _requestQueue.Enqueue(request);
 
             Schedule();
-            return tcs.Task;
+            return request.TaskCompletor.Task;
         }
 
         private void Schedule()
@@ -317,10 +302,10 @@ namespace Sweet.Actors
                 for (var i = 0; i < SequentialSendLimit; i++)
                 {
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_requestQueue.TryDequeue(out Request request))
+                        !_requestQueue.TryDequeue(out RemoteRequest request))
                         break;
 
-                    var tcs = request.TaskCompletionSource;
+                    var taskCompletor = request.TaskCompletor;
 
                     var isFutureCall = false;
                     FutureMessage future = null;
@@ -334,7 +319,7 @@ namespace Sweet.Actors
                             future = (FutureMessage)message;
                             if (future.IsCanceled)
                             {
-                                tcs.TrySetCanceled();
+                                taskCompletor.TrySetCanceled();
                                 future.Cancel();
 
                                 continue;
@@ -345,7 +330,7 @@ namespace Sweet.Actors
                         {
                             var error = new Exception(Errors.MessageExpired);
 
-                            tcs.TrySetException(error);
+                            taskCompletor.TrySetException(error);
                             if (isFutureCall)
                                 future.RespondToWithError(error, future.From);
 
@@ -374,69 +359,30 @@ namespace Sweet.Actors
             return ProcessCompleted;
         }
 
-        private void HandleError(Request request, Exception e)
+        private void HandleError(RemoteRequest request, Exception e)
         {
             try
             {
-                request.TaskCompletionSource.TrySetException(e);
+                request.TaskCompletor.TrySetException(e);
             }
             catch (Exception)
             { }
         }
 
-        protected void CancelWaitingResponses()
-        {
-            var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<WireMessageId, Request>());
-            if (responses.Count > 0)
-            {
-                var ids = responses.Keys.ToList();
-                foreach (var id in ids)
-                {
-                    if (_responseList.TryGetValue(id, out Request request))
-                    {
-                        try
-                        {
-                            request.TaskCompletionSource.TrySetCanceled();
-                            if (request.Message is IFutureMessage future)
-                                future.Cancel();
-                        }
-                        catch (Exception)
-                        { }
-                    }
-                }
-            }
-        }
-
         protected virtual bool Write(WireMessage message, bool flush = true)
         {
-            if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
-                return _writer.Write(_outStream, message, flush);
-            return false;
+            return _writer.Write(_outStream, message, flush);
         }
 
-        private void Send(Request request, bool flush = true)
+        private void Send(RemoteRequest request, bool flush = true)
         {
-            _responseList[request.MessageId] = request;
-            try
+            if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
             {
-                var wireMsg = request.Message.ToWireMessage(request.To, request.MessageId);
+                var msg = request.Message;
+                var wireMsg = msg.ToWireMessage(request.To, request.MessageId);
+
                 if (Write(wireMsg, flush) && flush)
                     BeginReceive();
-            }
-            catch (Exception e)
-            {
-                try
-                {
-                    if (e is SocketException)
-                    {
-                        CancelWaitingResponses();
-                        throw;
-                    }
-                }
-                finally
-                {
-                    request.TaskCompletionSource.TrySetException(e);
-                }
             }
         }
 

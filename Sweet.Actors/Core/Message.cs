@@ -46,6 +46,7 @@ namespace Sweet.Actors
         Aid From { get; }
         MessageType MessageType { get; }
 		bool Expired { get; }
+        int TimeoutMSec { get; }
     }
 
     internal class Message : IMessage
@@ -84,7 +85,9 @@ namespace Sweet.Actors
 
         public virtual MessageType MessageType => MessageType.Default;
 
-		public bool Expired => _timeoutMSec > 0 && 
+        public int TimeoutMSec => _timeoutMSec;
+
+        public bool Expired => _timeoutMSec > 0 && 
 		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
     }
 
@@ -96,88 +99,69 @@ namespace Sweet.Actors
         bool IsCompleted { get; }
         bool IsFaulted { get; }
 
-        int TimeoutMSec { get; }
-
         void Cancel();
     }
 
     internal abstract class FutureMessage : Message, IFutureMessage
     {
+        private Type _responseType;
+        protected readonly TaskCompletor<IFutureResponse> _taskCompletor;
+
         public FutureMessage(object data, Type responseType,
-                               Aid from, IDictionary<string, string> header = null, int timeoutMSec = -1)
-			: base(data, from, header, timeoutMSec)
+                               TaskCompletor<IFutureResponse> taskCompletor,
+                               Aid from, IDictionary<string, string> header = null)
+			: base(data, from, header, taskCompletor.TimeoutMSec)
         {
-            ResponseType = responseType;
-            TimeoutMSec = timeoutMSec;
+            _responseType = responseType;
+            _taskCompletor = taskCompletor;
         }
 
-        public int TimeoutMSec { get; }
-
-        public Type ResponseType { get; }
+        public Type ResponseType => _responseType;
 
         public override MessageType MessageType => MessageType.FutureMessage;
 
-        public abstract bool IsCanceled { get; }
+        public virtual bool IsCanceled => _taskCompletor.IsCanceled;
 
-        public abstract bool IsCompleted { get; }
+        public virtual bool IsCompleted => _taskCompletor.IsCompleted;
 
-        public abstract bool IsFaulted { get; }
+        public virtual bool IsFaulted => _taskCompletor.IsFaulted;
 
         internal abstract void Respond(object response, Aid from = null, IDictionary<string, string> header = null);
 
         internal abstract void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null);
 
-        public abstract void Cancel();
+        public virtual void Cancel()
+        {
+            _taskCompletor.TrySetCanceled();
+        }
     }
 
     internal class FutureMessage<T> : FutureMessage, IFutureMessage
     {
-        private CancellationTokenSource _cts;
-        private TaskCompletionSource<IFutureResponse> _tcs;
-
-        public FutureMessage(object data,
-                               CancellationTokenSource cancellationTokenSource,
-                               TaskCompletionSource<IFutureResponse> taskCompletionSource,
-                               Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
-			: base(data, typeof(T), from, header, timeoutMSec)
+        public FutureMessage(object data, 
+                            TaskCompletor<IFutureResponse> taskCompletor,
+                            Aid from = null, IDictionary<string, string> header = null)
+			: base(data, typeof(T), taskCompletor, from, header)
         {
-            _cts = cancellationTokenSource ?? new CancellationTokenSource();
-            _tcs = taskCompletionSource ?? new TaskCompletionSource<IFutureResponse>(_cts);
-
-            TimeoutHandler.TryRegister(_cts, timeoutMSec);
         }
-
-        public override MessageType MessageType => MessageType.FutureMessage;
-
-        public override bool IsCanceled => _tcs.Task.IsCanceled || ((_cts != null) && _cts.IsCancellationRequested);
-
-        public override bool IsCompleted => _tcs.Task.IsCompleted;
-
-        public override bool IsFaulted => _tcs.Task.IsFaulted;
 
         internal override void Respond(object response, Aid from = null, IDictionary<string, string> header = null)
         {
             try
             {
-                _tcs.SetResult(response == null ? new FutureResponse<T>(from, header) :
-                               new FutureResponse<T>((T)response, from, header));
+                _taskCompletor.TrySetResult(response == null ? 
+                        new FutureResponse<T>(from, header) :
+                        new FutureResponse<T>((T)response, from, header));
             }
             catch (Exception e)
             {
-                _tcs.SetResult(new FutureError<T>(e, from, header));
+                _taskCompletor.TrySetResult(new FutureError<T>(e, from, header));
             }
         }
 
         internal override void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null)
         {
-            _tcs.SetResult(new FutureError<T>(e, from, header));
-        }
-
-        public override void Cancel()
-        {
-            if (_cts != null)
-                _tcs.TrySetCanceled(_cts.Token);
-            else _tcs.TrySetCanceled();
+            _taskCompletor.TrySetResult(new FutureError<T>(e, from, header));
         }
     }
 

@@ -50,15 +50,13 @@ namespace Sweet.Actors
         private string _name;
         private Context _ctx;
         private long _inProcess;
+        private int _requestTimeoutMSec = -1;
         private int _sequentialInvokeLimit;
         private IErrorHandler _errorHandler;
 
         private ConcurrentQueue<IMessage> _mailbox = new ConcurrentQueue<IMessage>();
 
-        public Process(string name, ActorSystem actorSystem, 
-                       IActor actor, IErrorHandler errorHandler = null,
-                       int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
-                       IDictionary<string, object> initialContextData = null)
+        public Process(string name, ActorSystem actorSystem, IActor actor, ActorOptions options)
         {
             _name = name;
 
@@ -68,14 +66,16 @@ namespace Sweet.Actors
             _pid = new Pid(this);
             _ctx = new Context(this);
 
-            _errorHandler = errorHandler ?? DefaultErrorHandler.Instance;
+            _errorHandler = (options.ErrorHandler ?? actorSystem.Options.ErrorHandler) ?? DefaultErrorHandler.Instance;
+            
+            _requestTimeoutMSec = Math.Min(Math.Max(-1, GetRequestTimeoutMSec(actorSystem, options)), Constants.MaxRequestTimeoutMSec); 
 
-            _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(sequentialInvokeLimit);
+            _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
             _sequentialInvokeLimit = (_sequentialInvokeLimit < 1) ?
                     Constants.DefaultSequentialInvokeLimit : _sequentialInvokeLimit;
 
-            if (initialContextData != null)
-                foreach (var kv in initialContextData)
+            if (options.InitialContextData != null)
+                foreach (var kv in options.InitialContextData)
                     _ctx.SetData(kv.Key, kv.Value);
 
             _processRegistery.TryAdd(_pid, this);
@@ -91,6 +91,26 @@ namespace Sweet.Actors
 
         public string Name => _name;
 
+        public int RequestTimeoutMSec => _requestTimeoutMSec;
+
+        private int GetRequestTimeoutMSec(ActorSystem actorSystem, ActorOptions actorOptions)
+        {
+            var result = actorOptions.RequestTimeoutMSec;
+            if (result == -1)
+                result = actorSystem.Options.RequestTimeoutMSec;
+
+            return result;
+        }
+
+        private int GetSequentialInvokeLimit(ActorSystem actorSystem, ActorOptions actorOptions)
+        {
+            var result = actorOptions.SequentialInvokeLimit;
+            if (result < 1)
+                result = actorSystem.Options.SequentialInvokeLimit;
+
+            return result;
+        }
+
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _inProcess, 0L);
@@ -100,17 +120,17 @@ namespace Sweet.Actors
             base.OnDispose(disposing);
         }
 
-        public Task Send(IMessage message, int timeoutMSec = -1)
+        public Task Send(IMessage message)
         {
             ThrowIfDisposed();
 
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            return SendInternal(message, timeoutMSec);
+            return SendInternal(message);
         }
 
-        private Task SendInternal(IMessage message, int timeoutMSec)
+        private Task SendInternal(IMessage message)
         {
             try
             {
@@ -125,45 +145,34 @@ namespace Sweet.Actors
             }
         }
 
-        public Task Send(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public Task Send(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return SendInternal(new Message(message, _ctx.Pid, header), timeoutMSec);
+            return SendInternal(new Message(message, _ctx.Pid, header));
         }
 
-        public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return RequestInternal<object>(message, header, timeoutMSec);
+            return RequestInternal<object>(message, header);
         }
 
-        public Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return RequestInternal<T>(message, header, timeoutMSec);
+            return RequestInternal<T>(message, header);
         }
 
-        private Task<IFutureResponse> RequestInternal<T>(object message, IDictionary<string, string> header, int timeoutMSec)
+        private Task<IFutureResponse> RequestInternal<T>(object message, IDictionary<string, string> header)
         {
             try
             {
-                CancellationTokenSource cts = null;
-                TaskCompletionSource<IFutureResponse> tcs;
+                var taskCompletor = new TaskCompletor<IFutureResponse>(_requestTimeoutMSec);
 
-                if (timeoutMSec < 1)
-                    tcs = new TaskCompletionSource<IFutureResponse>();
-                else
-                {
-                    cts = new CancellationTokenSource();
-                    tcs = new TaskCompletionSource<IFutureResponse>(cts.Token);
-
-                    TimeoutHandler.TryRegister(cts, timeoutMSec);
-                }
-
-                _mailbox.Enqueue(new FutureMessage<T>(message, cts, tcs, _ctx.Pid, header, timeoutMSec));
+                _mailbox.Enqueue(new FutureMessage<T>(message, taskCompletor, _ctx.Pid, header));
                 StartProcessTask();
 
-                return tcs.Task;
+                return taskCompletor.Task;
             }
             catch (Exception e)
             {
@@ -211,23 +220,20 @@ namespace Sweet.Actors
 
         protected virtual Task ProcessMessage(IMessage message)
         {
-            var isFutureCall = false;
-            FutureMessage future = null;
+            var future = (message as FutureMessage);
             try
             {
-                isFutureCall = (message.MessageType == MessageType.FutureMessage);
-
-                if (isFutureCall)
+                if (future?.IsCanceled ?? false)
                 {
-                    future = (FutureMessage)message;
-                    if (future.IsCanceled || message.Expired)
-                    {
-                        future.Cancel();
-                        return Completed;
-                    }
-                }
-                else if (message.Expired)
+                    future.Cancel();
                     return Completed;
+                }
+
+                if (message.Expired)
+                {
+                    future?.Cancel();
+                    return Completed;
+                }
 
                 var t = SendToActor(_ctx, message);
 
@@ -240,15 +246,12 @@ namespace Sweet.Actors
             {
                 HandleError(message, e);
 
-                if (isFutureCall && (future != null))
+                try
                 {
-                    try
-                    {
-                        future.RespondToWithError(e, _ctx.Pid);
-                    }
-                    catch (Exception)
-                    { }
+                    future?.RespondToWithError(e, _ctx.Pid);
                 }
+                catch (Exception)
+                { }
 
                 return Task.FromException(e);
             }
@@ -275,12 +278,8 @@ namespace Sweet.Actors
         private Func<IContext, IMessage, Task> _receiveFunc;
 
         public FunctionCallProcess(string name, ActorSystem actorSystem,
-                       Func<IContext, IMessage, Task> function, 
-                       IErrorHandler errorHandler = null,
-                       int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
-                       IDictionary<string, object> initialContextData = null)
-                       : base(name, actorSystem, null, 
-                            errorHandler, sequentialInvokeLimit, initialContextData)
+                       Func<IContext, IMessage, Task> function, ActorOptions options)
+                       : base(name, actorSystem, null, options)
         { 
             _receiveFunc = function;
             Actor = this;
@@ -299,11 +298,8 @@ namespace Sweet.Actors
         private RemoteAddress _remoteAddress;
 
         public RemoteProcess(string name, ActorSystem actorSystem,
-                       RemoteAddress remoteAddress, IErrorHandler errorHandler = null,
-                       int sequentialInvokeLimit = Constants.DefaultSequentialInvokeLimit,
-                       IDictionary<string, object> initialContextData = null)
-                       : base(name, actorSystem, null, 
-                            errorHandler, sequentialInvokeLimit, initialContextData)
+                       RemoteAddress remoteAddress, ActorOptions options)
+                       : base(name, actorSystem, null, options)
         { 
             _remoteAddress = remoteAddress;
             Actor = this;
@@ -315,7 +311,7 @@ namespace Sweet.Actors
             if (remoteMngr == null)
                 return Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
 
-            return remoteMngr.Send(message, _remoteAddress);
+            return remoteMngr.Send(message, _remoteAddress, RequestTimeoutMSec);
         }
     }
 }

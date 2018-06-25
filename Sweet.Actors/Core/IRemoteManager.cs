@@ -30,6 +30,6 @@ namespace Sweet.Actors
     public interface IRemoteManager : IRemoteServer, IDisposable
     {
         void SetResponseHandler(IResponseHandler handler);
-        Task Send(IMessage message, RemoteAddress to);
+        Task Send(IMessage message, RemoteAddress to, int timeoutMSec = -1);
     }
 }

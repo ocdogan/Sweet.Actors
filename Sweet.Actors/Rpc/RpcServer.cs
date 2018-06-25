@@ -185,10 +185,11 @@ namespace Sweet.Actors
             }
 
             var result = (_actorSystemBindings?.TryGetValue(actorSystem, out bindedSystem) ?? false);
-            _lastBinding = new LRUItem<ActorSystem, string> {
-                Key = actorSystem,
-                Value = bindedSystem
-            };
+            if (result)
+                _lastBinding = new LRUItem<ActorSystem, string> {
+                    Key = actorSystem,
+                    Value = bindedSystem
+                };
             return result;
         }
 
@@ -196,18 +197,18 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
 
-            if (actorSystem != null &&
-                (!TryGetBindedSystem(actorSystem.Name, out ActorSystem bindedSystem) || 
-                bindedSystem == actorSystem))
+            if (actorSystem != null)
             {
-                _actorSystemBindings[actorSystem.Name] = actorSystem;
+                var actorSystemName = actorSystem.Name;
+                if (TryGetBindedSystem(actorSystemName, out ActorSystem bindedSystem))
+                    return bindedSystem == actorSystem;
 
-                if (_lastBinding.Key == actorSystem.Name)
-                    _lastBinding = new LRUItem<ActorSystem, string>
-                    {
-                        Key = actorSystem.Name,
-                        Value = actorSystem
-                    };
+                _actorSystemBindings[actorSystemName] = actorSystem;
+
+                _lastBinding = new LRUItem<ActorSystem, string> {
+                    Key = actorSystemName,
+                    Value = actorSystem
+                };
 
                 return true;
             }

@@ -31,6 +31,7 @@ namespace Sweet.Actors
     {
         private string _name;
         private IErrorHandler _errorHandler;
+        private int _requestTimeoutMSec = -1;
         private int _sequentialInvokeLimit = -1;
 
         protected OptionsBase(string name)
@@ -38,6 +39,12 @@ namespace Sweet.Actors
             _name = name?.Trim();
             if (String.IsNullOrEmpty(_name))
                 _name = Constants.DefaultActorSystemName;
+        }
+
+        public T UsingRequestTimeoutMSec(int requestTimeoutMSec = -1)
+        {
+            _requestTimeoutMSec = Math.Min(Math.Max(-1, requestTimeoutMSec), Constants.MaxRequestTimeoutMSec);
+            return (T)this;
         }
 
         public T UsingSequentialInvokeLimit(int sequentialInvokeLimit)
@@ -61,6 +68,8 @@ namespace Sweet.Actors
         public string Name => _name;
 
         public IErrorHandler ErrorHandler => _errorHandler;
+
+        public int RequestTimeoutMSec => _requestTimeoutMSec;
 
         public int SequentialInvokeLimit => _sequentialInvokeLimit;
     }

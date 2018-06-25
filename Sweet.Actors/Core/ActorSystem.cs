@@ -257,14 +257,10 @@ namespace Sweet.Actors
                 {
                     isNew = true;
 
-                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
-                    if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = Options.SequentialInvokeLimit;
-
-                    var p = new Process(an, this,
-                                    actor ?? (IActor)Activator.CreateInstance(actorType),
-                                    options.ErrorHandler ?? Options.ErrorHandler,
-                                    GetSequentialInvokeLimit(options), options.InitialContextData);
+                    var p = new Process(name: an,
+                                actorSystem: this,
+                                actor: actor ?? (IActor)Activator.CreateInstance(actorType),
+                                options: options);
 
                     return new ProcessRegistery {
                         Process = p,
@@ -278,6 +274,15 @@ namespace Sweet.Actors
                 throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
             return registery.Process.Pid;
+        }
+
+        private int GetRequestTimeoutMSec(ActorOptions options)
+        {
+            var result = options.RequestTimeoutMSec;
+            if (result == -1)
+                result = Options.RequestTimeoutMSec;
+
+            return result;
         }
 
         private int GetSequentialInvokeLimit(ActorOptions options)
@@ -312,13 +317,10 @@ namespace Sweet.Actors
                 {
                     isNew = true;
 
-                    var sequentialInvokeLimit = options.SequentialInvokeLimit;
-                    if (sequentialInvokeLimit < 1)
-                        sequentialInvokeLimit = Options.SequentialInvokeLimit;
-
-                    var p = new FunctionCallProcess(actorName, this, receiveFunc, 
-                                options.ErrorHandler ?? Options.ErrorHandler,
-                                GetSequentialInvokeLimit(options), options.InitialContextData);
+                    var p = new FunctionCallProcess(name: actorName, 
+                                actorSystem: this, 
+                                function: receiveFunc,
+                                options: options);
 
                     return new ProcessRegistery {
                         Process = p,
@@ -367,8 +369,10 @@ namespace Sweet.Actors
                 (an) =>
                 {
                     isNew = true;
-                    var p = new RemoteProcess(remoteActor, this, 
-                            new RemoteAddress(options.EndPoint, remoteActorSystem, remoteActor));
+                    var p = new RemoteProcess(name: remoteActor, 
+                                actorSystem: this, 
+                                remoteAddress: new RemoteAddress(options.EndPoint, remoteActorSystem, remoteActor),
+                                options: options);
 
                     return new ProcessRegistery {
                         Process = p,

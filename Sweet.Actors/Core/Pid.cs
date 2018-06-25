@@ -22,7 +22,6 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -45,24 +44,24 @@ namespace Sweet.Actors
 
         internal Process Process => _process;
 
-        internal Task Tell(IMessage message, int timeoutMSec = -1)
+        internal Task Tell(IMessage message)
         {
-			return _process.Send(message, timeoutMSec);
+			return _process.Send(message);
         }
 
-        public virtual Task Tell(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public virtual Task Tell(object message, IDictionary<string, string> header = null)
         {
-			return _process.Send(message, header, timeoutMSec);
+			return _process.Send(message, header);
         }
 
-        public virtual Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public virtual Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null)
         {
-			return _process.Request<T>(message, header, timeoutMSec);
+			return _process.Request<T>(message, header);
         }
 
-        public virtual Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public virtual Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null)
         {
-            return _process.Request(message, header, timeoutMSec);
+            return _process.Request(message, header);
         }
 
         public override string ToString()

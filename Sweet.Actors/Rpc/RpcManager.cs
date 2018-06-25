@@ -27,6 +27,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sweet.Actors
@@ -101,6 +102,8 @@ namespace Sweet.Actors
         private ConcurrentDictionary<RemoteEndPoint, RpcManagedClient> _rpcManagedClients = 
             new ConcurrentDictionary<RemoteEndPoint, RpcManagedClient>();
 
+        private ConcurrentDictionary<WireMessageId, RemoteRequest> _responseList = new ConcurrentDictionary<WireMessageId, RemoteRequest>();
+
         public RpcManager(RpcServerOptions options = null)
             : base(options)
         {
@@ -144,8 +147,30 @@ namespace Sweet.Actors
             return new RpcManagedClient(settings);
         }
 
-        public Task Send(IMessage message, RemoteAddress to)
+        protected void CancelWaitingResponses()
         {
+            var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<WireMessageId, RemoteRequest>());
+            if (responses.Count > 0)
+            {
+                foreach (var kv in responses)
+                {
+                    try
+                    {
+                        var request = kv.Value;
+
+                        request.TaskCompletor.TrySetCanceled();
+                        if (request.Message is IFutureMessage future)
+                            future.Cancel();
+                    }
+                    catch (Exception)
+                    { }
+                }
+            }
+        }
+
+        public Task Send(IMessage message, RemoteAddress to, int timeoutMSec = -1)
+        {
+            RemoteRequest request = null;
             try
             {
                 ThrowIfDisposed();
@@ -160,11 +185,38 @@ namespace Sweet.Actors
                 if (client == null)
                     throw new Exception(RpcErrors.CannotResolveEndPoint);
 
-                return client.Send(message, to.Actor);
+                request = new RemoteRequest(message, to.Actor, timeoutMSec);
+                request.OnTimeout += RequestTimedOut;
+
+                _responseList[request.MessageId] = request;
+
+                client.Send(request);
+
+                return request.TaskCompletor.Task;
             }
             catch (Exception e)
             {
+                var isSocketError = (e is SocketException);
+                try
+                {
+                    request?.TaskCompletor.TrySetException(e);
+                }
+                finally
+                {
+                    if (isSocketError)
+                        CancelWaitingResponses();
+                }
+
                 return Task.FromException(e);
+            }
+        }
+
+        private void RequestTimedOut(object sender, EventArgs e)
+        {
+            if (sender is RemoteRequest request)
+            {
+                request.OnTimeout -= RequestTimedOut;
+                _responseList.TryRemove(request.MessageId, out request);
             }
         }
 
@@ -220,8 +272,13 @@ namespace Sweet.Actors
                     if (response == null)
                         throw new Exception(RpcErrors.InvalidMessageResponse);
 
-                    return response.ContinueWith((previousTask) =>
-                        SendMessage(previousTask.Result.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection));
+                    return response.ContinueWith((previousTask) => {
+                        if (previousTask.IsCompleted && !(previousTask.IsCanceled || previousTask.IsFaulted))
+                        {
+                            var futureResponse = previousTask.Result;
+                            SendMessage(futureResponse.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection);
+                        }
+                    });
                 }
             }
             throw new Exception(RpcErrors.InvalidMessageReceiver);

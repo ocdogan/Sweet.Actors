@@ -28,47 +28,47 @@ using System.Threading;
 
 namespace Sweet.Actors
 {
-    internal static class TimeoutHandler
+    internal static class TimeoutHandler<T>
     {
-        private static readonly ConcurrentDictionary<CancellationTokenSource, RegisteredWaitHandle> _timeoutRegisterations = 
-            new ConcurrentDictionary<CancellationTokenSource, RegisteredWaitHandle>();
+        private static readonly ConcurrentDictionary<TaskCompletor<T>, RegisteredWaitHandle> _timeoutRegisterations = 
+            new ConcurrentDictionary<TaskCompletor<T>, RegisteredWaitHandle>();
 
         private static void Callback(object state, bool timedOut)
         {
-            var cancellation = (CancellationTokenSource)state;
+            var taskCompletor = (TaskCompletor<T>)state;
             try
             {
-                if (timedOut && !cancellation.IsCancellationRequested)
-                    cancellation.Cancel();
+                if (timedOut)
+                    taskCompletor.DoTimedOut();
             }
             finally
             {
-                _timeoutRegisterations.TryRemove(cancellation, out RegisteredWaitHandle waitHandle);
+                _timeoutRegisterations.TryRemove(taskCompletor, out RegisteredWaitHandle waitHandle);
             }
         }
 
-        public static bool TryRegister(CancellationTokenSource cts, int timeoutMSec)
+        public static bool TryRegister(TaskCompletor<T> taskCompletor, int timeoutMSec)
         {
-            if ((cts != null) && (timeoutMSec > 0) && !cts.IsCancellationRequested)
+            if ((taskCompletor != null) && (timeoutMSec > 0) && !taskCompletor.IsCanceled)
             {
-                Unregister(cts);
+                Unregister(taskCompletor);
 
-                var ctsWaitHandle = cts.Token.WaitHandle;
-                if (!(ctsWaitHandle.SafeWaitHandle?.IsClosed ?? true))
+                var waitHandle = taskCompletor.WaitHandle;
+                if (!(waitHandle.SafeWaitHandle?.IsClosed ?? true))
                 {
-                    _timeoutRegisterations[cts] = 
-                        ThreadPool.RegisterWaitForSingleObject(ctsWaitHandle, Callback, cts, timeoutMSec, true);
+                    _timeoutRegisterations[taskCompletor] = 
+                        ThreadPool.RegisterWaitForSingleObject(waitHandle, Callback, taskCompletor, timeoutMSec, true);
                     return true;
                 }
             }
             return false;
         }
 
-        public static void Unregister(CancellationTokenSource cts)
+        public static void Unregister(TaskCompletor<T> taskCompletor)
         {
-            if (cts != null &&
-                _timeoutRegisterations.TryRemove(cts, out RegisteredWaitHandle waitHandle))
-                waitHandle.Unregister(cts.Token.WaitHandle);
+            if (taskCompletor != null &&
+                _timeoutRegisterations.TryRemove(taskCompletor, out RegisteredWaitHandle waitHandle))
+                waitHandle.Unregister(taskCompletor.WaitHandle);
         }
     }
 }
