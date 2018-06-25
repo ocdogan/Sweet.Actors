@@ -30,7 +30,7 @@ namespace Sweet.Actors.RpcTestServer2
     {
         private const int loop = 20000;
 
-        private static void RunRemoteSystem(int port)
+        private static void InitSystem(int port)
         {
             var serverOptions = (new RpcServerOptions())
                  .UsingIPAddress("127.0.0.1")
@@ -50,25 +50,30 @@ namespace Sweet.Actors.RpcTestServer2
             var remoteActorOptions = ActorOptions
                 .UsingName("system-1-actor-1")
                 .UsingRemoteActorSystem("system-1")
-                .UsingRemoteEndPoint("127.0.0.1", 17777)
-                .UsingRequestTimeoutMSec(1000);
+                .UsingRemoteEndPoint("127.0.0.1", 17777);
 
-            var remotePid = actorSystem.FromRemote(remoteActorOptions);
+            actorSystem.FromRemote(remoteActorOptions);
+        }
+
+        static void Call()
+        {
+            ActorSystem.TryGet("system-2", out ActorSystem actorSystem);
+            actorSystem.TryGetRemote(new Aid("system-1", "system-1-actor-1"), out Pid remotePid);
+
             /* for (var i = 0; i < loop; i++)
                 remotePid.Tell("hello (fire & forget) - " + i.ToString("0000")); */
 
             var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
-                IFutureResponse response = null;
-                if (previousTask.IsCompleted && !(previousTask.IsCanceled || previousTask.IsFaulted))
-                    response = previousTask.Result;
+                var response = previousTask.Result;
                 Console.WriteLine(response?.Data ?? "(null response)");
             });
         }
 
         static void Main(string[] args)
         {
-            RunRemoteSystem(18888);
+            InitSystem(18888);
+            Call();
 
             Console.WriteLine("Press any key to exit");
             Console.Read();

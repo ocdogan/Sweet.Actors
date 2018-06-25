@@ -73,6 +73,7 @@ namespace Sweet.Actors.RpcTestServer1
 
                         sw.Stop();
                         Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                        Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
                     }
                 }
 

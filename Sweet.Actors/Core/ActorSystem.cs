@@ -365,7 +365,7 @@ namespace Sweet.Actors
             var actorType = typeof(RemoteProcess);
             var processType = ProcessType.Remote;
 
-            var registery = _processRegistery.GetOrAdd($"{remoteActorSystem}/{remoteActor}",
+            var registery = _processRegistery.GetOrAdd($"remote://{remoteActorSystem}/{remoteActor}",
                 (an) =>
                 {
                     isNew = true;

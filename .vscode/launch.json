@@ -10,9 +10,9 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/Sweet.Actors.ConsoleTest/bin/Debug/netcoreapp2.0/Sweet.Actors.ConsoleTest.dll",
+            "program": "${workspaceFolder}/Sweet.Actors.RpcTestServer2/bin/Debug/netcoreapp2.0/Sweet.Actors.RpcTestServer2.dll",
             "args": [],
-            "cwd": "${workspaceFolder}/Sweet.Actors.ConsoleTest",
+            "cwd": "${workspaceFolder}/Sweet.Actors.RpcTestServer2",
             // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window
             "console": "internalConsole",
             "stopAtEntry": false,
