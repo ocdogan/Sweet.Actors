@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
@@ -30,9 +31,9 @@ namespace Sweet.Actors
     {
         private TaskCompletor<object> _taskCompletor;
 
-        internal event EventHandler OnTimeout;
+        internal event TimeoutEventHandler OnTimeout;
 
-        internal RemoteRequest(IMessage message, Aid to, int timeoutMSec = -1)
+        internal RemoteRequest(IMessage message, Aid to, int timeoutMSec = 0)
             : base(message, to, WireMessageId.Next())
         {
             _taskCompletor = new TaskCompletor<object>(timeoutMSec);
@@ -46,7 +47,7 @@ namespace Sweet.Actors
             _taskCompletor.Dispose();
         }
 
-        protected virtual void DoTimedOut(object sender, EventArgs e)
+        protected virtual void DoTimedOut(object sender, TaskCompletionStatus status)
         {
             try
             {
@@ -56,7 +57,7 @@ namespace Sweet.Actors
             }
             finally
             {
-                OnTimeout?.Invoke(this, e);
+                OnTimeout?.Invoke(this, status);
             }
         }
     }

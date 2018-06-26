@@ -55,7 +55,7 @@ namespace Sweet.Actors
 
         public static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
 
-        public const int MaxRequestTimeoutMSec = 300000; // 5 minutes
-        public const int DefaultRequestTimeoutMSec = 60000; // 1 minute
+        public const int MaxRequestTimeoutMSec = 1800000; // 30 minutes
+        public const int DefaultRequestTimeoutMSec = 90000; // 90 seconds
     }
 }

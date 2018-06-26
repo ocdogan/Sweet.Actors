@@ -29,6 +29,8 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
+    internal delegate void TimeoutEventHandler(object sender, TaskCompletionStatus status);
+
     public class TaskCompletor<T> : Disposable
     {
         private int _timeoutMSec;
@@ -36,19 +38,14 @@ namespace Sweet.Actors
         private CancellationTokenSource _cts;
         private TaskCompletionSource<T> _tcs;
 
-        internal event EventHandler OnTimeout;
+        internal event TimeoutEventHandler OnTimeout;
 
-        internal TaskCompletor(int timeoutMSec = -1)
+        internal TaskCompletor(int timeoutMSec = 0)
         {
             _cts = new CancellationTokenSource();
             _tcs = new TaskCompletionSource<T>(_cts);
 
-            if (timeoutMSec < 0)
-                _timeoutMSec = Constants.MaxRequestTimeoutMSec;
-            else if (timeoutMSec == 0)
-                _timeoutMSec = Constants.DefaultRequestTimeoutMSec;
-            else 
-                _timeoutMSec = Math.Min(Constants.MaxRequestTimeoutMSec, timeoutMSec);
+            _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
 
             TimeoutHandler<T>.TryRegister(this, _timeoutMSec);
         }
@@ -103,15 +100,45 @@ namespace Sweet.Actors
 
         internal virtual void DoTimedOut()
         {
-            Interlocked.Exchange(ref _unregistered, 1);
-
-            var status = _tcs.Task.Status;
-            if (!(status == TaskStatus.RanToCompletion ||
-                status == TaskStatus.Canceled || status == TaskStatus.Faulted))
+            var status = TaskStatus.RanToCompletion;
+            try
             {
-                TrySetCanceled();
-                OnTimeout?.Invoke(this, EventArgs.Empty);
+                Interlocked.Exchange(ref _unregistered, 1);
+
+                status = _tcs.Task.Status;
+                if (!(status == TaskStatus.RanToCompletion ||
+                    status == TaskStatus.Canceled || status == TaskStatus.Faulted))
+                {
+                    TrySetCanceled();
+                    status = _tcs.Task.Status;
+                }
             }
+            finally
+            {
+                OnTimeout?.Invoke(this, ToTaskCompletionStatus(status));
+            }
+        }
+
+        private static TaskCompletionStatus ToTaskCompletionStatus(TaskStatus tStatus)
+        {
+            TaskCompletionStatus status;
+            switch (tStatus)
+            {
+                case TaskStatus.Canceled:
+                    status = TaskCompletionStatus.Canceled;
+                    break;
+                case TaskStatus.Created:
+                    status = TaskCompletionStatus.Created;
+                    break;
+                case TaskStatus.Faulted:
+                    status = TaskCompletionStatus.Failed;
+                    break;
+                default:
+                    status = TaskCompletionStatus.Running;
+                    break;
+            }
+
+            return status;
         }
 
         public void Unregister()

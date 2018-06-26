@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,14 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-using System.Threading.Tasks;
-
 namespace Sweet.Actors
-{    
-    public interface IRemoteManager : IRemoteServer, IDisposable
+{
+    public enum TaskCompletionStatus
     {
-        void SetResponseHandler(IResponseHandler handler);
-        Task Send(IMessage message, RemoteAddress to, int timeoutMSec = 0);
+        Created,
+        Completed,
+        Canceled,
+        Failed,
+        Running
     }
 }

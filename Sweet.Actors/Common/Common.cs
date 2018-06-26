@@ -110,13 +110,24 @@ namespace Sweet.Actors
 
         #endregion Platform
 
-        public static int ValidateSequentialInvokeLimit(int sequentialInvokeLimit)
+        public static int CheckSequentialInvokeLimit(int sequentialInvokeLimit)
         {
             if (sequentialInvokeLimit < 1)
                 return -1;
 
             return Math.Min(Constants.MaxSequentialInvokeLimit,
                         Math.Max(Constants.MinSequentialInvokeLimit, sequentialInvokeLimit));
+        }
+
+        public static int CheckMessageTimeout(int timeoutMSec)
+        {
+            if (timeoutMSec < 0)
+                return Constants.MaxRequestTimeoutMSec;
+
+            if (timeoutMSec == 0)
+                return Constants.DefaultRequestTimeoutMSec;
+
+            return Math.Min(Constants.MaxRequestTimeoutMSec, timeoutMSec);
         }
 
         #region Atomic
@@ -475,9 +486,11 @@ namespace Sweet.Actors
                 result.Data = message.Data;
 
                 var msgHeader = message.Header;
-                if (msgHeader != null)
+                var headerCount = msgHeader?.Count ?? 0;
+
+                if (headerCount > 0)
                 {
-                    var header = new Dictionary<string, string>(msgHeader.Count);
+                    var header = new Dictionary<string, string>(headerCount);
                     foreach (var kv in msgHeader)
                     {
                         header.Add(kv.Key, kv.Value);

@@ -57,10 +57,10 @@ namespace Sweet.Actors
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
         private int _creationTime;
-		private int _timeoutMSec = -1;
+		private int _timeoutMSec = 0;
         private IReadOnlyDictionary<string, string> _header = _defaultHeader;
 
-		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
         {
             Data = data;
             From = from ?? Aid.Unknown;
@@ -73,8 +73,8 @@ namespace Sweet.Actors
                     _header = new ReadOnlyDictionary<string, string>(header);
             }
 
-			if ((_timeoutMSec = timeoutMSec < -1 ? -1 : timeoutMSec) > 0)
-                _creationTime = Environment.TickCount;
+            _creationTime = Environment.TickCount;
+            _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
         }
 
         public object Data { get; }
@@ -113,7 +113,7 @@ namespace Sweet.Actors
 			: base(data, from, header, taskCompletor.TimeoutMSec)
         {
             _responseType = responseType;
-            _taskCompletor = taskCompletor;
+            _taskCompletor = taskCompletor ?? new TaskCompletor<IFutureResponse>();
         }
 
         public Type ResponseType => _responseType;
@@ -177,14 +177,14 @@ namespace Sweet.Actors
     {
         protected bool _isEmpty;
 
-        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
 			: base(default(T), from, header, timeoutMSec)
         {
             _isEmpty = true;
         }
 
         public FutureResponse(T data, Aid from = null, IDictionary<string, string> header = null,
-                                int timeoutMSec = -1)
+                                int timeoutMSec = 0)
 			: base(data, from, header, timeoutMSec)
         { }
 
@@ -195,14 +195,14 @@ namespace Sweet.Actors
 
     internal class FutureResponse : FutureResponse<object>, IFutureResponse<object>
     {
-        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
             : base(null, from, header, timeoutMSec)
         {
             _isEmpty = true;
         }
 
         public FutureResponse(object data, Aid from = null, IDictionary<string, string> header = null,
-                                int timeoutMSec = -1)
+                                int timeoutMSec = 0)
             : base(data, from, header, timeoutMSec)
         { }
     }

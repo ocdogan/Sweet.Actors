@@ -65,7 +65,10 @@ namespace Sweet.Actors.RpcTestServer2
 
             var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
-                var response = previousTask.Result;
+                IFutureResponse response = null;
+                if (!(previousTask.IsCanceled || previousTask.IsFaulted))
+                    response = previousTask.Result;
+
                 Console.WriteLine(response?.Data ?? "(null response)");
             });
         }
@@ -73,10 +76,63 @@ namespace Sweet.Actors.RpcTestServer2
         static void Main(string[] args)
         {
             InitSystem(18888);
-            Call();
 
-            Console.WriteLine("Press any key to exit");
-            Console.Read();
+            Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+            while (ReadKey() != ConsoleKey.Escape)
+            {
+                Console.Clear();
+                Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+                Call();
+            }
+        }
+
+        private static bool IsWinPlatform
+        {
+            get
+            {
+                var pid = Environment.OSVersion.Platform;
+                switch (pid)
+                {
+                    case PlatformID.Win32NT:
+                    case PlatformID.Win32S:
+                    case PlatformID.Win32Windows:
+                    case PlatformID.WinCE:
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        }
+
+        private static ConsoleKey ReadKey()
+        {
+            if (IsWinPlatform)
+                return Console.ReadKey(true).Key;
+
+            var prevKey = -1;
+
+            var input = Console.In;
+
+            const int bufferLen = 256;
+            var buffer = new char[bufferLen];
+
+            while (true)
+            {
+                var len = input.Read(buffer, 0, bufferLen);
+                if (len < 1)
+                {
+                    if (prevKey > -1)
+                        break;
+                }
+
+                prevKey = buffer[len-1];
+                if (len < bufferLen)
+                    break;
+            }
+
+            return prevKey > -1 ? (ConsoleKey)prevKey : 0;
         }
     }
 }

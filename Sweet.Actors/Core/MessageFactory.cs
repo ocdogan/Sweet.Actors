@@ -36,13 +36,16 @@ namespace Sweet.Actors
         private static readonly ConcurrentDictionary<Type, Type> _futureResponseRepository = new ConcurrentDictionary<Type, Type>();
 
         public static IFutureMessage CreateFutureMessage(Type responseType, object data, 
-                               Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = -1)
+                               Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
         {
             var repositoryType = _futureMessageRepository.GetOrAdd(responseType, 
                 (elementType) => {
                     return typeof(FutureMessage<>).MakeGenericType(elementType);
                 });
-            return (IFutureMessage)Activator.CreateInstance(repositoryType, new object[] {data, null, null, from, header, timeoutMSec});
+
+            return (IFutureMessage)Activator.CreateInstance(repositoryType, new object[] {
+                data, new TaskCompletor<IFutureResponse>(timeoutMSec), from, header
+            });
         }
 
         public static IFutureResponse CreateFutureResponse(Type responseType, object data,
@@ -52,7 +55,7 @@ namespace Sweet.Actors
                 (elementType) => {
                     return typeof(FutureResponse<>).MakeGenericType(elementType);
                 });
-            return (IFutureResponse)Activator.CreateInstance(repositoryType, new object[] {data, from, header});
+            return (IFutureResponse)Activator.CreateInstance(repositoryType, new object[] { data, from, header });
         }
 
         public static IFutureError CreateFutureError(Type responseType, Exception error,
@@ -62,7 +65,7 @@ namespace Sweet.Actors
                 (elementType) => {
                     return typeof(FutureError<>).MakeGenericType(elementType);
                 });
-            return (IFutureError)Activator.CreateInstance(repositoryType, new object[] {error, from, header});
+            return (IFutureError)Activator.CreateInstance(repositoryType, new object[] { error, from, header });
         }    
     }
 }

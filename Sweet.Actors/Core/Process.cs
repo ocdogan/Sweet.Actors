@@ -70,9 +70,9 @@ namespace Sweet.Actors
             
             _requestTimeoutMSec = Math.Min(Math.Max(-1, GetRequestTimeoutMSec(actorSystem, options)), Constants.MaxRequestTimeoutMSec); 
 
-            _sequentialInvokeLimit = Common.ValidateSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
-            _sequentialInvokeLimit = (_sequentialInvokeLimit < 1) ?
-                    Constants.DefaultSequentialInvokeLimit : _sequentialInvokeLimit;
+            var sequentialInvokeLimit = Common.CheckSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
+            _sequentialInvokeLimit = (sequentialInvokeLimit < 1) ?
+                    Constants.DefaultSequentialInvokeLimit : sequentialInvokeLimit;
 
             if (options.InitialContextData != null)
                 foreach (var kv in options.InitialContextData)

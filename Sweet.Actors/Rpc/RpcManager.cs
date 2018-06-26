@@ -168,7 +168,7 @@ namespace Sweet.Actors
             }
         }
 
-        public Task Send(IMessage message, RemoteAddress to, int timeoutMSec = -1)
+        public Task Send(IMessage message, RemoteAddress to, int timeoutMSec = 0)
         {
             RemoteRequest request = null;
             try
@@ -211,7 +211,7 @@ namespace Sweet.Actors
             }
         }
 
-        private void RequestTimedOut(object sender, EventArgs e)
+        private void RequestTimedOut(object sender, TaskCompletionStatus status)
         {
             if (sender is RemoteRequest request)
             {

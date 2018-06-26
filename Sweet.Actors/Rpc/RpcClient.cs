@@ -37,15 +37,19 @@ namespace Sweet.Actors
     internal class RpcClient : Disposable, IRemoteClient
     {
         private const object DefaultResponse = null;
+
+        private const int BulkSendLength = 10;
         private const int SequentialSendLimit = 100;
 
-        private static readonly Task ProcessCompleted = Task.FromResult(0);
+        private static readonly Task Completed = Task.FromResult(0);
 
         private Socket _socket;
         private RpcClientOptions _options;
 
         private Stream _netStream;
         private Stream _outStream;
+
+        private long _waitingToTransmit;
 
         // States
         private int _closing;
@@ -242,12 +246,16 @@ namespace Sweet.Actors
             var netStream = new NetworkStream(socket, false);
             var outStream = new BufferedStream(netStream, RpcConstants.WriteBufferSize);
 
+            Interlocked.Exchange(ref _waitingToTransmit, 0L);
+
             SetStream(ref _outStream, outStream);
             SetStream(ref _netStream, netStream);
         }
 
         private void ResetStreams()
         {
+            Interlocked.Exchange(ref _waitingToTransmit, 0L);
+
             SetStream(ref _outStream, null);
             SetStream(ref _netStream, null);
         }
@@ -286,68 +294,41 @@ namespace Sweet.Actors
         {
             if (Common.CompareAndSet(ref _inProcess, false, true))
             {
-                Task.Factory.StartNew(ProcessQueue);
+                Task.Factory.StartNew(ProcessRequestQueue);
             }
         }
 
-        private Task ProcessQueue()
+        private Task ProcessRequestQueue()
         {
             if (Disposed)
-                return ProcessCompleted;
+                return Completed;
 
             try
             {
                 Connect().Wait();
 
+                var seqProcessCount = 0;
                 for (var i = 0; i < SequentialSendLimit; i++)
                 {
                     if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
                         !_requestQueue.TryDequeue(out RemoteRequest request))
                         break;
 
-                    var taskCompletor = request.TaskCompletor;
+                    seqProcessCount++;
 
-                    var isFutureCall = false;
-                    FutureMessage future = null;
-                    try
-                    {
-                        var message = request.Message;
-                        isFutureCall = (message.MessageType == MessageType.FutureMessage);
+                    var flush = (seqProcessCount == BulkSendLength) || (_requestQueue.Count == 0);
+                    if (flush)
+                        seqProcessCount = 0;
 
-                        if (isFutureCall)
-                        {
-                            future = (FutureMessage)message;
-                            if (future.IsCanceled)
-                            {
-                                taskCompletor.TrySetCanceled();
-                                future.Cancel();
+                    var task = ProcessRequest(request, flush);
+                    if (task.IsFaulted)
+                        continue;
 
-                                continue;
-                            }
-                        }
-
-                        if (message.Expired)
-                        {
-                            var error = new Exception(Errors.MessageExpired);
-
-                            taskCompletor.TrySetException(error);
-                            if (isFutureCall)
-                                future.RespondToWithError(error, future.From);
-
-                            continue;
-                        }
-
-                        Send(request);
-                    }
-                    catch (Exception e)
-                    {
-                        HandleError(request, e);
-
-                        if (isFutureCall)
-                            future.RespondToWithError(e, future.From);
-
-                        return Task.FromException(e);
-                    }
+                    if (!task.IsCompleted)
+                        task.ContinueWith((previousTask) => {
+                            if (!Disposed)
+                                Schedule();
+                        });
                 }
             }
             finally
@@ -356,7 +337,70 @@ namespace Sweet.Actors
                 if (_requestQueue.Count > 0)
                     Schedule();
             }
-            return ProcessCompleted;
+            return Completed;
+        }
+
+        private Task ProcessRequest(RemoteRequest request, bool flush = true)
+        {
+            var message = request.Message;
+            var future = (message as FutureMessage);
+            try
+            {
+                if (future?.IsCanceled ?? false)
+                {
+                    request.TaskCompletor.TrySetCanceled();
+                    future.Cancel();
+
+                    return Completed;
+                }
+
+                if (message.Expired)
+                {
+                    var error = new Exception(Errors.MessageExpired);
+
+                    request.TaskCompletor.TrySetException(error);
+                    future?.RespondToWithError(error, future.From);
+
+                    return Completed;
+                }
+
+                if (!Transmit(request, flush) && flush)
+                {
+                    request.TaskCompletor.TrySetCanceled();
+                    future.Cancel();
+
+                    TryToFlush();
+                }
+
+                return Completed;
+            }
+            catch (Exception e)
+            {
+                HandleError(request, e);
+
+                try
+                {
+                    future?.RespondToWithError(e, future.From);
+                }
+                catch (Exception)
+                { }
+
+                TryToFlush();
+
+                return Task.FromException(e);
+            }
+        }
+
+        private void TryToFlush()
+        {
+            try
+            {
+                if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L &&
+                    !Disposed && (_outStream?.CanWrite ?? false))
+                    _outStream?.Flush();
+            }
+            catch (Exception)
+            { }
         }
 
         private void HandleError(RemoteRequest request, Exception e)
@@ -369,21 +413,39 @@ namespace Sweet.Actors
             { }
         }
 
-        protected virtual bool Write(WireMessage message, bool flush = true)
-        {
-            return _writer.Write(_outStream, message, flush);
-        }
-
-        private void Send(RemoteRequest request, bool flush = true)
+        private bool Transmit(RemoteRequest request, bool flush)
         {
             if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
             {
-                var msg = request.Message;
-                var wireMsg = msg.ToWireMessage(request.To, request.MessageId);
-
-                if (Write(wireMsg, flush) && flush)
+                var message = request.Message;
+                if (WriteMessage(message.ToWireMessage(request.To, request.MessageId), flush))
+                {
                     BeginReceive();
+                    return true;
+                }
             }
+            return false;
+        }
+
+        protected virtual bool WriteMessage(WireMessage message, bool flush = true)
+        {
+            var result = false;
+            var waitingCount = 0L;
+            try
+            {
+                waitingCount = Interlocked.Increment(ref _waitingToTransmit);
+                result = _writer.Write(_outStream, message, flush);
+            }
+            finally
+            {
+                if (result && flush)
+                {
+                    var currentCount = Interlocked.Add(ref _waitingToTransmit, -waitingCount);
+                    if (currentCount < 0)
+                        Interlocked.Add(ref _waitingToTransmit, currentCount);
+                }
+            }
+            return result;
         }
 
         private void BeginReceive()
