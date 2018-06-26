@@ -31,6 +31,6 @@ namespace Sweet.Actors
     {
         Socket Connection { get; }
         IPEndPoint RemoteEndPoint { get; }
-        IRemoteServer Server { get; }
+        object State { get; }
     }
 }

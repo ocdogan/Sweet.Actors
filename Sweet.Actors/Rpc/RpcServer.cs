@@ -32,78 +32,8 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public abstract class RpcServer : Disposable, IRemoteServer
+    public abstract partial class RpcServer : Disposable, IRemoteServer
     {
-        private class ReceiveContext : Disposable, IRpcConnection
-        {
-            private RpcServer _server;
-            private Socket _connection;
-            private IPEndPoint _remoteEndPoint;
-            private readonly RpcReceiveBuffer _buffer;
-
-            public ReceiveContext(RpcServer server, Socket connection)
-            {
-                _server = server;
-                _connection = connection;
-                _remoteEndPoint = (_connection?.RemoteEndPoint as IPEndPoint);
-                _buffer = new RpcReceiveBuffer();
-            }
-
-            public Socket Connection => _connection;
-
-            public IPEndPoint RemoteEndPoint => _remoteEndPoint;
-
-            public IRemoteServer Server => _server;
-
-            protected override void OnDispose(bool disposing)
-            {
-                _server = null;
-
-                var connection = Interlocked.Exchange(ref _connection, null);
-                if (connection != null)
-                    using (connection)
-                    {
-                        if (connection.IsConnected())
-                        {
-                            connection.Shutdown(SocketShutdown.Both);
-                            connection.Close();
-                        }
-                    }                
-            }
-
-            public void ProcessReceived(SocketAsyncEventArgs eventArgs)
-            {
-                try
-                {
-                    if (_buffer.OnReceiveData(eventArgs.Buffer, eventArgs.Offset, eventArgs.BytesTransferred))
-                    {
-                        RemoteMessage remoteMsg = null;
-                        try
-                        {
-                            while (_buffer.TryGetMessage(out remoteMsg))
-                                _server.HandleMessage(remoteMsg, this);
-                        }
-                        catch (Exception e)
-                        {
-                            var message = remoteMsg.Message;
-                            if ((message != null) && (message.MessageType == MessageType.FutureMessage))
-                            {
-                                var response = message.ToWireMessage(remoteMsg.To, remoteMsg.MessageId, e);
-                                _server.SendMessage(response, this);
-                                return;
-                            }
-                            throw;
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    _buffer.Dispose();
-                    throw;
-                }
-            }
-        }
-
         protected struct LRUItem<T, K>
         {
             public K Key;
@@ -111,7 +41,6 @@ namespace Sweet.Actors
         }
 
         private const int MaxBufferSize = 4 * Constants.KB;
-        private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
 
         // States
         private int _stopping;
@@ -124,8 +53,8 @@ namespace Sweet.Actors
 
         private LRUItem<ActorSystem, string> _lastBinding;
 
-        private ConcurrentDictionary<Socket, object> _receivingSockets = new ConcurrentDictionary<Socket, object>();
         private ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
+        private ConcurrentDictionary<RpcReceiveContext, Socket> _receiveContexts = new ConcurrentDictionary<RpcReceiveContext, Socket>();
 
         static RpcServer()
         {
@@ -395,41 +324,32 @@ namespace Sweet.Actors
             ((RpcServer)eventArgs.UserToken).HandleAccept(eventArgs, false);
         }
 
-        private void HandleAccept(SocketAsyncEventArgs eventArgs, bool completedSynchronously)
+        private void HandleAccept(SocketAsyncEventArgs acceptEventArgs, bool completedSynchronously)
         {
             Interlocked.Exchange(ref _accepting, Constants.False);
             try
             {
-                if (eventArgs.SocketError != SocketError.Success)
+                if (acceptEventArgs.SocketError != SocketError.Success)
                 {
                     StartListening();
                     return;
                 }
 
-                if (!(eventArgs.UserToken is RpcServer server))
+                if (!(acceptEventArgs.UserToken is RpcServer server))
                     return;
 
-                var connection = eventArgs.AcceptSocket;
-                if (connection.Connected)
+                var socket = acceptEventArgs.AcceptSocket;
+                if (socket.Connected)
                 {
-                    connection.LingerState = NoLingerState;
-
-                    Task.Factory.StartNew(() =>
-                    {
-                        if (!server.RegisterConnection(connection))
-                            server.CloseConnection(connection);
-                        else
-                        {
-                            var readEventArgs = AcquireReceiveEventArgs(connection);
-                            StartReceiveAsync(connection, readEventArgs);
-                        }
+                    Task.Factory.StartNew(() => {
+                        StartReceiveAsync(socket);
                     }).Ignore();
                 }
 
                 if (completedSynchronously)
                     return;
 
-                StartAccepting(eventArgs);
+                StartAccepting(acceptEventArgs);
             }
             catch (Exception)
             {
@@ -437,115 +357,62 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartReceiveAsync(Socket clientConnection, SocketAsyncEventArgs eventArgs)
+        private void StartReceiveAsync(Socket clientSocket)
         {
-            try
+            if (clientSocket != null)
             {
-                if (!clientConnection.ReceiveAsync(eventArgs))
-                    ProcessReceived(eventArgs);
-            }
-            catch (Exception)
-            {
-                CloseSocket(clientConnection);
-                ReleaseReceiveEventArgs(eventArgs);
-            }
-        }
-
-        private SocketAsyncEventArgs AcquireReceiveEventArgs(Socket clientConnection)
-        {
-            var result = SocketAsyncEventArgsCache.Default.Acquire();
-
-            result.Completed += OnReceiveCompleted;
-            result.UserToken = new ReceiveContext(this, clientConnection);
-
-            return result;
-        }
-
-        private void ReleaseReceiveEventArgs(SocketAsyncEventArgs eventArgs)
-        {
-            if (eventArgs != null)
-            {
-                eventArgs.Completed -= OnReceiveCompleted;
-                using (eventArgs.UserToken as ReceiveContext)
-                    eventArgs.UserToken = null;
-
-                SocketAsyncEventArgsCache.Default.Release(eventArgs);
-            }
-        }
-
-        private static void OnReceiveCompleted(object sender, SocketAsyncEventArgs eventArgs)
-        {
-            if (eventArgs.LastOperation != SocketAsyncOperation.Receive)
-                throw new ArgumentException(Errors.ExpectingReceiveCompletedOperation);
-
-            ((RpcServer)((ReceiveContext)eventArgs.UserToken).Server).ProcessReceived(eventArgs);
-        }
-
-        private void ProcessReceived(SocketAsyncEventArgs eventArgs)
-        {
-            var receiveContext = (ReceiveContext)eventArgs.UserToken;
-
-            var continueReceiving = false;
-            var clientConnection = receiveContext.Connection;
-
-            if (eventArgs.BytesTransferred > 0 &&
-                eventArgs.SocketError == SocketError.Success)
-            {
+                RpcReceiveContext receiveCtx = null;
                 try
                 {
-                    receiveContext.ProcessReceived(eventArgs);
-                    continueReceiving = true;
+                    receiveCtx = new RpcReceiveContext(this, clientSocket, HandleMessage, SendMessage);
+                    receiveCtx.OnDisconnect += ContextDisconnected;
+
+                    _receiveContexts[receiveCtx] = clientSocket;
+
+                    if (!receiveCtx.StartReceiveAsync())
+                        throw new Exception(RpcErrors.CannotStartToReceive);
                 }
                 catch (Exception)
-                { }
-            }
-            
-            if (continueReceiving)
-                StartReceiveAsync(clientConnection, eventArgs);
-            else {
-                CloseSocket(clientConnection);
-                ReleaseReceiveEventArgs(eventArgs);
+                {
+                    ContextDisconnected(receiveCtx, EventArgs.Empty);
+                    throw;
+                }
             }
         }
 
-        private void CloseConnection(Socket clientConnection)
+        private void ContextDisconnected(object sender, EventArgs e)
         {
-            if (clientConnection != null)
+            if (sender is RpcReceiveContext receiveCtx)
             {
-                UnregisterConnection(clientConnection);
+                receiveCtx.OnDisconnect -= ContextDisconnected;
 
-                if ((clientConnection is NativeSocket nativeSocket) &&
+                _receiveContexts.TryRemove(receiveCtx, out Socket socket);
+                CloseConnection(socket);
+
+                if (!receiveCtx.Disposed)
+                    receiveCtx.Dispose();
+            }
+        }
+
+        private void CloseConnection(Socket clientSocket)
+        {
+            if (clientSocket != null)
+            {
+                if ((clientSocket is NativeSocket nativeSocket) &&
                     nativeSocket.Disposed)
                     return;
 
-                using (clientConnection)
-                    clientConnection.Close();
+                using (clientSocket)
+                    clientSocket.Close();
             }
-        }
-
-        protected virtual bool RegisterConnection(Socket clientConnection)
-        {
-            if (clientConnection != null)
-            {
-                _receivingSockets[clientConnection] = null;
-                return true;
-            }
-            return false;
-        }
-
-        protected virtual bool UnregisterConnection(Socket clientConnection)
-        {
-            if (clientConnection != null)
-                return _receivingSockets.TryRemove(clientConnection, out object obj);
-            return false;
         }
 
         protected virtual void ClearConnections()
         {
-            _receivingSockets.Clear();
+            _receiveContexts.Clear();
         }
 
-        private byte[] ReadData(Socket clientConnection, int expected)
+        private byte[] ReadData(Socket clientSocket, int expected)
         {
             if (expected < 1)
                 return null;
@@ -560,7 +427,7 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    int bytesRead = clientConnection.Receive(buffer, offset, buffer.Length - offset, SocketFlags.None);
+                    int bytesRead = clientSocket.Receive(buffer, offset, buffer.Length - offset, SocketFlags.None);
                     if (bytesRead == 0)
                         return null;
 

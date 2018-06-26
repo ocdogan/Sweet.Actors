@@ -28,6 +28,8 @@ namespace Sweet.Actors
     {
         public static readonly RpcClientOptions Default = new RpcClientOptions();
 
+        private int _readBufferSize;
+
         public RpcClientOptions()
             : base()
         { }
@@ -36,5 +38,13 @@ namespace Sweet.Actors
         {
             return new RpcClientOptions();
         }
+
+        public RpcClientOptions UsingReadBufferSize(int size)
+        {
+            _readBufferSize = size;
+            return this;
+        }
+
+        public int ReadBufferSize => _readBufferSize;
     }
 }

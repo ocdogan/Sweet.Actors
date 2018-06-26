@@ -36,14 +36,20 @@ namespace Sweet.Actors
 {
     internal class RpcClient : Disposable, IRemoteClient
     {
+        #region Constants
+
         private const object DefaultResponse = null;
 
         private const int BulkSendLength = 10;
         private const int SequentialSendLimit = 100;
 
+        #endregion Constants
+
         private static readonly Task Completed = Task.FromResult(0);
 
         private Socket _socket;
+        private object _socketLock = new object();
+
         private RpcClientOptions _options;
 
         private Stream _netStream;
@@ -57,6 +63,7 @@ namespace Sweet.Actors
         private long _status = RpcClientStatus.Closed;
 
         private RpcMessageWriter _writer;
+        private RpcReceiveContext _receiveCtx;
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
@@ -90,7 +97,7 @@ namespace Sweet.Actors
             {
                 if (_status == RpcClientStatus.Connected)
                 {
-                    if (_socket.IsConnected())
+                    if (_socket?.IsConnected() ?? false)
                         return true;
 
                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
@@ -102,6 +109,7 @@ namespace Sweet.Actors
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _inProcess, Constants.False);
+
             using (var writer = Interlocked.Exchange(ref _writer, null))
             { }
 
@@ -158,55 +166,81 @@ namespace Sweet.Actors
                 }
         }
 
+        private Socket GetClientSocket()
+        {
+            var result = _socket;
+            if (result == null)
+            {
+                lock (_socketLock)
+                {
+                    result = _socket;
+                    if (result == null)
+                    {
+                        var remoteEP = _options.EndPoint;
+
+                        var addressFamily = remoteEP.AddressFamily;
+                        if (addressFamily == AddressFamily.Unknown || addressFamily == AddressFamily.Unspecified)
+                            addressFamily = IPAddress.Any.AddressFamily;
+
+                        result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
+                        Configure(result);
+
+                        var prevReceiveCtx = Interlocked.Exchange(ref _receiveCtx, new RpcReceiveContext(this, result, HandleMessage, null));
+                        if (prevReceiveCtx != null)
+                            prevReceiveCtx.Dispose();
+
+                        var prevSocket = Interlocked.Exchange(ref _socket, result);
+                        Close(prevSocket);
+                    }
+                }
+            }
+            return result;
+        }
+
         public Task Connect()
         {
             if ((_closing != Constants.True) &&
                 Common.CompareAndSet(ref _status, RpcClientStatus.Closed, RpcClientStatus.Connecting))
             {
-                var tcs = new TaskCompletionSource<int>();
-
-                var oldTcs = Interlocked.Exchange(ref _connectionTcs, tcs);
-                if (oldTcs != null)
-                    oldTcs.TrySetCanceled();
-
-                var remoteEP = _options.EndPoint;
-
                 Socket socket = null;
+                TaskCompletionSource<int> tcs = null;
                 try
                 {
-                    var addressFamily = remoteEP.AddressFamily;
-                    if (addressFamily == AddressFamily.Unknown || addressFamily == AddressFamily.Unspecified)
-                        addressFamily = IPAddress.Any.AddressFamily;
+                    socket = GetClientSocket();
+                    if (!socket.IsConnected())
+                    {
+                        tcs = new TaskCompletionSource<int>();
 
-                    socket = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
-                    Configure(socket);
+                        var prevTcs = Interlocked.Exchange(ref _connectionTcs, tcs);
+                        if (prevTcs != null)
+                            prevTcs.TrySetCanceled();
 
-                    socket.ConnectAsync(remoteEP)
-                        .ContinueWith((previousTask) =>
-                        {
-                            try
+                        var remoteEP = _options.EndPoint;
+
+                        socket.ConnectAsync(remoteEP)
+                            .ContinueWith((previousTask) =>
                             {
-                                if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
+                                try
                                 {
-                                    Close(socket);
-                                    Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
+                                    if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
+                                    {
+                                        Close(socket);
+                                        Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
 
-                                    return;
+                                        return;
+                                    }
+
+                                    UpdateStreams(socket);
+                                    Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
+
+                                    tcs.TrySetResult(0);
                                 }
-
-                                var old = Interlocked.Exchange(ref _socket, socket);
-                                Close(old);
-
-                                UpdateStreams(socket);
-                                Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
-
-                                tcs.TrySetResult(0);
-                            }
-                            catch (Exception e)
-                            {
-                                tcs.TrySetException(e);
-                            }
-                        });
+                                catch (Exception e)
+                                {
+                                    tcs.TrySetException(e);
+                                }
+                            });
+                    }
                 }
                 catch (Exception)
                 {
@@ -217,7 +251,7 @@ namespace Sweet.Actors
                     throw;
                 }
             }
-            return _connectionTcs?.Task ?? Task.FromResult(0);
+            return _connectionTcs?.Task ?? Completed;
         }
 
         private void Configure(Socket socket)
@@ -448,7 +482,41 @@ namespace Sweet.Actors
             return result;
         }
 
+        private static WaitCallback BeginReceiveCallback = (asyncResult) =>
+        {
+            if (asyncResult is RpcClient client)
+            {
+                try
+                {
+                    var receiveCtx = client._receiveCtx;
+                    if (receiveCtx != null)
+                        receiveCtx.StartReceiveAsync();
+                }
+                catch (Exception)
+                { }
+            }
+        };
+
         private void BeginReceive()
-        { }
+        {
+            if (!Disposed)
+            {
+                var receiveCtx = _receiveCtx;
+                if (receiveCtx != null && !receiveCtx.Receiving)
+                    ThreadPool.QueueUserWorkItem(BeginReceiveCallback, this);
+            }
+        }
+
+        protected virtual Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection)
+        {
+            ThrowIfDisposed();
+
+            if (remoteMessage != null)
+            {
+                var messageId = remoteMessage.MessageId;
+            }
+
+            return Completed;
+        }
     }
 }

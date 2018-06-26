@@ -113,8 +113,59 @@ namespace Sweet.Actors.RpcTestServer1
             RunRemoteSystem(17777);
             // FunctionTest();
 
-            Console.WriteLine("Press any key to exit");
-            Console.Read();
+            do
+            {
+                Console.Clear();
+                Console.WriteLine("Press any key to exit");
+            }
+            while (ReadKey() != ConsoleKey.Escape);
+        }
+
+        private static bool IsWinPlatform
+        {
+            get
+            {
+                var pid = Environment.OSVersion.Platform;
+                switch (pid)
+                {
+                    case PlatformID.Win32NT:
+                    case PlatformID.Win32S:
+                    case PlatformID.Win32Windows:
+                    case PlatformID.WinCE:
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        }
+
+        private static ConsoleKey ReadKey()
+        {
+            if (IsWinPlatform)
+                return Console.ReadKey(true).Key;
+
+            var prevKey = -1;
+
+            var input = Console.In;
+
+            const int bufferLen = 256;
+            var buffer = new char[bufferLen];
+
+            while (true)
+            {
+                var len = input.Read(buffer, 0, bufferLen);
+                if (len < 1)
+                {
+                    if (prevKey > -1)
+                        break;
+                }
+
+                prevKey = buffer[len - 1];
+                if (len < bufferLen)
+                    break;
+            }
+
+            return prevKey > -1 ? (ConsoleKey)prevKey : 0;
         }
     }
 }

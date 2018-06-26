@@ -26,6 +26,7 @@ namespace Sweet.Actors
 {
     public static class RpcErrors
     {
+        public const string CannotStartToReceive = "Can not start to receive";
         public const string InvalidMessage = "Invalid message";
         public const string InvalidMessageResponse = "Invalid message response";
         public const string InvalidMessageReceiver = "Invalid message receiver";
