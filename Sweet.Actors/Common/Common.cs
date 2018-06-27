@@ -233,6 +233,56 @@ namespace Sweet.Actors
             return null;
         }
 
+        internal static bool EqualTo(this byte[] bytesX, byte[] bytesY)
+        {
+            if (ReferenceEquals(bytesX, bytesY))
+                return true;
+
+            if (ReferenceEquals(bytesX, null))
+                return ReferenceEquals(bytesY, null);
+
+            if (ReferenceEquals(bytesY, null))
+                return false;
+
+            var l1 = bytesX.Length;
+            var l2 = bytesY.Length;
+
+            if (l1 != l2)
+                return false;
+
+            for (var i = 0; i < l1; i++)
+                if (bytesX[i] != bytesY[i])
+                    return false;
+
+            return true;
+        }
+
+        internal static string ToUTF8String(this byte[] bytes, int offset = 0, int length = -1)
+        {
+            if (bytes != null)
+            {
+                var bytesLength = bytes.Length;
+                if (offset < bytesLength)
+                {
+                    if (bytesLength == 0)
+                        return String.Empty;
+
+                    if (offset < 0) offset = 0;
+
+                    if (length < 0) length = bytesLength;
+
+                    length = Math.Min(length, bytesLength - offset);
+                    if (length > -1)
+                    {
+                        if (length == 0)
+                            return String.Empty;
+                        return UTF8.GetString(bytes, offset, length);
+                    }
+                }
+            }
+            return null;
+        }
+
         #region ToBytes
 
         internal static byte[] ToBytes(this string value)
@@ -437,7 +487,7 @@ namespace Sweet.Actors
         public static RemoteMessage ToRemoteMessage(this WireMessage message)
         {
             IMessage msg = null;
-            var wireMsgId = WireMessageId.Empty;
+            var messageId = WireMessageId.Empty;
 
             if (message != null)
             {
@@ -447,26 +497,25 @@ namespace Sweet.Actors
                         msg = new Message(message.Data, Aid.Parse(message.From), message.Header);
                         break;
                     case MessageType.FutureMessage:
-                        msg = MessageFactory.CreateFutureMessage(Type.GetType(message.ResponseType), message.Data,
-                            Aid.Parse(message.From), message.Header, message.TimeoutMSec);
+                        msg = new FutureMessage(message.Data, 
+                            new TaskCompletor<IFutureResponse>(message.TimeoutMSec),
+                            Aid.Parse(message.From), message.Header);
                         break;
                     case MessageType.FutureResponse:
-                        msg = MessageFactory.CreateFutureResponse(Type.GetType(message.ResponseType), message.Data,
-                            Aid.Parse(message.From), message.Header);
+                        msg = new FutureResponse(message.Data, Aid.Parse(message.From), message.Header);
                         break;
                     case MessageType.FutureError:
-                        msg = MessageFactory.CreateFutureError(Type.GetType(message.ResponseType), message.Exception,
-                            Aid.Parse(message.From), message.Header);
+                        msg = new FutureError(message.Exception, Aid.Parse(message.From), message.Header);
                         break;
                 }
 
-                if (!WireMessageId.TryParse(message.Id, out wireMsgId))
-                    wireMsgId = WireMessageId.Empty;
+                if (!WireMessageId.TryParse(message.Id, out messageId))
+                    messageId = WireMessageId.Empty;
             }
 
             return new RemoteMessage(msg ?? Message.Empty, 
                 Aid.Parse(message?.To) ?? Aid.Unknown, 
-                wireMsgId ?? WireMessageId.Empty);
+                messageId ?? WireMessageId.Empty);
         }
 
         public static WireMessage ToWireMessage(this RemoteMessage message, Exception exception = null)
@@ -474,6 +523,23 @@ namespace Sweet.Actors
             if (message != null)
                 return ToWireMessage(message.Message, message.To, message.MessageId, exception);
             return null;
+        }
+
+        public static WireMessage ToWireMessage(this Exception exception, Aid from, Aid to, WireMessageId id = null)
+        {
+            var faulted = (exception != null);
+
+            var state = WireMessageState.Empty;
+            state |= faulted ? WireMessageState.Faulted : WireMessageState.Canceled;
+
+            return new WireMessage {
+                From = from?.ToString(),
+                To = to?.ToString(),
+                Exception = exception,
+                MessageType = faulted ? MessageType.FutureError : MessageType.FutureResponse,
+                Id = id?.ToString() ?? WireMessageId.NextAsString(),
+                State = state
+            };
         }
 
         public static WireMessage ToWireMessage(this IMessage message, Aid to, WireMessageId id = null, Exception exception = null)
@@ -484,6 +550,7 @@ namespace Sweet.Actors
                 result.MessageType = message.MessageType;
                 result.From = message.From?.ToString();
                 result.Data = message.Data;
+                result.TimeoutMSec = message.TimeoutMSec;
 
                 var msgHeader = message.Header;
                 var headerCount = msgHeader?.Count ?? 0;
@@ -499,11 +566,11 @@ namespace Sweet.Actors
                 }
 
                 var state = WireMessageState.Default;
+                if (message.IsEmpty)
+                    state |= WireMessageState.Empty;
+
                 if (message is IFutureMessage future)
                 {
-                    result.TimeoutMSec = future.TimeoutMSec;
-                    result.ResponseType = future.ResponseType?.ToString();
-
                     if (future.IsCanceled)
                         state |= WireMessageState.Canceled;
 
@@ -522,15 +589,7 @@ namespace Sweet.Actors
                 else if (message is IFutureError error)
                 {
                     result.Exception = error.Exception;
-
-                    if (error.IsFaulted)
-                        state |= WireMessageState.Faulted;
-                }
-
-                if (message is IFutureResponse resp)
-                {
-                    if (resp.IsEmpty)
-                        state |= WireMessageState.Empty;
+                    state |= WireMessageState.Faulted;
                 }
 
                 result.State = state;

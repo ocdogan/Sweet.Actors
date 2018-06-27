@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -30,13 +31,16 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    internal class RpcReceiveContext : Disposable, IRpcConnection
+    internal class RpcConnection : Disposable, IRpcConnection
     {
         public event EventHandler OnDisconnect;
 
         private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
 
         private long _receiving;
+
+        private Stream _netStream;
+        private Stream _outStream;
 
         private object _state;
         private Socket _socket;
@@ -48,7 +52,7 @@ namespace Sweet.Actors
         private Func<WireMessage, IRpcConnection, Task> _responseHandler;
         private Func<RemoteMessage, IRpcConnection, Task> _messageHandler;
 
-        public RpcReceiveContext(object state, Socket socket, 
+        public RpcConnection(object state, Socket socket, 
             Func<RemoteMessage, IRpcConnection, Task> messageHandler,
             Func<WireMessage, IRpcConnection, Task> responseHandler)
         {
@@ -77,6 +81,8 @@ namespace Sweet.Actors
 
         public bool Receiving => Interlocked.Read(ref _receiving) > 0L;
 
+        public Stream Out => _outStream;
+
         protected override void OnDispose(bool disposing)
         {
             _state = null;
@@ -86,12 +92,37 @@ namespace Sweet.Actors
 
         private void Close()
         {
-            var receiving = Interlocked.Exchange(ref _receiving, 0L) > 0L;
+            try
+            {
+                var receiving = Interlocked.Exchange(ref _receiving, 0L) > 0L;
 
-            var receiveEventArgs = Interlocked.Exchange(ref _receiveEventArgs, null);
-            if (receiveEventArgs != null)
-                ReleaseReceiveEventArgs(receiveEventArgs, receiving);
+                var receiveEventArgs = Interlocked.Exchange(ref _receiveEventArgs, null);
+                if (receiveEventArgs != null)
+                    ReleaseReceiveEventArgs(receiveEventArgs, receiving);
 
+                using (var stream = Interlocked.Exchange(ref _outStream, null))
+                    stream?.Close();
+
+                using (var stream = Interlocked.Exchange(ref _netStream, null))
+                    stream?.Close();
+            }
+            finally
+            {
+                CloseSocket();
+            }
+        }
+
+        public void OnConnect()
+        {
+            if (_socket != null && _socket.Blocking)
+            {
+                _netStream = new NetworkStream(_socket, false);
+                _outStream = new BufferedStream(_netStream, RpcConstants.WriteBufferSize);
+            }
+        }
+
+        private void CloseSocket()
+        {
             var socket = Interlocked.Exchange(ref _socket, null);
             if (socket != null)
             {
@@ -139,7 +170,7 @@ namespace Sweet.Actors
                 throw new ArgumentException(Errors.ExpectingReceiveCompletedOperation);
             }
 
-            if (receiveEventArgs.UserToken is RpcReceiveContext receiveCtx)
+            if (receiveEventArgs.UserToken is RpcConnection receiveCtx)
             {
                 Interlocked.Exchange(ref receiveCtx._receiving, 0L);
 
@@ -154,7 +185,7 @@ namespace Sweet.Actors
         {
             Interlocked.Exchange(ref _receiving, 0L);
 
-            var receiveContext = (RpcReceiveContext)receiveEventArgs.UserToken;
+            var receiveContext = (RpcConnection)receiveEventArgs.UserToken;
 
             var continueReceiving = false;
             var socket = receiveContext.Connection;

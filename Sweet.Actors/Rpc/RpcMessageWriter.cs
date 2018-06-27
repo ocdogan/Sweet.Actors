@@ -33,7 +33,8 @@ namespace Sweet.Actors
     internal class RpcMessageWriter : Disposable
     {
         private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
-        private static ByteArrayCache BufferCache = new ByteArrayCache(arraySize: RpcConstants.FrameSize);
+
+        private static ArraySliceCache SliceCache = new ArraySliceCache(arraySize: RpcConstants.FrameSize);
 
         private int _messageIdSeed;
         private IWireSerializer _serializer;
@@ -64,12 +65,82 @@ namespace Sweet.Actors
             }
         }
 
-        public virtual bool Write(Stream stream, WireMessage message, bool flush = true)
+        public virtual bool Write(Stream outStream, WireMessage message, bool flush = true)
         {
             ThrowIfDisposed();
 
-            if (stream != null)
+            if (outStream != null)
             {
+                using (var dataStream = new ChunkedStream())
+                {
+                    var dataLen = _serializer.Serialize(message, dataStream);
+                    if (dataLen < 1)
+                        return true;
+
+                    if (dataLen > RpcConstants.MaxDataSize)
+                        throw new Exception(Errors.MaxAllowedDataSizeExceeded);
+
+                    /* Header */
+                    // Header sign
+                    outStream.WriteByte(RpcConstants.HeaderSign);
+
+                    // Process Id
+                    outStream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
+
+                    // Message Id
+                    var msgIdBytes = Interlocked.Increment(ref _messageIdSeed).ToBytes();
+                    outStream.Write(msgIdBytes, 0, msgIdBytes.Length);
+
+                    // Serialization type
+                    outStream.Write(_serializerKeyBytes, 0, _serializerKeyBytes.Length);
+
+                    // Frame count
+                    var frameCount = (ushort)(dataLen > 0 ? ((dataLen / RpcConstants.FrameDataSize) + 1) : 0);
+
+                    var frameCntBytes = frameCount.ToBytes();
+                    outStream.Write(frameCntBytes, 0, frameCntBytes.Length);
+
+                    using (var slice = SliceCache.Acquire())
+                    {
+                        var offset = 0;
+                        var buffer = slice.Array;
+
+                        for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
+                        {
+                            // Frame sign
+                            outStream.WriteByte(RpcConstants.FrameSign);
+
+                            // Process Id
+                            outStream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
+
+                            // Message Id
+                            outStream.Write(msgIdBytes, 0, msgIdBytes.Length);
+
+                            // Frame Id
+                            var frameIdBytes = frameIndex.ToBytes();
+                            outStream.Write(frameIdBytes, 0, frameIdBytes.Length);
+
+                            // Frame length
+                            var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
+                            dataStream.Read(slice, 0, frameDataLen);
+
+                            var frameDataLenBytes = frameDataLen.ToBytes();
+                            outStream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
+
+                            if (frameDataLen > 0)
+                            {
+                                outStream.Write(buffer, offset, frameDataLen);
+                                offset += frameDataLen;
+                            }
+                        }
+                    }
+
+                    if (flush)
+                        outStream.Flush();
+
+                    return true;
+                }
+
                 var data = _serializer.Serialize(message);
                 if (data != null)
                 {
@@ -79,23 +150,23 @@ namespace Sweet.Actors
 
                     /* Header */
                     // Header sign
-                    stream.WriteByte(RpcConstants.HeaderSign);
+                    outStream.WriteByte(RpcConstants.HeaderSign);
 
                     // Process Id
-                    stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
+                    outStream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
 
                     // Message Id
                     var msgIdBytes = Interlocked.Increment(ref _messageIdSeed).ToBytes();
-                    stream.Write(msgIdBytes, 0, msgIdBytes.Length);
+                    outStream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                     // Serialization type
-                    stream.Write(_serializerKeyBytes, 0, _serializerKeyBytes.Length);
+                    outStream.Write(_serializerKeyBytes, 0, _serializerKeyBytes.Length);
 
                     // Frame count
                     var frameCount = (ushort)(dataLen > 0 ? ((dataLen / RpcConstants.FrameDataSize) + 1) : 0);
 
                     var frameCntBytes = frameCount.ToBytes();
-                    stream.Write(frameCntBytes, 0, frameCntBytes.Length);
+                    outStream.Write(frameCntBytes, 0, frameCntBytes.Length);
 
                     var offset = 0;
 
@@ -103,33 +174,33 @@ namespace Sweet.Actors
                     for (ushort frameIndex = 0; frameIndex < frameCount; frameIndex++)
                     {
                         // Frame sign
-                        stream.WriteByte(RpcConstants.FrameSign);
+                        outStream.WriteByte(RpcConstants.FrameSign);
 
                         // Process Id
-                        stream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
+                        outStream.Write(ProcessIdBytes, 0, ProcessIdBytes.Length);
 
                         // Message Id
-                        stream.Write(msgIdBytes, 0, msgIdBytes.Length);
+                        outStream.Write(msgIdBytes, 0, msgIdBytes.Length);
 
                         // Frame Id
                         var frameIdBytes = frameIndex.ToBytes();
-                        stream.Write(frameIdBytes, 0, frameIdBytes.Length);
+                        outStream.Write(frameIdBytes, 0, frameIdBytes.Length);
 
                         // Frame length
                         var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
 
                         var frameDataLenBytes = frameDataLen.ToBytes();
-                        stream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
+                        outStream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
 
                         if (frameDataLen > 0)
                         {
-                            stream.Write(data, offset, frameDataLen);
+                            outStream.Write(data, offset, frameDataLen);
                             offset += frameDataLen;
                         }
                     }
 
                     if (flush)
-                        stream.Flush();
+                        outStream.Flush();
 
                     return true;
                 }
@@ -150,10 +221,10 @@ namespace Sweet.Actors
                     if (dataLen > RpcConstants.MaxDataSize)
                         throw new Exception(Errors.MaxAllowedDataSizeExceeded);
 
-                    var buffer = BufferCache.Acquire();
-                    try
+                    using (var slice = SliceCache.Acquire())
                     {
                         var offset = 0;
+                        var buffer = slice.Array;
 
                         /* Header */
                         // Header sign
@@ -224,13 +295,11 @@ namespace Sweet.Actors
 
                                 dataOffset += frameDataLen;
                             }
+
+                            socket.Send(buffer, 0, offset, SocketFlags.None);
                         }
 
                         return true;
-                    }
-                    finally
-                    {
-                        BufferCache.Release(buffer);
                     }
                 }
             }

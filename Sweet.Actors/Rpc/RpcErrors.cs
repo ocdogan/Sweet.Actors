@@ -26,12 +26,13 @@ namespace Sweet.Actors
 {
     public static class RpcErrors
     {
-        public const string CannotStartToReceive = "Can not start to receive";
+        public const string RequestCanceled = "request canceled";
         public const string InvalidMessage = "Invalid message";
         public const string InvalidMessageResponse = "Invalid message response";
         public const string InvalidMessageReceiver = "Invalid message receiver";
         public const string InvalidSerializerKey = "Invalid serializer key";
         public const string CannotResolveEndPoint = "Can not resolve end-point";
+        public const string CannotStartToReceive = "Can not start to receive";
         public const string AnotherActorSystemAlreadyBindedWithName = "Another actor system is already binded with the same name";
     }
 }

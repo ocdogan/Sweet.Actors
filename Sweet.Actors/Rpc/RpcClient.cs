@@ -51,9 +51,7 @@ namespace Sweet.Actors
         private object _socketLock = new object();
 
         private RpcClientOptions _options;
-
-        private Stream _netStream;
-        private Stream _outStream;
+        private Func<RemoteMessage, Task> _onResponse;
 
         private long _waitingToTransmit;
 
@@ -63,7 +61,7 @@ namespace Sweet.Actors
         private long _status = RpcClientStatus.Closed;
 
         private RpcMessageWriter _writer;
-        private RpcReceiveContext _receiveCtx;
+        private RpcConnection _receiveCtx;
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
@@ -74,8 +72,9 @@ namespace Sweet.Actors
             RpcSerializerRegistry.Register<DefaultRpcSerializer>("wire");
         }
 
-        public RpcClient(RpcClientOptions options)
+        public RpcClient(Func<RemoteMessage, Task> onResponse, RpcClientOptions options)
         {
+            _onResponse = onResponse;
             _options = options?.Clone() ?? RpcClientOptions.Default;
             _writer = new RpcMessageWriter(_options.Serializer);
         }
@@ -109,16 +108,19 @@ namespace Sweet.Actors
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _inProcess, Constants.False);
+            if (disposing)
+            {
+                using (var writer = Interlocked.Exchange(ref _writer, null))
+                { }
 
-            using (var writer = Interlocked.Exchange(ref _writer, null))
-            { }
+                using (var ctx = Interlocked.Exchange(ref _receiveCtx, null))
+                { }
 
-            ResetStreams();
+                Close();
+                return;
+            }
 
-            base.OnDispose(disposing);
-            if (!disposing)
-                TryToClose();
-            else Close();
+            TryToClose();
         }
 
         private bool TryToClose()
@@ -139,7 +141,8 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    ResetStreams();
+                    using (var ctx = Interlocked.Exchange(ref _receiveCtx, null))
+                    { }
 
                     var socket = Interlocked.Exchange(ref _socket, null);
                     Close(socket);
@@ -166,7 +169,7 @@ namespace Sweet.Actors
                 }
         }
 
-        private Socket GetClientSocket()
+        protected virtual Socket GetClientSocket()
         {
             var result = _socket;
             if (result == null)
@@ -185,9 +188,8 @@ namespace Sweet.Actors
                         result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
                         Configure(result);
 
-                        var prevReceiveCtx = Interlocked.Exchange(ref _receiveCtx, new RpcReceiveContext(this, result, HandleMessage, null));
-                        if (prevReceiveCtx != null)
-                            prevReceiveCtx.Dispose();
+                        using (var ctx = Interlocked.Exchange(ref _receiveCtx, new RpcConnection(this, result, HandleResponse, null)))
+                        { }
 
                         var prevSocket = Interlocked.Exchange(ref _socket, result);
                         Close(prevSocket);
@@ -230,8 +232,9 @@ namespace Sweet.Actors
                                         return;
                                     }
 
-                                    UpdateStreams(socket);
                                     Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
+
+                                    _receiveCtx?.OnConnect();
 
                                     tcs.TrySetResult(0);
                                 }
@@ -244,7 +247,6 @@ namespace Sweet.Actors
                 }
                 catch (Exception)
                 {
-                    ResetStreams();
                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
 
                     Close(socket);
@@ -273,42 +275,6 @@ namespace Sweet.Actors
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
             socket.NoDelay = true;
-        }
-
-        private void UpdateStreams(Socket socket)
-        {
-            var netStream = new NetworkStream(socket, false);
-            var outStream = new BufferedStream(netStream, RpcConstants.WriteBufferSize);
-
-            Interlocked.Exchange(ref _waitingToTransmit, 0L);
-
-            SetStream(ref _outStream, outStream);
-            SetStream(ref _netStream, netStream);
-        }
-
-        private void ResetStreams()
-        {
-            Interlocked.Exchange(ref _waitingToTransmit, 0L);
-
-            SetStream(ref _outStream, null);
-            SetStream(ref _netStream, null);
-        }
-
-        private void SetStream(ref Stream old, Stream @new)
-        {
-            try
-            {
-                if (@new != old)
-                {
-                    using (var prev = Interlocked.Exchange(ref old, @new))
-                    {
-                        if (prev != null)
-                            prev.Close();
-                    }
-                }
-            }
-            catch (Exception)
-            { }
         }
 
         public Task Send(RemoteRequest request)
@@ -429,9 +395,12 @@ namespace Sweet.Actors
         {
             try
             {
-                if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L &&
-                    !Disposed && (_outStream?.CanWrite ?? false))
-                    _outStream?.Flush();
+                if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L && !Disposed)
+                {
+                    var outStream = _receiveCtx?.Out;
+                    if (outStream != null && (outStream?.CanWrite ?? false))
+                        outStream?.Flush();
+                }
             }
             catch (Exception)
             { }
@@ -468,7 +437,7 @@ namespace Sweet.Actors
             try
             {
                 waitingCount = Interlocked.Increment(ref _waitingToTransmit);
-                result = _writer.Write(_outStream, message, flush);
+                result = _writer.Write(_receiveCtx?.Out, message, flush);
             }
             finally
             {
@@ -507,16 +476,10 @@ namespace Sweet.Actors
             }
         }
 
-        protected virtual Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection)
+        protected virtual Task HandleResponse(RemoteMessage response, IRpcConnection rpcConnection)
         {
             ThrowIfDisposed();
-
-            if (remoteMessage != null)
-            {
-                var messageId = remoteMessage.MessageId;
-            }
-
-            return Completed;
+            return _onResponse?.Invoke(response) ?? Completed;
         }
     }
 }

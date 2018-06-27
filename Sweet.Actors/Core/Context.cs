@@ -35,8 +35,8 @@ namespace Sweet.Actors
         void SetData(string key, object data);
         bool TryGetData(string key, out object data);
 
-        void RespondTo<T>(IMessage message, T response, IDictionary<string, string> header = null);
-        void RespondToWithError<T>(IMessage message, Exception e, IDictionary<string, string> header = null);
+        void RespondTo(IMessage message, object response, IDictionary<string, string> header = null);
+        void RespondToWithError(IMessage message, Exception e, IDictionary<string, string> header = null);
     }
 
     internal class Context : Disposable, IContext
@@ -83,16 +83,16 @@ namespace Sweet.Actors
             _dataCtx[key] = data;
         }
 
-        public void RespondTo<T>(IMessage message, T response, IDictionary<string, string> header = null)
+        public void RespondTo(IMessage message, object response, IDictionary<string, string> header = null)
         {
             if (message is FutureMessage future)
                 future.Respond(response, _pid, header);
         }
 
-        public void RespondToWithError<T>(IMessage message, Exception e, IDictionary<string, string> header = null)
+        public void RespondToWithError(IMessage message, Exception e, IDictionary<string, string> header = null)
         {
             if (message is FutureMessage future)
-                future.Respond(new FutureError<T>(e, _pid, header));
+                future.Respond(new FutureError(e, _pid, header));
         }
     }
 }

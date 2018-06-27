@@ -45,7 +45,8 @@ namespace Sweet.Actors
         IReadOnlyDictionary<string, string> Header { get; }
         Aid From { get; }
         MessageType MessageType { get; }
-		bool Expired { get; }
+        bool IsEmpty { get; }
+        bool Expired { get; }
         int TimeoutMSec { get; }
     }
 
@@ -56,14 +57,19 @@ namespace Sweet.Actors
         private static readonly IReadOnlyDictionary<string, string> _defaultHeader =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
+        private Aid _from;
+        private object _data;
+        private bool _isEmpty;
         private int _creationTime;
 		private int _timeoutMSec = 0;
         private IReadOnlyDictionary<string, string> _header = _defaultHeader;
 
 		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
         {
-            Data = data;
-            From = from ?? Aid.Unknown;
+            _data = data;
+            _from = from ?? Aid.Unknown;
+
+            _isEmpty = (data == null);
 
             if (header != null)
             {
@@ -77,15 +83,17 @@ namespace Sweet.Actors
             _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
         }
 
-        public object Data { get; }
+        public object Data => _data;
 
         public IReadOnlyDictionary<string, string> Header => _header;
 
-        public Aid From { get; }
+        public Aid From => _from;
 
         public virtual MessageType MessageType => MessageType.Default;
 
         public int TimeoutMSec => _timeoutMSec;
+
+        public bool IsEmpty => _isEmpty;
 
         public bool Expired => _timeoutMSec > 0 && 
 		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
@@ -93,8 +101,6 @@ namespace Sweet.Actors
 
     public interface IFutureMessage : IMessage
     {
-        Type ResponseType { get; }
-
         bool IsCanceled { get; }
         bool IsCompleted { get; }
         bool IsFaulted { get; }
@@ -102,21 +108,17 @@ namespace Sweet.Actors
         void Cancel();
     }
 
-    internal abstract class FutureMessage : Message, IFutureMessage
+    internal class FutureMessage : Message, IFutureMessage
     {
-        private Type _responseType;
         protected readonly TaskCompletor<IFutureResponse> _taskCompletor;
 
-        public FutureMessage(object data, Type responseType,
+        public FutureMessage(object data, 
                                TaskCompletor<IFutureResponse> taskCompletor,
                                Aid from, IDictionary<string, string> header = null)
 			: base(data, from, header, taskCompletor.TimeoutMSec)
         {
-            _responseType = responseType;
             _taskCompletor = taskCompletor ?? new TaskCompletor<IFutureResponse>();
         }
-
-        public Type ResponseType => _responseType;
 
         public override MessageType MessageType => MessageType.FutureMessage;
 
@@ -126,9 +128,24 @@ namespace Sweet.Actors
 
         public virtual bool IsFaulted => _taskCompletor.IsFaulted;
 
-        internal abstract void Respond(object response, Aid from = null, IDictionary<string, string> header = null);
+        public virtual void Respond(object response, Aid from = null, IDictionary<string, string> header = null)
+        {
+            try
+            {
+                _taskCompletor.TrySetResult(response == null ?
+                        new FutureResponse(from, header) :
+                        new FutureResponse(response, from, header));
+            }
+            catch (Exception e)
+            {
+                _taskCompletor.TrySetResult(new FutureError(e, from, header));
+            }
+        }
 
-        internal abstract void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null);
+        public virtual void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null)
+        {
+            _taskCompletor.TrySetResult(new FutureError(e, from, header));
+        }
 
         public virtual void Cancel()
         {
@@ -136,98 +153,39 @@ namespace Sweet.Actors
         }
     }
 
-    internal class FutureMessage<T> : FutureMessage, IFutureMessage
-    {
-        public FutureMessage(object data, 
-                            TaskCompletor<IFutureResponse> taskCompletor,
-                            Aid from = null, IDictionary<string, string> header = null)
-			: base(data, typeof(T), taskCompletor, from, header)
-        {
-        }
-
-        internal override void Respond(object response, Aid from = null, IDictionary<string, string> header = null)
-        {
-            try
-            {
-                _taskCompletor.TrySetResult(response == null ? 
-                        new FutureResponse<T>(from, header) :
-                        new FutureResponse<T>((T)response, from, header));
-            }
-            catch (Exception e)
-            {
-                _taskCompletor.TrySetResult(new FutureError<T>(e, from, header));
-            }
-        }
-
-        internal override void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null)
-        {
-            _taskCompletor.TrySetResult(new FutureError<T>(e, from, header));
-        }
-    }
-
     public interface IFutureResponse : IMessage
-    {
-        bool IsEmpty { get; }
-    }
-
-    public interface IFutureResponse<T> : IFutureResponse
     { }
 
-    internal class FutureResponse<T> : Message, IFutureResponse<T>, IFutureResponse
+    internal class FutureResponse : Message, IFutureResponse
     {
-        protected bool _isEmpty;
-
         public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
-			: base(default(T), from, header, timeoutMSec)
-        {
-            _isEmpty = true;
-        }
+			: base(null, from, header, timeoutMSec)
+        { }
 
-        public FutureResponse(T data, Aid from = null, IDictionary<string, string> header = null,
+        public FutureResponse(object data, Aid from = null, IDictionary<string, string> header = null,
                                 int timeoutMSec = 0)
 			: base(data, from, header, timeoutMSec)
         { }
 
         public override MessageType MessageType => MessageType.FutureResponse;
-
-        public bool IsEmpty => _isEmpty;
     }
 
-    internal class FutureResponse : FutureResponse<object>, IFutureResponse<object>
-    {
-        public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
-            : base(null, from, header, timeoutMSec)
-        {
-            _isEmpty = true;
-        }
-
-        public FutureResponse(object data, Aid from = null, IDictionary<string, string> header = null,
-                                int timeoutMSec = 0)
-            : base(data, from, header, timeoutMSec)
-        { }
-    }
-
-    public interface IFutureError : IMessage
+    public interface IFutureError : IFutureResponse
     {
         bool IsFaulted { get; }
         Exception Exception { get; }
     }
 
-    internal class FutureError<T> : FutureResponse<T>, IFutureError
+    internal class FutureError : FutureResponse, IFutureError
     {
-        private Exception _error;
-
         public FutureError(Exception e, Aid from = null, IDictionary<string, string> header = null)
-            : base(default(T), from, header)
-        {
-            _error = e;
-            _isEmpty = true;
-        }
+            : base(e, from, header)
+        { }
 
         public override MessageType MessageType => MessageType.FutureError;
 
-        public Exception Exception => _error;
+        public Exception Exception => Data as Exception;
 
-        public bool IsFaulted => _error != null;
+        public bool IsFaulted => Data is Exception;
     }
 }

@@ -169,14 +169,14 @@ namespace Sweet.Actors
             {
                 var taskCompletor = new TaskCompletor<IFutureResponse>(_requestTimeoutMSec);
 
-                _mailbox.Enqueue(new FutureMessage<T>(message, taskCompletor, _ctx.Pid, header));
+                _mailbox.Enqueue(new FutureMessage(message, taskCompletor, _ctx.Pid, header));
                 StartProcessTask();
 
                 return taskCompletor.Task;
             }
             catch (Exception e)
             {
-                return Task.FromResult<IFutureResponse>(new FutureError<T>(e, _ctx.Pid));
+                return Task.FromResult<IFutureResponse>(new FutureError(e, _ctx.Pid));
             }
         }
 

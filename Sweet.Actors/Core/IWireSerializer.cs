@@ -29,6 +29,7 @@ namespace Sweet.Actors
     public interface IWireSerializer
     {
         byte[] Serialize(WireMessage message);
+        long Serialize(WireMessage message, Stream stream);
         RemoteMessage Deserialize(byte[] data);
         RemoteMessage Deserialize(Stream stream);
     }

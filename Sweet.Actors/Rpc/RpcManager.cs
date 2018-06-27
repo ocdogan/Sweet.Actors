@@ -34,12 +34,12 @@ namespace Sweet.Actors
 {
     public class RpcManager : RpcServer, IRemoteManager
     {
-        private const int DefaultTimeout = 30000;
-
         private static readonly Task Completed = Task.FromResult(0);
 
         private class EndPointResolver
         {
+            private const int DefaultTimeout = 30000;
+
             private bool _isIPAddress;
             private string _host;
             private int _timeoutMSec;
@@ -86,8 +86,8 @@ namespace Sweet.Actors
         {
             private int _creationTime;
 
-            public RpcManagedClient(RpcClientOptions options)
-                : base(options)
+            public RpcManagedClient(Func<RemoteMessage, Task> onResponse, RpcClientOptions options)
+                : base(onResponse, options)
             {
                 _creationTime = Environment.TickCount;
             }
@@ -133,18 +133,18 @@ namespace Sweet.Actors
             return _rpcManagedClients.GetOrAdd(endPoint, NewClient);
         }
 
-        private static RpcManagedClient NewClient(RemoteEndPoint endPoint)
+        private RpcManagedClient NewClient(RemoteEndPoint endPoint)
         {
             var addresses = _endPointResolvers.GetOrAdd(endPoint.Host,
                                 (host) => new EndPointResolver(host)).Resolve();
 
             if (addresses.IsEmpty())
-                return new RpcManagedClient(null);
+                return new RpcManagedClient(OnResponse, null);
 
             var settings = new RpcClientOptions().
                 UsingEndPoint(new IPEndPoint(addresses[0], endPoint.Port));
 
-            return new RpcManagedClient(settings);
+            return new RpcManagedClient(OnResponse, settings);
         }
 
         protected void CancelWaitingResponses()
@@ -273,11 +273,29 @@ namespace Sweet.Actors
                         throw new Exception(RpcErrors.InvalidMessageResponse);
 
                     return response.ContinueWith((previousTask) => {
-                        if (previousTask.IsCompleted && !(previousTask.IsCanceled || previousTask.IsFaulted))
+                        var faulted = previousTask.IsFaulted;
+
+                        if (faulted || previousTask.IsCanceled)
                         {
-                            var futureResponse = previousTask.Result;
-                            SendMessage(futureResponse.ToWireMessage(remoteMessage.To, remoteMessage.MessageId), rpcConnection);
+                            var state = WireMessageState.Empty;
+                            state |= faulted ? WireMessageState.Faulted : WireMessageState.Canceled;
+
+                            var wireMessage = new WireMessage
+                            {
+                                From = to.ToString(),
+                                To = message.From?.ToString(),
+                                Exception = faulted ? previousTask.Exception : null,
+                                MessageType = faulted ? MessageType.FutureError : MessageType.FutureResponse,
+                                Id = remoteMessage.MessageId?.ToString() ?? WireMessageId.NextAsString(),
+                                State = state
+                            };
+
+                            SendMessage(wireMessage, rpcConnection);
+                            return;
                         }
+
+                        if (previousTask.IsCompleted)
+                            SendMessage(previousTask.Result.ToWireMessage(message.From, remoteMessage.MessageId), rpcConnection);
                     });
                 }
             }
@@ -290,7 +308,52 @@ namespace Sweet.Actors
             {
                 ThrowIfDisposed();
 
-                _writer.Write(rpcConnection.Connection, wireMessage);
+                var outStream = rpcConnection.Out;
+                if (outStream != null)
+                    _writer.Write(outStream, wireMessage);
+                else _writer.Write(rpcConnection.Connection, wireMessage);
+
+                return Completed;
+            }
+            catch (Exception e)
+            {
+                return Task.FromException(e);
+            }
+        }
+
+        private Task OnResponse(RemoteMessage response)
+        {
+            try
+            {
+                ThrowIfDisposed();
+
+                if (response != null)
+                {
+                    var messageId = response.MessageId;
+
+                    if (messageId != null &&
+                        _responseList.TryRemove(messageId, out RemoteRequest request) &&
+                        request?.Message is FutureMessage futureRequest)
+                    {
+                        var responseMessage = response.Message;
+
+                        if (responseMessage == null)
+                            futureRequest.Cancel();
+                        else if (responseMessage is FutureResponse futureResponse)
+                        {
+                            if (futureResponse.Data is Exception e)
+                                futureRequest.RespondToWithError(e);
+                            else futureRequest.Respond(futureResponse.Data);
+                        }
+                        else if (responseMessage is FutureError futureError)
+                        {
+                            var e = futureError.Exception;
+                            if (e != null)
+                                futureRequest.RespondToWithError(e);
+                            else futureRequest.Cancel();
+                        }
+                    }
+                }
                 return Completed;
             }
             catch (Exception e)

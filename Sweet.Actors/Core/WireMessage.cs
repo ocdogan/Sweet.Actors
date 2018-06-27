@@ -52,8 +52,6 @@ namespace Sweet.Actors
 
         public string To { get; set; }
 
-        public string ResponseType { get; set; }
-
         public Exception Exception { get; set; }
 
         public int TimeoutMSec { get; set; }

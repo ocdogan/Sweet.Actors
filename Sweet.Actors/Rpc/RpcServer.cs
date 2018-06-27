@@ -54,7 +54,7 @@ namespace Sweet.Actors
         private LRUItem<ActorSystem, string> _lastBinding;
 
         private ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
-        private ConcurrentDictionary<RpcReceiveContext, Socket> _receiveContexts = new ConcurrentDictionary<RpcReceiveContext, Socket>();
+        private ConcurrentDictionary<RpcConnection, Socket> _receiveContexts = new ConcurrentDictionary<RpcConnection, Socket>();
 
         static RpcServer()
         {
@@ -361,10 +361,10 @@ namespace Sweet.Actors
         {
             if (clientSocket != null)
             {
-                RpcReceiveContext receiveCtx = null;
+                RpcConnection receiveCtx = null;
                 try
                 {
-                    receiveCtx = new RpcReceiveContext(this, clientSocket, HandleMessage, SendMessage);
+                    receiveCtx = new RpcConnection(this, clientSocket, HandleMessage, SendMessage);
                     receiveCtx.OnDisconnect += ContextDisconnected;
 
                     _receiveContexts[receiveCtx] = clientSocket;
@@ -382,7 +382,7 @@ namespace Sweet.Actors
 
         private void ContextDisconnected(object sender, EventArgs e)
         {
-            if (sender is RpcReceiveContext receiveCtx)
+            if (sender is RpcConnection receiveCtx)
             {
                 receiveCtx.OnDisconnect -= ContextDisconnected;
 

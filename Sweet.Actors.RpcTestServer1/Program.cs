@@ -77,8 +77,8 @@ namespace Sweet.Actors.RpcTestServer1
                     }
                 }
 
-                /* if (message.MessageType == MessageType.FutureMessage)
-                    ctx.RespondTo(message, "world"); */
+                if (message.MessageType == MessageType.FutureMessage)
+                    ctx.RespondTo(message, "world");
 
                 return Completed;
             },

@@ -62,5 +62,18 @@ namespace Sweet.Actors
             }
             return null;
         }
+
+        public long Serialize(WireMessage message, Stream stream)
+        {
+            if (message != null && 
+                stream != null && stream.CanWrite)
+            {
+                var previousPos = stream.Position;
+                 _serializer.Serialize(message, stream);
+
+                return Math.Max(-1L, stream.Position - previousPos);
+            }
+            return -1L;
+        }
     }
 }

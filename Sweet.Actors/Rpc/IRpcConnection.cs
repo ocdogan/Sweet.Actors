@@ -22,6 +22,7 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 
@@ -32,5 +33,6 @@ namespace Sweet.Actors
         Socket Connection { get; }
         IPEndPoint RemoteEndPoint { get; }
         object State { get; }
+        Stream Out { get; }
     }
 }
