@@ -42,6 +42,7 @@ namespace Sweet.Actors
             private int _count;
             private int _length;
             private byte[] _buffer;
+            private int _synchronousCompletionCount;
 
             public AsyncReceiveBuffer()
             {
@@ -55,7 +56,17 @@ namespace Sweet.Actors
 
             public int Length => _length;
 
-            public int SynchronousCompletionCount { get; set; }
+            public int SynchronousCompletionCount => _synchronousCompletionCount;
+
+            public int SynchronousCompletion()
+            {
+                return Interlocked.Increment(ref _synchronousCompletionCount);
+            }
+
+            public void ResetSynchronousCompletion()
+            {
+                Interlocked.Exchange(ref _synchronousCompletionCount, 0);
+            }
 
             protected override void OnDispose(bool disposing)
             {
@@ -243,45 +254,48 @@ namespace Sweet.Actors
 
         private bool BeginReceive(AsyncReceiveBuffer asyncReceiveBuffer)
         {
-            if (Interlocked.CompareExchange(ref _inReceiveCycle, 1L, 0L) == 0L)
+            if (Interlocked.CompareExchange(ref _inReceiveCycle, 1L, 0L) != 0L)
+                return false;
+
+            try
             {
-                try
-                {
-                    if (asyncReceiveBuffer is null)
-                        asyncReceiveBuffer = (_asyncReceiveBuffer = new AsyncReceiveBuffer());
+                if (asyncReceiveBuffer is null)
+                    asyncReceiveBuffer = (_asyncReceiveBuffer = new AsyncReceiveBuffer());
 
-                    var socket = _socket;
-                    if (!socket.IsConnected())
-                    {
-                        Interlocked.Exchange(ref _inReceiveCycle, 0L);
-                        return false;
-                    }
-
-                    var result = socket.BeginReceive(asyncReceiveBuffer.Buffer, 0, asyncReceiveBuffer.Length, SocketFlags.None,
-                        out SocketError errorCode, OnReceiveCompleted, 
-                        new AsyncReceiveState(this, asyncReceiveBuffer, socket));
-
-                    if (errorCode.IsSocketError())
-                        throw new SocketException((int)errorCode);
-
-                    if (result?.CompletedSynchronously ?? false)
-                        DoReceiveCompleted(result, true);
-
-                    return true;
-                }
-                catch (Exception)
+                var socket = _socket;
+                if (!socket.IsConnected())
                 {
                     Interlocked.Exchange(ref _inReceiveCycle, 0L);
-                    Interlocked.Exchange(ref _receiving, 0L);
-
-                    Close();
+                    return false;
                 }
+
+                var asyncResult = socket.BeginReceive(asyncReceiveBuffer.Buffer, 0, asyncReceiveBuffer.Length, SocketFlags.None,
+                    out SocketError errorCode, OnReceiveCompleted, 
+                    new AsyncReceiveState(this, asyncReceiveBuffer, socket));
+
+                if (errorCode.IsSocketError())
+                    throw new SocketException((int)errorCode);
+
+                if (asyncResult?.CompletedSynchronously ?? false)
+                    DoReceiveCompleted(asyncResult, true);
+
+                return true;
+            }
+            catch (Exception)
+            {
+                Interlocked.Exchange(ref _inReceiveCycle, 0L);
+                Interlocked.Exchange(ref _receiving, 0L);
+
+                Close();
             }
             return false;
          }
 
         private static void OnReceiveCompleted(IAsyncResult asyncResult)
         {
+            if (asyncResult.CompletedSynchronously)
+                return;
+
             DoReceiveCompleted(asyncResult, false);
         }
 
@@ -300,11 +314,6 @@ namespace Sweet.Actors
                             asyncReceiveBuffer.Count = state.Socket.EndReceive(asyncResult, out SocketError errorCode);
                             if (errorCode.IsSocketError())
                                 throw new SocketException((int)errorCode);
-
-                            if (!calledSynchronously)
-                                asyncReceiveBuffer.SynchronousCompletionCount = 0;
-                            else
-                                asyncReceiveBuffer.SynchronousCompletionCount++;
 
                             DoReceived(connection, asyncReceiveBuffer, calledSynchronously);
                         }
@@ -330,35 +339,40 @@ namespace Sweet.Actors
         {
             if (state != null && !(connection?.Disposed ?? true))
             {
-                var bytesReceived = state.Count;
-                if (bytesReceived > 0)
+                try
                 {
-                    try
+                    var bytesReceived = state.Count;
+                    if (bytesReceived > 0)
                     {
                         connection.ProcessReceived(state.Buffer, bytesReceived);
-                        if (!connection.Disposed)
-                        {
-                            if (!calledSynchronously || 
-                                state.SynchronousCompletionCount <= SynchronousCompletionTreshold)
-                            {
-                                if (!calledSynchronously)
-                                    state.SynchronousCompletionCount = 0;
+                        if (connection.Disposed)
+                            return;
 
+                        if (calledSynchronously &&
+                            state.SynchronousCompletion() > SynchronousCompletionTreshold)
+                        {
+                            state.ResetSynchronousCompletion();
+
+                            ThreadPool.QueueUserWorkItem((waitCallback) =>
+                            {
                                 Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
                                 connection.BeginReceive(state);
-                            }
-                            else
-                            {
-                                state.SynchronousCompletionCount = 0;
-                                Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
-
-                                ThreadPool.QueueUserWorkItem((waitCallback) => connection.BeginReceive(state));
-                            }
+                            });
+                            return;
                         }
+
+                        if (!calledSynchronously)
+                            state.ResetSynchronousCompletion();
+
+                        Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+                        connection.BeginReceive(state);
+
                         return;
                     }
-                    catch (Exception)
-                    { }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
                 }
 
                 connection.Close();
