@@ -178,6 +178,8 @@ namespace Sweet.Actors
                 using (var stream = Interlocked.Exchange(ref _netStream, null))
                     stream?.Close();
             }
+            catch (Exception)
+            { }
             finally
             {
                 Interlocked.Exchange(ref _inReceiveCycle, 0L);
@@ -214,6 +216,8 @@ namespace Sweet.Actors
                         }
                     }
                 }
+                catch (Exception)
+                { }
                 finally
                 {
                     Interlocked.Exchange(ref _inReceiveCycle, 0L);
@@ -313,7 +317,9 @@ namespace Sweet.Actors
 
                                 connection.Close();
                             }
-                            throw;
+
+                            if (calledSynchronously)
+                                throw;
                         }
                     }
                 }

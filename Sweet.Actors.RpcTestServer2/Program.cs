@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Diagnostics;
 
 namespace Sweet.Actors.RpcTestServer2
 {
@@ -60,17 +61,23 @@ namespace Sweet.Actors.RpcTestServer2
             ActorSystem.TryGet("system-2", out ActorSystem actorSystem);
             actorSystem.TryGetRemote(new Aid("system-1", "system-1-actor-1"), out Pid remotePid);
 
-            /* for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000")); */
+            var sw = new Stopwatch();
+            sw.Restart();
 
-            var task = remotePid.Request("hello (do not forget)");
+            for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000"));
+
+            sw.Stop();
+            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+
+            /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
                 IFutureResponse response = null;
                 if (!(previousTask.IsCanceled || previousTask.IsFaulted))
                     response = previousTask.Result;
 
                 Console.WriteLine(response?.Data ?? "(null response)");
-            });
+            }); */
         }
 
         static void Main(string[] args)
