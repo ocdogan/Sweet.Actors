@@ -40,12 +40,16 @@ namespace Sweet.Actors
             public T Value;
         }
 
+        private static int IdSeed;
+
         private const int MaxBufferSize = 4 * Constants.KB;
 
         // States
         private int _stopping;
         private int _accepting;
         private long _status = RpcServerStatus.Stopped;
+
+        private int _id;
 
         private Socket _listener;
 		private IPEndPoint _localEndPoint;
@@ -54,7 +58,7 @@ namespace Sweet.Actors
         private LRUItem<ActorSystem, string> _lastBinding;
 
         private ConcurrentDictionary<string, ActorSystem> _actorSystemBindings = new ConcurrentDictionary<string, ActorSystem>();
-        private ConcurrentDictionary<RpcConnection, Socket> _receiveContexts = new ConcurrentDictionary<RpcConnection, Socket>();
+        private ConcurrentDictionary<RpcConnection, Socket> _rpcConnections = new ConcurrentDictionary<RpcConnection, Socket>();
 
         static RpcServer()
         {
@@ -64,6 +68,7 @@ namespace Sweet.Actors
 
         internal RpcServer(RpcServerOptions options = null)
         {
+            _id = Interlocked.Increment(ref IdSeed);
             _options = options?.Clone() ?? RpcServerOptions.Default;
         }
 
@@ -82,6 +87,8 @@ namespace Sweet.Actors
 
             base.OnDispose(disposing);
         }
+
+        public int Id => _id;
 
         protected RpcServerOptions Options => _options;
 
@@ -205,7 +212,7 @@ namespace Sweet.Actors
 
                 Interlocked.Exchange(ref _status, RpcServerStatus.Started);
 
-                StartAccepting(NewSocketAsyncEventArgs());
+                StartAccepting(NewAcceptEventArgs(), true);
             }
         }
 
@@ -230,14 +237,14 @@ namespace Sweet.Actors
             socket.NoDelay = true;
         }
 
-        private SocketAsyncEventArgs NewSocketAsyncEventArgs()
+        private SocketAsyncEventArgs NewAcceptEventArgs()
         {
-            var result = new SocketAsyncEventArgs {
-                UserToken = this
-            };
-            result.Completed += OnAcceptCompleted;
+            var acceptEventArgs = new SocketAsyncEventArgs();
 
-            return result;
+            acceptEventArgs.UserToken = this;
+            acceptEventArgs.Completed += OnAcceptCompleted;
+
+            return acceptEventArgs;
         }
 
         private bool TryToStop()
@@ -299,60 +306,54 @@ namespace Sweet.Actors
             return true;
         }
 
-        private void StartAccepting(SocketAsyncEventArgs eventArgs)
+        private void StartAccepting(SocketAsyncEventArgs acceptEventArgs, bool forceToAccept = false)
         {
-            Interlocked.Exchange(ref _accepting, Constants.True);
-            try
+            if (Interlocked.CompareExchange(ref _accepting, Constants.True, Constants.False) == Constants.False ||
+                forceToAccept)
             {
-                eventArgs.AcceptSocket = null;
-
-                var listener = _listener;
-                while (!listener.AcceptAsync(eventArgs))
+                try
                 {
-                    Interlocked.Exchange(ref _accepting, Constants.True);
-                    HandleAccept(eventArgs, true);
+                    acceptEventArgs.AcceptSocket = null;
+
+                    var listener = _listener;
+                    while (!listener.AcceptAsync(acceptEventArgs))
+                        HandleAccept(acceptEventArgs, true);
                 }
-            }
-            catch (Exception)
-            {
-                StartListening();
+                catch (Exception)
+                {
+                    Interlocked.Exchange(ref _accepting, Constants.False);
+                    StartListening();
+                }
             }
         }
 
-        private static void OnAcceptCompleted(object sender, SocketAsyncEventArgs eventArgs)
+        private static void OnAcceptCompleted(object sender, SocketAsyncEventArgs acceptEventArgs)
         {
-            ((RpcServer)eventArgs.UserToken).HandleAccept(eventArgs, false);
+            if (acceptEventArgs.UserToken is RpcServer server)
+                server.HandleAccept(acceptEventArgs, false);
         }
 
         private void HandleAccept(SocketAsyncEventArgs acceptEventArgs, bool completedSynchronously)
         {
-            Interlocked.Exchange(ref _accepting, Constants.False);
             try
             {
-                if (acceptEventArgs.SocketError != SocketError.Success)
+                var errorCode = acceptEventArgs.SocketError;
+                if (errorCode.IsSocketError())
+                    throw new SocketException((int)errorCode);
+
+                if (acceptEventArgs.UserToken is RpcServer server)
                 {
-                    StartListening();
-                    return;
+                    var socket = acceptEventArgs.AcceptSocket;
+                    if (socket.IsConnected())
+                        ThreadPool.QueueUserWorkItem((asyncResult) => server.StartReceiveAsync(socket));
+
+                    if (!completedSynchronously)
+                        StartAccepting(acceptEventArgs, true);
                 }
-
-                if (!(acceptEventArgs.UserToken is RpcServer server))
-                    return;
-
-                var socket = acceptEventArgs.AcceptSocket;
-                if (socket.Connected)
-                {
-                    Task.Factory.StartNew(() => {
-                        StartReceiveAsync(socket);
-                    }).Ignore();
-                }
-
-                if (completedSynchronously)
-                    return;
-
-                StartAccepting(acceptEventArgs);
             }
             catch (Exception)
             {
+                Interlocked.Exchange(ref _accepting, Constants.False);
                 StartListening();
             }
         }
@@ -361,20 +362,20 @@ namespace Sweet.Actors
         {
             if (clientSocket != null)
             {
-                RpcConnection receiveCtx = null;
+                RpcConnection connection = null;
                 try
                 {
-                    receiveCtx = new RpcConnection(this, clientSocket, HandleMessage, SendMessage);
-                    receiveCtx.OnDisconnect += ContextDisconnected;
+                    connection = new RpcConnection(this, clientSocket, HandleMessage, SendMessage);
+                    connection.OnDisconnect += ContextDisconnected;
 
-                    _receiveContexts[receiveCtx] = clientSocket;
+                    _rpcConnections[connection] = clientSocket;
 
-                    if (!receiveCtx.StartReceiveAsync())
+                    if (!connection.Receive())
                         throw new Exception(RpcErrors.CannotStartToReceive);
                 }
                 catch (Exception)
                 {
-                    ContextDisconnected(receiveCtx, EventArgs.Empty);
+                    ContextDisconnected(connection, EventArgs.Empty);
                     throw;
                 }
             }
@@ -382,15 +383,15 @@ namespace Sweet.Actors
 
         private void ContextDisconnected(object sender, EventArgs e)
         {
-            if (sender is RpcConnection receiveCtx)
+            if (sender is RpcConnection rpcConnection)
             {
-                receiveCtx.OnDisconnect -= ContextDisconnected;
+                rpcConnection.OnDisconnect -= ContextDisconnected;
 
-                _receiveContexts.TryRemove(receiveCtx, out Socket socket);
+                _rpcConnections.TryRemove(rpcConnection, out Socket socket);
                 CloseConnection(socket);
 
-                if (!receiveCtx.Disposed)
-                    receiveCtx.Dispose();
+                if (!rpcConnection.Disposed)
+                    rpcConnection.Dispose();
             }
         }
 
@@ -409,7 +410,7 @@ namespace Sweet.Actors
 
         protected virtual void ClearConnections()
         {
-            _receiveContexts.Clear();
+            _rpcConnections.Clear();
         }
 
         private byte[] ReadData(Socket clientSocket, int expected)

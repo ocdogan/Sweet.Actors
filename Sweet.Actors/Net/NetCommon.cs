@@ -31,6 +31,13 @@ namespace Sweet.Actors
     {
         #region Sockets
 
+        internal static bool IsSocketError(this SocketError errorCode)
+        {
+            return !(errorCode == SocketError.Success || 
+                errorCode == SocketError.IOPending ||
+                errorCode == SocketError.WouldBlock);
+        }
+
         internal static void SetIOLoopbackFastPath(this Socket socket)
         {
             if (Common.IsWinPlatform)

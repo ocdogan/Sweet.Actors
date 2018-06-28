@@ -24,11 +24,8 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +42,7 @@ namespace Sweet.Actors
 
         #endregion Constants
 
+        private static int IdSeed;
         private static readonly Task Completed = Task.FromResult(0);
 
         private Socket _socket;
@@ -53,6 +51,7 @@ namespace Sweet.Actors
         private RpcClientOptions _options;
         private Func<RemoteMessage, Task> _onResponse;
 
+        private int _id;
         private long _waitingToTransmit;
 
         // States
@@ -61,7 +60,7 @@ namespace Sweet.Actors
         private long _status = RpcClientStatus.Closed;
 
         private RpcMessageWriter _writer;
-        private RpcConnection _receiveCtx;
+        private RpcConnection _connection;
 
         private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
@@ -74,10 +73,14 @@ namespace Sweet.Actors
 
         public RpcClient(Func<RemoteMessage, Task> onResponse, RpcClientOptions options)
         {
+            _id = Interlocked.Increment(ref IdSeed);
+
             _onResponse = onResponse;
             _options = options?.Clone() ?? RpcClientOptions.Default;
             _writer = new RpcMessageWriter(_options.Serializer);
         }
+
+        public int Id => _id;
 
         public long Status
         {
@@ -113,7 +116,7 @@ namespace Sweet.Actors
                 using (var writer = Interlocked.Exchange(ref _writer, null))
                 { }
 
-                using (var ctx = Interlocked.Exchange(ref _receiveCtx, null))
+                using (var ctx = Interlocked.Exchange(ref _connection, null))
                 { }
 
                 Close();
@@ -141,7 +144,7 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    using (var ctx = Interlocked.Exchange(ref _receiveCtx, null))
+                    using (var ctx = Interlocked.Exchange(ref _connection, null))
                     { }
 
                     var socket = Interlocked.Exchange(ref _socket, null);
@@ -188,7 +191,8 @@ namespace Sweet.Actors
                         result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
                         Configure(result);
 
-                        using (var ctx = Interlocked.Exchange(ref _receiveCtx, new RpcConnection(this, result, HandleResponse, null)))
+                        var connection = new RpcConnection(this, result, HandleResponse, null);
+                        using (var conn = Interlocked.Exchange(ref _connection, connection))
                         { }
 
                         var prevSocket = Interlocked.Exchange(ref _socket, result);
@@ -234,7 +238,7 @@ namespace Sweet.Actors
 
                                     Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
 
-                                    _receiveCtx?.OnConnect();
+                                    _connection?.OnConnect();
 
                                     tcs.TrySetResult(0);
                                 }
@@ -397,7 +401,7 @@ namespace Sweet.Actors
             {
                 if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L && !Disposed)
                 {
-                    var outStream = _receiveCtx?.Out;
+                    var outStream = _connection?.Out;
                     if (outStream != null && (outStream?.CanWrite ?? false))
                         outStream?.Flush();
                 }
@@ -437,7 +441,7 @@ namespace Sweet.Actors
             try
             {
                 waitingCount = Interlocked.Increment(ref _waitingToTransmit);
-                result = _writer.Write(_receiveCtx?.Out, message, flush);
+                result = _writer.Write(_connection?.Out, message, flush);
             }
             finally
             {
@@ -451,28 +455,13 @@ namespace Sweet.Actors
             return result;
         }
 
-        private static WaitCallback BeginReceiveCallback = (asyncResult) =>
-        {
-            if (asyncResult is RpcClient client)
-            {
-                try
-                {
-                    var receiveCtx = client._receiveCtx;
-                    if (receiveCtx != null)
-                        receiveCtx.StartReceiveAsync();
-                }
-                catch (Exception)
-                { }
-            }
-        };
-
         private void BeginReceive()
         {
             if (!Disposed)
             {
-                var receiveCtx = _receiveCtx;
-                if (receiveCtx != null && !receiveCtx.Receiving)
-                    ThreadPool.QueueUserWorkItem(BeginReceiveCallback, this);
+                var connection = _connection;
+                if (connection != null && !connection.Receiving)
+                    ThreadPool.QueueUserWorkItem((asyncResult) => connection.Receive());
             }
         }
 

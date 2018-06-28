@@ -30,8 +30,15 @@ namespace Sweet.Actors
 {
     public class NativeSocket : Socket
     {
+        #region Static Members
+
+        private static int IdSeed;
+
+        #endregion Static Members
+
         #region Field Members
 
+        private int _id;
         private int _disposed;
 
         #endregion Field Members
@@ -40,11 +47,15 @@ namespace Sweet.Actors
 
         public NativeSocket(SocketInformation socketInformation)
             : base(socketInformation)
-        { }
+        {
+            _id = Interlocked.Increment(ref IdSeed);
+        }
 
         public NativeSocket(AddressFamily addressFamily, SocketType socketType, ProtocolType protocolType)
             : base(addressFamily, socketType, protocolType)
-        { }
+        {
+            _id = Interlocked.Increment(ref IdSeed);
+        }
 
         #endregion .Ctors
 
@@ -60,10 +71,9 @@ namespace Sweet.Actors
 
         #region Properties
 
-        public bool Disposed
-        {
-            get { return _disposed != 0; }
-        }
+        public bool Disposed => _disposed != 0;
+
+        public int Id => _id;
 
         #endregion Properties
 

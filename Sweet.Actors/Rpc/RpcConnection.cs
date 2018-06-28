@@ -33,11 +33,88 @@ namespace Sweet.Actors
 {
     internal class RpcConnection : Disposable, IRpcConnection
     {
-        public event EventHandler OnDisconnect;
-
         private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
 
+        public event EventHandler OnDisconnect;
+
+        private class AsyncReceiveBuffer : Disposable
+        {
+            private int _count;
+            private int _length;
+            private byte[] _buffer;
+
+            public AsyncReceiveBuffer()
+            {
+                _buffer = ByteArrayCache.Default.Acquire();
+                _length = _buffer?.Length ?? 0;
+            }
+
+            public byte[] Buffer => _buffer;
+
+            public int Count { get => _count; set => _count = value; }
+
+            public int Length => _length;
+
+            public int SynchronousCompletionCount { get; set; }
+
+            protected override void OnDispose(bool disposing)
+            {
+                if (disposing)
+                    ByteArrayCache.Default.Release(_buffer);
+                base.OnDispose(disposing);
+            }
+        }
+
+        private class AsyncReceiveState : IDisposable
+        {
+            private long _completed;
+            private Socket _socket;
+            private RpcConnection _connection;
+            private AsyncReceiveBuffer _buffer;
+
+            public AsyncReceiveState(RpcConnection connection, 
+                AsyncReceiveBuffer buffer, Socket socket)
+            {
+                _buffer = buffer;
+                _socket = socket;
+                _connection = connection;
+            }
+
+            public AsyncReceiveBuffer Buffer => _buffer;
+
+            public Socket Socket => _socket;
+
+            public RpcConnection Connection => _connection;
+
+            public bool IsCompleted => (Interlocked.Read(ref _completed) != 0L);
+
+            public bool TryToComplete(out AsyncReceiveBuffer buffer)
+            {
+                if (Interlocked.CompareExchange(ref _completed, 1L, 0L) != 0L)
+                {
+                    buffer = null;
+                    return false;
+                }
+
+                buffer = Interlocked.Exchange(ref _buffer, null);
+                return !(buffer is null);
+            }
+
+            public void Dispose()
+            {
+                TryToComplete(out AsyncReceiveBuffer buffer);
+
+                Interlocked.Exchange(ref _socket, null);
+                Interlocked.Exchange(ref _connection, null);
+            }
+        }
+
+        private static int IdSeed;
+        private const int SynchronousCompletionTreshold = 10;
+
+        private int _id;
         private long _receiving;
+        private long _inReceiveCycle;
 
         private Stream _netStream;
         private Stream _outStream;
@@ -45,9 +122,9 @@ namespace Sweet.Actors
         private object _state;
         private Socket _socket;
         private IPEndPoint _remoteEndPoint;
-        private readonly RpcReceiveBuffer _buffer;
 
-        private SocketAsyncEventArgs _receiveEventArgs;
+        private AsyncReceiveBuffer _asyncReceiveBuffer;
+        private readonly RpcReceiveBuffer _rpcReceiveBuffer;
 
         private Func<WireMessage, IRpcConnection, Task> _responseHandler;
         private Func<RemoteMessage, IRpcConnection, Task> _messageHandler;
@@ -56,22 +133,20 @@ namespace Sweet.Actors
             Func<RemoteMessage, IRpcConnection, Task> messageHandler,
             Func<WireMessage, IRpcConnection, Task> responseHandler)
         {
+            _id = Interlocked.Increment(ref IdSeed);
             _state = state;
 
             _socket = socket;
             _socket.LingerState = NoLingerState;
 
             _remoteEndPoint = (_socket?.RemoteEndPoint as IPEndPoint);
-            _buffer = new RpcReceiveBuffer();
+            _rpcReceiveBuffer = new RpcReceiveBuffer();
 
             _messageHandler = messageHandler;
             _responseHandler = responseHandler;
-
-            _receiveEventArgs = SocketAsyncEventArgsCache.Default.Acquire();
-
-            _receiveEventArgs.UserToken = this;
-            _receiveEventArgs.Completed += OnReceiveCompleted;
         }
+
+        public int Id => _id;
 
         public Socket Connection => _socket;
 
@@ -94,11 +169,8 @@ namespace Sweet.Actors
         {
             try
             {
-                var receiving = Interlocked.Exchange(ref _receiving, 0L) > 0L;
-
-                var receiveEventArgs = Interlocked.Exchange(ref _receiveEventArgs, null);
-                if (receiveEventArgs != null)
-                    ReleaseReceiveEventArgs(receiveEventArgs, receiving);
+                using (var state = Interlocked.Exchange(ref _asyncReceiveBuffer, null))
+                { }
 
                 using (var stream = Interlocked.Exchange(ref _outStream, null))
                     stream?.Close();
@@ -108,6 +180,7 @@ namespace Sweet.Actors
             }
             finally
             {
+                Interlocked.Exchange(ref _inReceiveCycle, 0L);
                 CloseSocket();
             }
         }
@@ -143,130 +216,189 @@ namespace Sweet.Actors
                 }
                 finally
                 {
+                    Interlocked.Exchange(ref _inReceiveCycle, 0L);
                     Interlocked.Exchange(ref _receiving, 0L);
+
                     OnDisconnect?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
 
-        private static void ReleaseReceiveEventArgs(SocketAsyncEventArgs receiveEventArgs, bool inUse)
+        public bool Receive()
         {
-            if (receiveEventArgs != null)
+            if (Interlocked.CompareExchange(ref _receiving, 1L, 0L) == 0L)
             {
-                if (inUse)
+                if (BeginReceive(_asyncReceiveBuffer))
+                    return true;
 
-                receiveEventArgs.Completed -= OnReceiveCompleted;
-                receiveEventArgs.UserToken = null;
-
-                SocketAsyncEventArgsCache.Default.Release(receiveEventArgs);
+                Interlocked.Exchange(ref _receiving, 0L);
+                return false;
             }
+            return true;
         }
 
-        private static void OnReceiveCompleted(object sender, SocketAsyncEventArgs receiveEventArgs)
+        private bool BeginReceive(AsyncReceiveBuffer asyncReceiveBuffer)
         {
-            if (receiveEventArgs.LastOperation != SocketAsyncOperation.Receive)
-            {
-                ReleaseReceiveEventArgs(receiveEventArgs, false);
-                throw new ArgumentException(Errors.ExpectingReceiveCompletedOperation);
-            }
-
-            if (receiveEventArgs.UserToken is RpcConnection receiveCtx)
-            {
-                Interlocked.Exchange(ref receiveCtx._receiving, 0L);
-
-                if (!receiveCtx.Disposed)
-                    receiveCtx.DoReceived(receiveEventArgs);
-                else
-                    ReleaseReceiveEventArgs(receiveEventArgs, false);
-            }
-        }
-
-        private void DoReceived(SocketAsyncEventArgs receiveEventArgs)
-        {
-            Interlocked.Exchange(ref _receiving, 0L);
-
-            var receiveContext = (RpcConnection)receiveEventArgs.UserToken;
-
-            var continueReceiving = false;
-            var socket = receiveContext.Connection;
-
-            if (receiveEventArgs.BytesTransferred > 0 &&
-                receiveEventArgs.SocketError == SocketError.Success)
+            if (Interlocked.CompareExchange(ref _inReceiveCycle, 1L, 0L) == 0L)
             {
                 try
                 {
-                    receiveContext.ProcessReceived(receiveEventArgs);
-                    continueReceiving = !Disposed;
-                }
-                catch (Exception)
-                { }
-            }
+                    if (asyncReceiveBuffer is null)
+                        asyncReceiveBuffer = (_asyncReceiveBuffer = new AsyncReceiveBuffer());
 
-            if (continueReceiving)
-                StartReceiveAsync(socket, receiveEventArgs);
-            else
-                Close();
-        }
+                    var socket = _socket;
+                    if (!socket.IsConnected())
+                    {
+                        Interlocked.Exchange(ref _inReceiveCycle, 0L);
+                        return false;
+                    }
 
-        public bool StartReceiveAsync()
-        {
-            return StartReceiveAsync(_socket, _receiveEventArgs);
-        }
+                    var result = socket.BeginReceive(asyncReceiveBuffer.Buffer, 0, asyncReceiveBuffer.Length, SocketFlags.None,
+                        out SocketError errorCode, OnReceiveCompleted, 
+                        new AsyncReceiveState(this, asyncReceiveBuffer, socket));
 
-        private bool StartReceiveAsync(Socket socket, SocketAsyncEventArgs receiveEventArgs)
-        {
-            if (socket?.IsConnected() ?? false &&
-                receiveEventArgs != null &&
-                Interlocked.CompareExchange(ref _receiving, 1L, 0L) == 0L)
-            {
-                try
-                {
-                    if (!socket.ReceiveAsync(receiveEventArgs))
-                        DoReceived(receiveEventArgs);
+                    if (errorCode.IsSocketError())
+                        throw new SocketException((int)errorCode);
+
+                    if (result?.CompletedSynchronously ?? false)
+                        DoReceiveCompleted(result, true);
+
                     return true;
                 }
                 catch (Exception)
                 {
+                    Interlocked.Exchange(ref _inReceiveCycle, 0L);
                     Interlocked.Exchange(ref _receiving, 0L);
+
                     Close();
                 }
             }
             return false;
+         }
+
+        private static void OnReceiveCompleted(IAsyncResult asyncResult)
+        {
+            DoReceiveCompleted(asyncResult, false);
         }
 
-        private void ProcessReceived(SocketAsyncEventArgs receiveEventArgs)
+        private static void DoReceiveCompleted(IAsyncResult asyncResult, bool calledSynchronously)
+        {
+            if (asyncResult.AsyncState is AsyncReceiveState state)
+            {
+                using (state)
+                {
+                    AsyncReceiveBuffer asyncReceiveBuffer = null;
+                    if ((state?.TryToComplete(out asyncReceiveBuffer) ?? false) && (asyncReceiveBuffer != null))
+                    {
+                        var connection = state.Connection;
+                        try
+                        {
+                            asyncReceiveBuffer.Count = state.Socket.EndReceive(asyncResult, out SocketError errorCode);
+                            if (errorCode.IsSocketError())
+                                throw new SocketException((int)errorCode);
+
+                            if (!calledSynchronously)
+                                asyncReceiveBuffer.SynchronousCompletionCount = 0;
+                            else
+                                asyncReceiveBuffer.SynchronousCompletionCount++;
+
+                            DoReceived(connection, asyncReceiveBuffer, calledSynchronously);
+                        }
+                        catch (Exception)
+                        {
+                            if (!calledSynchronously && !(connection?.Disposed ?? true))
+                            {
+                                Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+                                Interlocked.Exchange(ref connection._receiving, 0L);
+
+                                connection.Close();
+                            }
+                            throw;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void DoReceived(RpcConnection connection, AsyncReceiveBuffer state, bool calledSynchronously = false)
+        {
+            if (state != null && !(connection?.Disposed ?? true))
+            {
+                var bytesReceived = state.Count;
+                if (bytesReceived > 0)
+                {
+                    try
+                    {
+                        connection.ProcessReceived(state.Buffer, bytesReceived);
+                        if (!connection.Disposed)
+                        {
+                            if (!calledSynchronously || 
+                                state.SynchronousCompletionCount <= SynchronousCompletionTreshold)
+                            {
+                                if (!calledSynchronously)
+                                    state.SynchronousCompletionCount = 0;
+
+                                Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+                                connection.BeginReceive(state);
+                            }
+                            else
+                            {
+                                state.SynchronousCompletionCount = 0;
+                                Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+
+                                ThreadPool.QueueUserWorkItem((waitCallback) => connection.BeginReceive(state));
+                            }
+                        }
+                        return;
+                    }
+                    catch (Exception)
+                    { }
+                }
+
+                connection.Close();
+            }
+        }
+
+        private void ProcessReceived(byte[] buffer, int bytesReceived)
         {
             try
             {
-                if (_buffer.OnReceiveData(receiveEventArgs.Buffer, receiveEventArgs.Offset, receiveEventArgs.BytesTransferred))
+                if (_rpcReceiveBuffer.OnReceiveData(buffer, 0, bytesReceived))
                 {
-                    RemoteMessage remoteMsg = null;
-                    try
+                    while (_rpcReceiveBuffer.TryGetMessage(out RemoteMessage remoteMsg))
                     {
-                        while (_buffer.TryGetMessage(out remoteMsg))
-                            _messageHandler?.Invoke(remoteMsg, this);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_responseHandler != null)
+                        try
                         {
-                            var message = remoteMsg.Message;
-                            if ((message != null) && (message.MessageType == MessageType.FutureMessage))
-                            {
-                                var response = message.ToWireMessage(remoteMsg.To, remoteMsg.MessageId, e);
-                                _responseHandler.Invoke(response, this);
-                                return;
-                            }
+                            _messageHandler?.Invoke(remoteMsg, this);
                         }
-                        throw;
+                        catch (Exception e)
+                        {
+                            RespondWithError(remoteMsg, e);
+                        }
                     }
                 }
             }
             catch (Exception)
             {
-                _buffer.Dispose();
+                _rpcReceiveBuffer.Dispose();
                 throw;
             }
+        }
+
+        private bool RespondWithError(RemoteMessage remoteMsg, Exception e)
+        {
+            var handler = _responseHandler;
+            if (handler != null)
+            {
+                var message = remoteMsg.Message;
+                if ((message != null) && (message.MessageType == MessageType.FutureMessage))
+                {
+                    var response = message.ToWireMessage(remoteMsg.To, remoteMsg.MessageId, e);
+                    handler.Invoke(response, this);
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

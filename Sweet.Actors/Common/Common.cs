@@ -238,10 +238,10 @@ namespace Sweet.Actors
             if (ReferenceEquals(bytesX, bytesY))
                 return true;
 
-            if (ReferenceEquals(bytesX, null))
-                return ReferenceEquals(bytesY, null);
+            if (bytesX is null)
+                return (bytesY is null);
 
-            if (ReferenceEquals(bytesY, null))
+            if (bytesY is null)
                 return false;
 
             var l1 = bytesX.Length;

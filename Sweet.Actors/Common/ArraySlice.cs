@@ -99,7 +99,7 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
-            if (disposing && _owner != null && !_owner.Disposed)
+            if (disposing && !(_owner?.Disposed ?? true))
                 _owner.Release(_array);
 
             base.OnDispose(disposing);
@@ -107,23 +107,17 @@ namespace Sweet.Actors
 
         public bool Equals(byte[] other)
         {
-            if (!ReferenceEquals(other, null))
-                return _array.EqualTo(other);
-
-            return false;
+            return _array?.EqualTo(other) ?? false;
         }
 
         public bool Equals(string other)
         {
-            if (!ReferenceEquals(other, null))
-                return _array.EqualTo(other.ToBytes());
-
-            return false;
+            return _array?.EqualTo(other?.ToBytes()) ?? false;
         }
 
         public bool Equals(ArraySlice other)
         {
-            if (!ReferenceEquals(other, null))
+            if (!(other is null))
             {
                 if (ReferenceEquals(other, this))
                     return true;
@@ -137,20 +131,20 @@ namespace Sweet.Actors
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(obj, null))
-                return (_array == null);
+            if (obj is null)
+                return (_array is null);
 
             var rba = obj as ArraySlice;
-            if (!ReferenceEquals(rba, null))
+            if (!(rba is null))
                 return this.Equals(rba);
 
             var ba = obj as byte[];
-            if (!ReferenceEquals(ba, null))
-                return _array.EqualTo(ba);
+            if (!(ba is null))
+                return _array?.EqualTo(ba) ?? false;
 
             var s = obj as string;
-            if (!ReferenceEquals(s, null))
-                return _array.EqualTo(s.ToBytes());
+            if (!(s is null))
+                return _array?.EqualTo(s.ToBytes()) ?? false;
 
             return false;
         }
@@ -179,6 +173,7 @@ namespace Sweet.Actors
         {
             if (_array == null)
                 return Nil;
+
             if (_array.Length == 0)
                 return Empty;
 
@@ -220,14 +215,14 @@ namespace Sweet.Actors
 
         #region From RedisByteArray
 
-        public static implicit operator byte[] (ArraySlice value)  // implicit from RedisByteArray conversion operator
+        public static implicit operator byte[](ArraySlice value)  // implicit from RedisByteArray conversion operator
         {
-            return !ReferenceEquals(value, null) ? value.Array : null;
+            return value?.Array;
         }
 
         public static implicit operator string(ArraySlice value)  // implicit from RedisByteArray conversion operator
         {
-            return ReferenceEquals(value, null) ? null : value.Array.ToUTF8String();
+            return value?.Array?.ToUTF8String();
         }
 
         #endregion From RedisByteArray
@@ -238,10 +233,10 @@ namespace Sweet.Actors
 
         public static bool operator ==(ArraySlice a, ArraySlice b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return (b is null);
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
                 return false;
 
             if (ReferenceEquals(a, b))
@@ -257,10 +252,10 @@ namespace Sweet.Actors
 
         public static bool operator ==(byte[] a, ArraySlice b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return (b is null);
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
                 return false;
 
             return a.EqualTo(b._array);
@@ -273,10 +268,10 @@ namespace Sweet.Actors
 
         public static bool operator ==(ArraySlice a, byte[] b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return (b is null);
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
                 return false;
 
             return b.EqualTo(a._array);
@@ -289,10 +284,10 @@ namespace Sweet.Actors
 
         public static bool operator ==(string a, ArraySlice b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return (b is null);
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
                 return false;
 
             return b.Equals(a);
@@ -305,10 +300,10 @@ namespace Sweet.Actors
 
         public static bool operator ==(ArraySlice a, string b)
         {
-            if (ReferenceEquals(a, null))
-                return ReferenceEquals(b, null);
+            if (a is null)
+                return (b is null);
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
                 return false;
 
             return a.Equals(b);
