@@ -39,7 +39,6 @@ namespace Sweet.Actors
 
         private class AsyncReceiveBuffer : Disposable
         {
-            private int _count;
             private int _length;
             private byte[] _buffer;
             private int _synchronousCompletionCount;
@@ -52,7 +51,7 @@ namespace Sweet.Actors
 
             public byte[] Buffer => _buffer;
 
-            public int Count { get => _count; set => _count = value; }
+            public int Count { get; set; }
 
             public int Length => _length;
 
@@ -101,20 +100,20 @@ namespace Sweet.Actors
 
             public bool TryToComplete(out AsyncReceiveBuffer buffer)
             {
-                if (Interlocked.CompareExchange(ref _completed, 1L, 0L) != 0L)
+                buffer = null;
+                if (Interlocked.CompareExchange(ref _completed, 1L, 0L) == 0L)
                 {
-                    buffer = null;
-                    return false;
+                    buffer = _buffer;
+                    return true;
                 }
-
-                buffer = Interlocked.Exchange(ref _buffer, null);
-                return !(buffer is null);
+                return false;
             }
 
             public void Dispose()
             {
-                TryToComplete(out AsyncReceiveBuffer buffer);
+                Interlocked.Exchange(ref _completed, 1L);
 
+                Interlocked.Exchange(ref _buffer, null);
                 Interlocked.Exchange(ref _socket, null);
                 Interlocked.Exchange(ref _connection, null);
             }
@@ -305,8 +304,8 @@ namespace Sweet.Actors
             {
                 using (state)
                 {
-                    AsyncReceiveBuffer asyncReceiveBuffer = null;
-                    if ((state?.TryToComplete(out asyncReceiveBuffer) ?? false) && (asyncReceiveBuffer != null))
+                    if (state.TryToComplete(out AsyncReceiveBuffer asyncReceiveBuffer) &&
+                        (asyncReceiveBuffer != null))
                     {
                         var connection = state.Connection;
                         try
@@ -335,37 +334,37 @@ namespace Sweet.Actors
             }
         }
 
-        private static void DoReceived(RpcConnection connection, AsyncReceiveBuffer state, bool calledSynchronously = false)
+        private static void DoReceived(RpcConnection connection, AsyncReceiveBuffer asyncReceiveBuffer, bool calledSynchronously = false)
         {
-            if (state != null && !(connection?.Disposed ?? true))
+            if (!(connection?.Disposed ?? true))
             {
                 try
                 {
-                    var bytesReceived = state.Count;
+                    var bytesReceived = asyncReceiveBuffer.Count;
                     if (bytesReceived > 0)
                     {
-                        connection.ProcessReceived(state.Buffer, bytesReceived);
+                        connection.ProcessReceived(asyncReceiveBuffer.Buffer, bytesReceived);
                         if (connection.Disposed)
                             return;
 
                         if (calledSynchronously &&
-                            state.SynchronousCompletion() > SynchronousCompletionTreshold)
+                            asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
                         {
-                            state.ResetSynchronousCompletion();
+                            asyncReceiveBuffer.ResetSynchronousCompletion();
 
                             ThreadPool.QueueUserWorkItem((waitCallback) =>
                             {
                                 Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
-                                connection.BeginReceive(state);
+                                connection.BeginReceive(asyncReceiveBuffer);
                             });
                             return;
                         }
 
                         if (!calledSynchronously)
-                            state.ResetSynchronousCompletion();
+                            asyncReceiveBuffer.ResetSynchronousCompletion();
 
                         Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
-                        connection.BeginReceive(state);
+                        connection.BeginReceive(asyncReceiveBuffer);
 
                         return;
                     }
@@ -405,16 +404,17 @@ namespace Sweet.Actors
             }
         }
 
-        private bool RespondWithError(RemoteMessage remoteMsg, Exception e)
+        private bool RespondWithError(RemoteMessage remoteMessage, Exception e)
         {
             var handler = _responseHandler;
             if (handler != null)
             {
-                var message = remoteMsg.Message;
-                if ((message != null) && (message.MessageType == MessageType.FutureMessage))
+                var realMessage = remoteMessage.Message;
+                if ((realMessage != null) && (realMessage.MessageType == MessageType.FutureMessage))
                 {
-                    var response = message.ToWireMessage(remoteMsg.To, remoteMsg.MessageId, e);
+                    var response = realMessage.ToWireMessage(remoteMessage.To, remoteMessage.MessageId, e);
                     handler.Invoke(response, this);
+
                     return true;
                 }
             }

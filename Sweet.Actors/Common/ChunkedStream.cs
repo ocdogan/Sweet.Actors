@@ -98,7 +98,7 @@ namespace Sweet.Actors
 
             public long Position
             {
-                get { return !Closed  ? _position : 0L; }
+                get { return !Closed ? _position : 0L; }
                 set
                 {
                     if (!Closed)
@@ -452,7 +452,7 @@ namespace Sweet.Actors
                         {
                             if (chunkSize == -1)
                             {
-                                chunkSize = Math.Max(ByteArrayCache.Default.ArraySize, chunkLen);                               
+                                chunkSize = Math.Max(ByteArrayCache.Default.ArraySize, chunkLen);
                                 InitializeCache(chunkSize);
                             }
 
@@ -485,7 +485,7 @@ namespace Sweet.Actors
 
                 if (_ownsCache)
                 {
-                    using (var cache =_cache)
+                    using (var cache = _cache)
                         _cache = null;
                 }
             }
@@ -688,7 +688,7 @@ namespace Sweet.Actors
                 return _defaultReader.ReadAsync(buffer, offset, count, cancellationToken);
             return ReadCompleted;
         }
-       
+
         public override long Seek(long offset, SeekOrigin origin)
         {
             ThrowIfDisposed();
@@ -839,7 +839,7 @@ namespace Sweet.Actors
 
                 _position = 0L;
 
-                if (chunks != _chunks && 
+                if (chunks != _chunks &&
                     chunks != null && chunks.Count > 0)
                 {
                     if (_release)
@@ -904,51 +904,49 @@ namespace Sweet.Actors
             if (trimLength < 0)
                 trimLength = (int)_position;
 
-            if (trimLength > 0)
+            if (trimLength <= 0)
+                return;
+
+            if (trimLength >= _length + _origin)
             {
-                if (trimLength >= _length + _origin)
-                    ReleaseChunks(true);
-                else
+                ReleaseChunks(true);
+                return;
+            }
+
+            var initialLen = _length;
+            var initialOrigin = _origin;
+            try
+            {
+                var releaseCnt = (_origin + trimLength) / _chunkSize;
+
+                while ((releaseCnt-- > 0) && (_chunks.Count > 0))
                 {
-                    var initialLen = _length;
-                    var initialOrigin = _origin;
-                    try
-                    {
-                        var releaseCnt = (_origin + trimLength) / _chunkSize;
+                    var chunk = _chunks[0];
+                    _chunks.RemoveAt(0);
 
-                        while ((releaseCnt-- > 0) && (_chunks.Count > 0))
-                        {
-                            var chunk = _chunks[0];
-                            _chunks.RemoveAt(0);
-
-                            if (_release)
-                                _cache.Release(chunk);
-                        }
-
-                        _origin = trimLength % _chunkSize;
-
-                        _length = Math.Max(0, _length - trimLength);
-
-                        var position = Math.Max(0L, _position - trimLength);
-                        _position = position;
-
-                        ValidateIndexedChunk(GetChunkIndexOf(position));
-
-                        if (_origin > 0 && _length > 0 &&
-                            _chunks.Count == 1)
-                        {
-                            var chunk = _chunks[0];
-                            Buffer.BlockCopy(chunk, _origin, chunk, 0, (int)_length);
-
-                            _origin = 0;
-                        }
-                    }
-                    finally
-                    {
-                        OnOriginChanged(initialOrigin, _origin);
-                        OnLengthChanged(initialLen, _length);
-                    }
+                    if (_release)
+                        _cache.Release(chunk);
                 }
+
+                _origin = trimLength % _chunkSize;
+                _length = Math.Max(0L, _length - trimLength);
+                _position = Math.Max(0L, _position - trimLength);
+
+                ValidateIndexedChunk(GetChunkIndexOf(_position));
+
+                if (_origin > 0 && _length > 0 &&
+                    _chunks.Count == 1)
+                {
+                    var chunk = _chunks[0];
+                    Buffer.BlockCopy(chunk, _origin, chunk, 0, (int)_length);
+
+                    _origin = 0;
+                }
+            }
+            finally
+            {
+                OnOriginChanged(initialOrigin, _origin);
+                OnLengthChanged(initialLen, _length);
             }
         }
     }

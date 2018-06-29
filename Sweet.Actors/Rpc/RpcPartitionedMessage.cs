@@ -55,8 +55,5 @@ namespace Sweet.Actors
         public RpcPartitionedHeader Header { get; } = new RpcPartitionedHeader();
 
         public IList<RpcPartitionedFrame> Frames { get; } = new List<RpcPartitionedFrame>();
-
-        public RpcPartitionedMessage()
-        { }
     }
 }
