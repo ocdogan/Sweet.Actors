@@ -46,7 +46,7 @@ namespace Sweet.Actors
             new ByteArrayCache(10, -1, RpcConstants.FrameDataSize);
 
         private static readonly ByteArrayCache HeaderCache = 
-            new ByteArrayCache(1, -1, Math.Max(RpcConstants.HeaderSize, RpcConstants.FrameHeaderSize));
+            new ByteArrayCache(5, -1, Math.Max(RpcConstants.HeaderSize, RpcConstants.FrameHeaderSize));
 
         private static string _serializerKey;
         private static IWireSerializer _serializer;

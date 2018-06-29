@@ -809,21 +809,17 @@ namespace Sweet.Actors
 
         protected void ReleaseChunks(bool reinit)
         {
-            var chunks = _chunks;
+            var chunks = Interlocked.Exchange(ref _chunks, (reinit && !_isClosed) ? new List<byte[]>() : null);
 
             var initialLen = _length;
             var initialOrigin = _origin;
             try
             {
-                _chunks = reinit ? ((chunks.Count > 1) ? new List<byte[]>() : chunks) : null;
-
                 _origin = 0;
                 _length = 0L;
-
                 _position = 0L;
 
-                if (chunks != _chunks &&
-                    chunks != null && chunks.Count > 0)
+                if ((chunks?.Count ?? 0) > 0)
                 {
                     if (_release)
                         _cache.Release(chunks);
@@ -832,8 +828,11 @@ namespace Sweet.Actors
             }
             finally
             {
-                OnOriginChanged(initialOrigin, _origin);
-                OnLengthChanged(initialLen, _length);
+                if (!_isClosed)
+                {
+                    OnOriginChanged(initialOrigin, _origin);
+                    OnLengthChanged(initialLen, _length);
+                }
             }
         }
 
