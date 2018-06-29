@@ -344,10 +344,7 @@ namespace Sweet.Actors
                 if (disposing)
                 {
                     _stream = null;
-                    using (var writer = _writer)
-                    {
-                        _writer = null;
-                    }
+                    using (Interlocked.Exchange(ref _writer, null)) { }
                 }
                 base.Dispose(disposing);
             }
@@ -396,6 +393,9 @@ namespace Sweet.Actors
         protected long _length;
 
         protected long _position;
+
+        protected int _readTimeout = Timeout.Infinite;
+        protected int _writeTimeout = Timeout.Infinite;
 
         private bool _release = true;
         private List<byte[]> _chunks = new List<byte[]>();
@@ -480,45 +480,24 @@ namespace Sweet.Actors
             {
                 ReleaseChunks(false);
 
-                using (var reader = _defaultReader)
-                    _defaultReader = null;
+                using (Interlocked.Exchange(ref _defaultReader, null)) { }
 
                 if (_ownsCache)
-                {
-                    using (var cache = _cache)
-                        _cache = null;
-                }
+                    using (Interlocked.Exchange(ref _cache, null)) { }
             }
             base.Dispose(disposing);
         }
 
-        public long Capacity
-        {
-            get
-            {
-                return _isClosed ? 0L : Math.Max(0L, (_chunkSize * (_chunks?.Count ?? 0)) - _origin);
-            }
-        }
+        public long Capacity => _isClosed ? 0L : 
+                    Math.Max(0L, (_chunkSize * (_chunks?.Count ?? 0)) - _origin);
 
-        public override bool CanRead
-        {
-            get { return !_isClosed; }
-        }
+        public override bool CanRead => !_isClosed;
 
-        public override bool CanSeek
-        {
-            get { return !_isClosed; }
-        }
+        public override bool CanSeek => !_isClosed;
 
-        public override bool CanWrite
-        {
-            get { return !_isClosed; }
-        }
+        public override bool CanWrite => !_isClosed;
 
-        public override long Length
-        {
-            get { return !_isClosed ? _length : 0L; }
-        }
+        public override long Length => !_isClosed ? _length : 0L;
 
         public override long Position
         {
@@ -549,6 +528,10 @@ namespace Sweet.Actors
         protected ByteArrayCache Cache => _cache;
 
         protected int Origin => _origin;
+
+        public override int ReadTimeout { get => _readTimeout; set => _readTimeout = value; }
+
+        public override int WriteTimeout { get => _writeTimeout; set => _writeTimeout = value; }
 
         protected void InitializeCache(int chunkSize)
         {

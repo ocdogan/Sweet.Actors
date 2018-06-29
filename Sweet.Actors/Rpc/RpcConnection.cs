@@ -179,8 +179,7 @@ namespace Sweet.Actors
         {
             try
             {
-                using (var state = Interlocked.Exchange(ref _asyncReceiveBuffer, null))
-                { }
+                using (Interlocked.Exchange(ref _asyncReceiveBuffer, null)) { }
 
                 using (var stream = Interlocked.Exchange(ref _outStream, null))
                     stream?.Close();
@@ -384,15 +383,15 @@ namespace Sweet.Actors
             {
                 if (_rpcReceiveBuffer.OnReceiveData(buffer, 0, bytesReceived))
                 {
-                    while (_rpcReceiveBuffer.TryGetMessage(out RemoteMessage remoteMsg))
+                    while (_rpcReceiveBuffer.TryGetMessage(out RemoteMessage message))
                     {
                         try
                         {
-                            _messageHandler?.Invoke(remoteMsg, this);
+                            _messageHandler?.Invoke(message, this);
                         }
                         catch (Exception e)
                         {
-                            RespondWithError(remoteMsg, e);
+                            RespondWithError(message, e);
                         }
                     }
                 }
@@ -404,15 +403,15 @@ namespace Sweet.Actors
             }
         }
 
-        private bool RespondWithError(RemoteMessage remoteMessage, Exception e)
+        private bool RespondWithError(RemoteMessage message, Exception e)
         {
             var handler = _responseHandler;
             if (handler != null)
             {
-                var realMessage = remoteMessage.Message;
+                var realMessage = message.Message;
                 if ((realMessage != null) && (realMessage.MessageType == MessageType.FutureMessage))
                 {
-                    var response = realMessage.ToWireMessage(remoteMessage.To, remoteMessage.MessageId, e);
+                    var response = realMessage.ToWireMessage(message.To, message.MessageId, e);
                     handler.Invoke(response, this);
 
                     return true;

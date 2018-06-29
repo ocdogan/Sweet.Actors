@@ -48,7 +48,7 @@ namespace Sweet.Actors
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _input, null);
-            using (var reader = Interlocked.Exchange(ref _reader, null))
+            using (Interlocked.Exchange(ref _reader, null))
             { }
 
             base.OnDispose(disposing);

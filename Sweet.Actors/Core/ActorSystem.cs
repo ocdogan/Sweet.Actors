@@ -46,8 +46,7 @@ namespace Sweet.Actors
 
             public void Dispose()
             {
-                using (var process = Process)
-                    Process = null;
+                using (Interlocked.Exchange(ref Process, null)) { }
             }
         }
 
@@ -112,7 +111,6 @@ namespace Sweet.Actors
 
         public static bool TryGet(string actorSystemName, out ActorSystem actorSystem)
         {
-            actorSystem = null;
             return _systemRegistery.TryGetValue(actorSystemName?.Trim(), out actorSystem);
         }
 

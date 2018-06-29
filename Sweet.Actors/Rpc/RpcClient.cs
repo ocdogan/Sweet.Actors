@@ -113,11 +113,8 @@ namespace Sweet.Actors
             Interlocked.Exchange(ref _inProcess, Constants.False);
             if (disposing)
             {
-                using (var writer = Interlocked.Exchange(ref _writer, null))
-                { }
-
-                using (var ctx = Interlocked.Exchange(ref _connection, null))
-                { }
+                using (Interlocked.Exchange(ref _writer, null)) { }
+                using (Interlocked.Exchange(ref _connection, null)) { }
 
                 Close();
                 return;
@@ -144,11 +141,9 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    using (var ctx = Interlocked.Exchange(ref _connection, null))
-                    { }
+                    using (Interlocked.Exchange(ref _connection, null)) { }
 
-                    var socket = Interlocked.Exchange(ref _socket, null);
-                    Close(socket);
+                    Close(Interlocked.Exchange(ref _socket, null));
 
                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
                 }
@@ -191,9 +186,7 @@ namespace Sweet.Actors
                         result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
                         Configure(result);
 
-                        var connection = new RpcConnection(this, result, HandleResponse, null);
-                        using (var conn = Interlocked.Exchange(ref _connection, connection))
-                        { }
+                        using (Interlocked.Exchange(ref _connection, new RpcConnection(this, result, HandleResponse, null))) { }
 
                         var prevSocket = Interlocked.Exchange(ref _socket, result);
                         Close(prevSocket);

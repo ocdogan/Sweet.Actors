@@ -23,12 +23,14 @@
 #endregion License
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace Sweet.Actors
 {
-    internal class RpcMessageParser
+    internal static class RpcMessageParser
     {
         private class ParserContext
         {
@@ -46,7 +48,99 @@ namespace Sweet.Actors
         private static readonly ByteArrayCache HeaderCache = 
             new ByteArrayCache(1, -1, Math.Max(RpcConstants.HeaderSize, RpcConstants.FrameHeaderSize));
 
-        public bool TryParse(Stream input, out RpcPartitionedMessage message)
+        private static string _serializerKey;
+        private static IWireSerializer _serializer;
+        private static readonly ReaderWriterLockSlim _serializerLock = new ReaderWriterLockSlim();
+
+        public static bool TryParse(Stream input, out RemoteMessage message)
+        {
+            message = null;
+            if (!TryParsePartitioned(input, out RpcPartitionedMessage partitionedMsg))
+                return false;
+
+            try
+            {
+                var frames = partitionedMsg.Frames;
+                if (frames != null)
+                {
+                    var frameCount = frames.Count;
+                    if (frameCount > 0)
+                    {
+                        var serializer = GetSerializer(partitionedMsg);
+                        if (serializer == null)
+                            throw new Exception(RpcErrors.InvalidSerializerKey);
+
+                        var frameDataList = new List<ArraySegment<byte>>(frameCount);
+                        foreach (var frame in frames)
+                        {
+                            if (frame?.Data is byte[] data)
+                            {
+                                var dataLen = data.Length;
+                                if (dataLen > 0)
+                                {
+                                    var frameDataLen = frame.DataLength;
+
+                                    frameDataList.Add((frameDataLen == dataLen) ?
+                                        new ArraySegment<byte>(data) :
+                                        new ArraySegment<byte>(data, 0, frameDataLen));
+                                }
+                            }
+                        }
+
+                        using (var stream = new ChunkedStream(frameDataList, false))
+                        {
+                            message = serializer.Deserialize(stream);
+
+                            if (message.Message != null && 
+                                message.Message != Message.Empty &&
+                                message.To != Aid.Unknown)
+                                return true;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                ReleaseFrames(partitionedMsg);
+            }
+            return false;
+        }
+
+        private static IWireSerializer GetSerializer(RpcPartitionedMessage message)
+        {
+            IWireSerializer result = null;
+
+            var serializerKey = message.Header.SerializerKey;
+            if (String.IsNullOrEmpty(serializerKey))
+                serializerKey = Constants.DefaultSerializerKey;
+
+            _serializerLock.EnterUpgradeableReadLock();
+            try
+            {
+                if (serializerKey == _serializerKey)
+                    result = _serializer;
+                else
+                {
+                    _serializerLock.EnterWriteLock();
+                    try
+                    {
+                        _serializer = (result = RpcSerializerRegistry.Get(serializerKey));
+                        _serializerKey = serializerKey;
+                    }
+                    finally
+                    {
+                        _serializerLock.ExitWriteLock();
+                    }
+                }
+            }
+            finally
+            {
+                _serializerLock.ExitUpgradeableReadLock();
+            }
+            return result;
+        }
+
+        private static bool TryParsePartitioned(Stream input, out RpcPartitionedMessage message)
         {
             message = null;
 
@@ -232,9 +326,9 @@ namespace Sweet.Actors
                 Constants.DefaultSerializerKey;
         }
 
-        private static void ReleaseFrames(RpcPartitionedMessage partedMessage)
+        private static void ReleaseFrames(RpcPartitionedMessage message)
         {
-            var frames = partedMessage?.Frames;
+            var frames = message?.Frames;
             if (frames != null)
             {
                 var frameCount = frames.Count;
