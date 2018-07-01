@@ -86,11 +86,11 @@ namespace Sweet.Actors
 
         #region Socket
 
-        public static Task ConnectAsync(this Socket socket, IPEndPoint endPoint)
+        public static Task ConnectAsync(this Socket socket, IPEndPoint endPoint, int timeoutMSec = -1)
         {
             var tcs = new TaskCompletionSource<object>(socket);
 
-            socket.BeginConnect(endPoint, ar =>
+            var asyncResult = socket.BeginConnect(endPoint, ar =>
             {
                 var innerTcs = ar.AsyncState as TaskCompletionSource<object>;
                 try
@@ -107,13 +107,33 @@ namespace Sweet.Actors
                     innerTcs.TrySetException(e);
                 }
             }, tcs);
+
+            if (timeoutMSec > 0 && asyncResult != null)
+            {
+                TimeoutHandler.TryRegister(asyncResult.AsyncWaitHandle, timeoutMSec, 
+                    () => {
+                        try
+                        {
+                            if (socket.IsConnected() &&
+                                !asyncResult.IsCompleted)
+                                socket.EndConnect(asyncResult);
+                            else 
+                                socket.Close();
+                        }
+                        finally
+                        {
+                            tcs.TrySetCanceled();
+                        }
+                    });
+            }
             return tcs.Task;
         }
 
-        public static Task ConnectAsync(this Socket socket, EndPoint remoteEP)
+        public static Task ConnectAsync(this Socket socket, EndPoint remoteEP, int timeoutMSec = -1)
         {
             var tcs = new TaskCompletionSource<bool>(socket);
-            socket.BeginConnect(remoteEP, ar =>
+            
+            var asyncResult = socket.BeginConnect(remoteEP, ar =>
             {
                 var innerTcs = ar.AsyncState as TaskCompletionSource<bool>;
                 try
@@ -130,13 +150,38 @@ namespace Sweet.Actors
                     innerTcs.TrySetException(e);
                 }
             }, tcs);
+
+            if (timeoutMSec > 0 && asyncResult != null)
+            {
+                TimeoutHandler.TryRegister(asyncResult.AsyncWaitHandle, timeoutMSec, 
+                    () => {
+                        try
+                        {
+                            if (socket.IsConnected() &&
+                                !asyncResult.IsCompleted)
+                                socket.EndConnect(asyncResult);
+                            else 
+                                socket.Close();
+                        }
+                        finally
+                        {
+                            tcs.TrySetCanceled();
+                        }
+                    });
+            }
             return tcs.Task;
         }
 
-        public static Task ConnectAsync(this Socket socket, IPAddress address, int port)
+        public static Task ConnectAsync(this Socket socket, IPAddress address, int port, int timeoutMSec = -1)
+        {
+            return ConnectAsync(socket, new IPEndPoint(address, port), timeoutMSec);
+        }
+
+        public static Task ConnectAsync(this Socket socket, IPAddress[] addresses, int port, int timeoutMSec = -1)
         {
             var tcs = new TaskCompletionSource<bool>(socket);
-            socket.BeginConnect(address, port, ar =>
+
+            var asyncResult = socket.BeginConnect(addresses, port, ar =>
             {
                 var innerTcs = ar.AsyncState as TaskCompletionSource<bool>;
                 try
@@ -153,13 +198,33 @@ namespace Sweet.Actors
                     innerTcs.TrySetException(e);
                 }
             }, tcs);
+
+            if (timeoutMSec > 0 && asyncResult != null)
+            {
+                TimeoutHandler.TryRegister(asyncResult.AsyncWaitHandle, timeoutMSec, 
+                    () => {
+                        try
+                        {
+                            if (socket.IsConnected() &&
+                                !asyncResult.IsCompleted)
+                                socket.EndConnect(asyncResult);
+                            else 
+                                socket.Close();
+                        }
+                        finally
+                        {
+                            tcs.TrySetCanceled();
+                        }
+                    });
+            }
             return tcs.Task;
         }
 
-        public static Task ConnectAsync(this Socket socket, IPAddress[] addresses, int port)
+        public static Task ConnectAsync(this Socket socket, string host, int port, int timeoutMSec = -1)
         {
             var tcs = new TaskCompletionSource<bool>(socket);
-            socket.BeginConnect(addresses, port, ar =>
+
+            var asyncResult = socket.BeginConnect(host, port, ar =>
             {
                 var innerTcs = ar.AsyncState as TaskCompletionSource<bool>;
                 try
@@ -176,29 +241,25 @@ namespace Sweet.Actors
                     innerTcs.TrySetException(e);
                 }
             }, tcs);
-            return tcs.Task;
-        }
 
-        public static Task ConnectAsync(this Socket socket, string host, int port)
-        {
-            var tcs = new TaskCompletionSource<bool>(socket);
-            socket.BeginConnect(host, port, ar =>
+            if (timeoutMSec > 0 && asyncResult != null)
             {
-                var innerTcs = ar.AsyncState as TaskCompletionSource<bool>;
-                try
-                {
-                    ((Socket)innerTcs.Task.AsyncState).EndConnect(ar);
-                    innerTcs.TrySetResult(true);
-                }
-                catch (OperationCanceledException)
-                {
-                    innerTcs.TrySetCanceled();
-                }
-                catch (Exception e)
-                {
-                    innerTcs.TrySetException(e);
-                }
-            }, tcs);
+                TimeoutHandler.TryRegister(asyncResult.AsyncWaitHandle, timeoutMSec, 
+                    () => {
+                        try
+                        {
+                            if (socket.IsConnected() &&
+                                !asyncResult.IsCompleted)
+                                socket.EndConnect(asyncResult);
+                            else 
+                                socket.Close();
+                        }
+                        finally
+                        {
+                            tcs.TrySetCanceled();
+                        }
+                    });
+            }
             return tcs.Task;
         }
 

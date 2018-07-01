@@ -114,7 +114,9 @@ namespace Sweet.Actors
 
         public T UsingReceiveTimeoutMSec(int receiveTimeoutMSec)
         {
-            if (receiveTimeoutMSec < 1)
+            if (receiveTimeoutMSec < 0)
+                _receiveTimeoutMSec = -1;
+            else if (receiveTimeoutMSec == 0)
                 _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
             else _receiveTimeoutMSec = Math.Min(RpcConstants.MaxReceiveTimeout, Math.Max(RpcConstants.MinReceiveTimeout, receiveTimeoutMSec));
 
@@ -123,7 +125,9 @@ namespace Sweet.Actors
 
         public T UsingSendTimeoutMSec(int sendTimeoutMSec)
         {
-            if (sendTimeoutMSec < 1)
+            if (sendTimeoutMSec < 0)
+                _sendTimeoutMSec = -1;
+            else if (sendTimeoutMSec == 0)
                 _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
             else _sendTimeoutMSec = Math.Min(RpcConstants.MaxSendTimeout, Math.Max(RpcConstants.MinSendTimeout, sendTimeoutMSec));
 

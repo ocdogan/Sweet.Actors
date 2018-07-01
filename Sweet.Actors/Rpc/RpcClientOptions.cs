@@ -22,6 +22,8 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+
 namespace Sweet.Actors
 {
     public class RpcClientOptions : RpcOptions<RpcClientOptions>
@@ -29,6 +31,7 @@ namespace Sweet.Actors
         public static readonly RpcClientOptions Default = new RpcClientOptions();
 
         private int _readBufferSize;
+        private int _connectionTimeoutMSec = -1;
 
         public RpcClientOptions()
             : base()
@@ -44,6 +47,19 @@ namespace Sweet.Actors
             _readBufferSize = size;
             return this;
         }
+
+        public RpcClientOptions UsingConnectionTimeoutMSec(int connectionTimeoutMSec)
+        {
+            if (connectionTimeoutMSec < 0)
+                _connectionTimeoutMSec = -1;
+            else if (connectionTimeoutMSec == 0)
+                _connectionTimeoutMSec = RpcConstants.DefaultConnectionTimeout;
+            else _connectionTimeoutMSec = Math.Min(RpcConstants.MaxConnectionTimeout, Math.Max(RpcConstants.MinConnectionTimeout, connectionTimeoutMSec));
+
+            return this;
+        }
+
+        public int ConnectionTimeoutMSec => _connectionTimeoutMSec;
 
         public int ReadBufferSize => _readBufferSize;
     }

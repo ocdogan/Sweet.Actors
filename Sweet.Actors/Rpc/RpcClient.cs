@@ -62,7 +62,6 @@ namespace Sweet.Actors
         private RpcMessageWriter _writer;
         private RpcConnection _connection;
 
-        private TaskCompletionSource<int> _connectionTcs;
         private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
 
         static RpcClient()
@@ -202,55 +201,41 @@ namespace Sweet.Actors
                 Common.CompareAndSet(ref _status, RpcClientStatus.Closed, RpcClientStatus.Connecting))
             {
                 Socket socket = null;
-                TaskCompletionSource<int> tcs = null;
                 try
                 {
                     socket = GetClientSocket();
                     if (!socket.IsConnected())
                     {
-                        tcs = new TaskCompletionSource<int>();
-
-                        var prevTcs = Interlocked.Exchange(ref _connectionTcs, tcs);
-                        if (prevTcs != null)
-                            prevTcs.TrySetCanceled();
-
                         var remoteEP = _options.EndPoint;
 
-                        socket.ConnectAsync(remoteEP)
+                        var connectionTimeoutMSec = _options.ConnectionTimeoutMSec;
+                        if (connectionTimeoutMSec < 0)
+                            connectionTimeoutMSec = RpcConstants.MaxConnectionTimeout;
+
+                        return socket.ConnectAsync(remoteEP, connectionTimeoutMSec)
                             .ContinueWith((previousTask) =>
                             {
-                                try
+                                if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
                                 {
-                                    if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
-                                    {
-                                        Close(socket);
-                                        Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
-
-                                        return;
-                                    }
-
-                                    Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
-
-                                    _connection?.OnConnect();
-
-                                    tcs.TrySetResult(0);
+                                    Close(socket);
+                                    Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
+                                    return;
                                 }
-                                catch (Exception e)
-                                {
-                                    tcs.TrySetException(e);
-                                }
+
+                                Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
+                                _connection?.OnConnect();
                             });
                     }
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
 
                     Close(socket);
-                    throw;
+                    return Task.FromException(e);
                 }
             }
-            return _connectionTcs?.Task ?? Completed;
+            return Completed;
         }
 
         private void Configure(Socket socket)
@@ -304,6 +289,10 @@ namespace Sweet.Actors
             {
                 Connect().Wait();
 
+                var socket = GetClientSocket();
+                if (!socket.IsConnected())
+                    return Task.FromException(new Exception(RpcErrors.CannotConnectToRemoteEndPoint));
+
                 var seqProcessCount = 0;
                 for (var i = 0; i < SequentialSendLimit; i++)
                 {
@@ -318,7 +307,7 @@ namespace Sweet.Actors
                         seqProcessCount = 0;
 
                     var task = ProcessRequest(request, flush);
-                    if (task.IsFaulted)
+                    if (task.IsFaulted || task.IsCanceled)
                         continue;
 
                     if (!task.IsCompleted)
@@ -327,6 +316,11 @@ namespace Sweet.Actors
                                 Schedule();
                         });
                 }
+            }
+            catch (Exception e)
+            {
+                HandleError(null, e);
+                return Task.FromException(e);
             }
             finally
             {
@@ -407,7 +401,7 @@ namespace Sweet.Actors
         {
             try
             {
-                request.TaskCompletor.TrySetException(e);
+                request?.TaskCompletor.TrySetException(e);
             }
             catch (Exception)
             { }

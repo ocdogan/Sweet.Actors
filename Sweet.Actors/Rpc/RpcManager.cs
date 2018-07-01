@@ -188,7 +188,8 @@ namespace Sweet.Actors
                 request = new RemoteRequest(message, to.Actor, timeoutMSec);
                 request.OnTimeout += RequestTimedOut;
 
-                _responseList[request.MessageId] = request;
+                if (message is IFutureMessage)
+                    _responseList[request.MessageId] = request;
 
                 client.Send(request);
 

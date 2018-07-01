@@ -34,6 +34,10 @@ namespace Sweet.Actors
         public const int MinReceiveTimeout = 100;
         public const int MaxReceiveTimeout = 60000;
 
+        public const int DefaultConnectionTimeout = 15000;
+        public const int MinConnectionTimeout = 100;
+        public const int MaxConnectionTimeout = 30000;
+
         public const int WriteBufferSize = 64 * Constants.KB;
 
         public const byte FrameSign = (byte)'~';

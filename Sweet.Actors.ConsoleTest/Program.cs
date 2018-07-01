@@ -44,7 +44,7 @@ namespace Sweet.Actors.ConsoleTest
 
         static void Main(string[] args)
         {
-            RunRemoteSystem();
+            // RunRemoteSystem();
             InitLocalSystem();
 
             Console.WriteLine("Press ESC to exit, any key to continue ...");
