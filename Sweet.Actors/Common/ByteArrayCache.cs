@@ -31,7 +31,7 @@ namespace Sweet.Actors
         public static readonly ByteArrayCache Default = new ByteArrayCache(10);
 
         public const int MinArraySize = 512;
-        public const int MaxArraySize = 4 * Constants.MB;
+        public const int MaxArraySize = 64 * Constants.KB;
         public const int DefaultArraySize = 8 * Constants.KB;
 
         private int _arraySize;

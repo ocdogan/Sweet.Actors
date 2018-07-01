@@ -141,7 +141,7 @@ namespace Sweet.Actors.RpcTestServer1
 
         private static ConsoleKey ReadKey()
         {
-            if (IsWinPlatform)
+            if (IsWinPlatform || !Console.IsInputRedirected)
                 return Console.ReadKey(true).Key;
 
             var prevKey = -1;

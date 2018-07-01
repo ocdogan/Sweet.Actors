@@ -87,7 +87,7 @@ namespace Sweet.Actors
                             }
                         }
 
-                        using (var stream = new ChunkedStream(frameDataList, false))
+                        using (var stream = new ChunkedStream(frameDataList))
                         {
                             message = serializer.Deserialize(stream);
 
@@ -269,7 +269,8 @@ namespace Sweet.Actors
                 context.StreamOffset += frameDataLen;
             }
 
-            context.Message.Frames.Add(frame);
+            if (frame != null)
+                context.Message.Frames.Add(frame);
 
             return true;
         }

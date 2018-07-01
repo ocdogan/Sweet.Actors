@@ -337,40 +337,33 @@ namespace Sweet.Actors
         {
             if (!(connection?.Disposed ?? true))
             {
-                try
+                var bytesReceived = asyncReceiveBuffer.Count;
+                if (bytesReceived > 0)
                 {
-                    var bytesReceived = asyncReceiveBuffer.Count;
-                    if (bytesReceived > 0)
+                    connection.ProcessReceived(asyncReceiveBuffer.Buffer, bytesReceived);
+                    if (connection.Disposed)
+                        return;
+
+                    if (calledSynchronously &&
+                        asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
                     {
-                        connection.ProcessReceived(asyncReceiveBuffer.Buffer, bytesReceived);
-                        if (connection.Disposed)
-                            return;
+                        asyncReceiveBuffer.ResetSynchronousCompletion();
 
-                        if (calledSynchronously &&
-                            asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
+                        ThreadPool.QueueUserWorkItem((waitCallback) =>
                         {
-                            asyncReceiveBuffer.ResetSynchronousCompletion();
-
-                            ThreadPool.QueueUserWorkItem((waitCallback) =>
-                            {
-                                Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
-                                connection.BeginReceive(asyncReceiveBuffer);
-                            });
-                            return;
-                        }
-
-                        if (!calledSynchronously)
-                            asyncReceiveBuffer.ResetSynchronousCompletion();
-
-                        Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
-                        connection.BeginReceive(asyncReceiveBuffer);
-
+                            Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+                            connection.BeginReceive(asyncReceiveBuffer);
+                        });
                         return;
                     }
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
+
+                    if (!calledSynchronously)
+                        asyncReceiveBuffer.ResetSynchronousCompletion();
+
+                    Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
+                    connection.BeginReceive(asyncReceiveBuffer);
+
+                    return;
                 }
 
                 connection.Close();

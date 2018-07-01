@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -35,6 +36,11 @@ namespace Sweet.Actors
     {
         private static readonly byte[] EmptyChunk = new byte[0];
         private static readonly Task<int> ReadCompleted = Task.FromResult(0);
+
+        private static readonly int DefaultCacheSize = ByteArrayCache.Default.ArraySize;
+
+        private static readonly ConcurrentDictionary<int, ByteArrayCache> GlobalByteArrayCache =
+            new ConcurrentDictionary<int, ByteArrayCache>();
 
         private class ChunkedStreamReader : Disposable, IChunkedStreamReader
         {
@@ -78,13 +84,13 @@ namespace Sweet.Actors
 
             private void StreamChanged(object sender, ValueChangedEventArgs<long> eventArgs)
             {
-                switch (eventArgs.Name)
+                switch (eventArgs.Kind)
                 {
-                    case ValueName.Length:
+                    case ValueKind.Length:
                         if (eventArgs.NewValue < _position)
                             _position = Math.Max(0, eventArgs.NewValue);
                         break;
-                    case ValueName.Origin:
+                    case ValueKind.Origin:
                         _position -= Math.Max(0, _position - (eventArgs.NewValue - eventArgs.OldValue));
                         break;
                 }
@@ -365,7 +371,7 @@ namespace Sweet.Actors
 
         }
 
-        internal enum ValueName
+        internal enum ValueKind
         {
             Length,
             Origin
@@ -373,14 +379,14 @@ namespace Sweet.Actors
 
         internal class ValueChangedEventArgs<T> : EventArgs
         {
-            public ValueChangedEventArgs(ValueName name, (T oldValue, T newValue) values)
+            public ValueChangedEventArgs(ValueKind kind, T oldValue, T newValue)
             {
-                Name = name;
-                OldValue = values.oldValue;
-                NewValue = values.newValue;
+                Kind = kind;
+                OldValue = oldValue;
+                NewValue = newValue;
             }
 
-            public ValueName Name { get; }
+            public ValueKind Kind { get; }
 
             public T OldValue { get; }
 
@@ -397,7 +403,6 @@ namespace Sweet.Actors
         protected int _readTimeout = Timeout.Infinite;
         protected int _writeTimeout = Timeout.Infinite;
 
-        private bool _release = true;
         private List<byte[]> _chunks = new List<byte[]>();
 
         private int _chunkSize = ByteArrayCache.Default.ArraySize;
@@ -433,31 +438,27 @@ namespace Sweet.Actors
             }
         }
 
-        public ChunkedStream(IList<ArraySegment<byte>> source, bool release)
+        public ChunkedStream(IList<ArraySegment<byte>> source)
         {
-            _release = release;
             _defaultReader = new ChunkedStreamReader(this, _chunks);
 
-            if (source != null)
+            var sourceCount = source?.Count ?? 0;
+            if (sourceCount > 0)
             {
-                var cnt = source.Count;
-                if (cnt > 0)
+                var chunkSize = -1;
+
+                foreach (var segment in source)
                 {
-                    var chunkSize = -1;
-
-                    foreach (var segment in source)
+                    var chunkLen = segment.Count;
+                    if (chunkLen > 0)
                     {
-                        var chunkLen = segment.Count;
-                        if (chunkLen > 0)
+                        if (chunkSize == -1)
                         {
-                            if (chunkSize == -1)
-                            {
-                                chunkSize = Math.Max(ByteArrayCache.Default.ArraySize, chunkLen);
-                                InitializeCache(chunkSize);
-                            }
-
-                            Write(segment.Array, 0, chunkLen);
+                            chunkSize = chunkLen;
+                            InitializeCache(chunkSize);
                         }
+
+                        Write(segment.Array, 0, chunkLen);
                     }
                 }
             }
@@ -537,12 +538,16 @@ namespace Sweet.Actors
         {
             if (chunkSize > 0)
             {
-                chunkSize = Math.Min(ByteArrayCache.MaxArraySize,
-                    Math.Max(ByteArrayCache.MinArraySize, chunkSize));
+                var chunkStep = 4 * Constants.KB;
+                if (chunkSize % chunkStep > 0)
+                    chunkSize += chunkStep - chunkSize;
 
-                if (chunkSize > ByteArrayCache.DefaultArraySize)
+                chunkSize = Math.Min(ByteArrayCache.MaxArraySize, Math.Max(DefaultCacheSize, chunkSize));
+
+                if (chunkSize != DefaultCacheSize)
                 {
-                    _cache = new ByteArrayCache(10, -1, chunkSize);
+                    _cache = 
+                        GlobalByteArrayCache.GetOrAdd(chunkSize, (size) => new ByteArrayCache(10, -1, size));
 
                     _ownsCache = true;
                     _chunkSize = _cache.ArraySize;
@@ -629,8 +634,7 @@ namespace Sweet.Actors
                                 var chunk = _chunks[index];
 
                                 _chunks.RemoveAt(index);
-                                if (_release)
-                                    _cache.Release(chunk);
+                                _cache.Release(chunk);
                             }
                         }
                     }
@@ -645,13 +649,13 @@ namespace Sweet.Actors
         private void OnLengthChanged(long oldValue, long newValue)
         {
             if (oldValue != newValue)
-                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Length, (oldValue, newValue)));
+                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueKind.Length, oldValue, newValue));
         }
 
         private void OnOriginChanged(long oldValue, long newValue)
         {
             if (oldValue != newValue)
-                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueName.Origin, (oldValue, newValue)));
+                Changed?.Invoke(this, new ValueChangedEventArgs<long>(ValueKind.Origin, oldValue, newValue));
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -821,8 +825,7 @@ namespace Sweet.Actors
 
                 if ((chunks?.Count ?? 0) > 0)
                 {
-                    if (_release)
-                        _cache.Release(chunks);
+                    _cache.Release(chunks);
                     chunks.Clear();
                 }
             }
@@ -883,52 +886,50 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
 
+            if (_chunks == null)
+                return;
+
             if (trimLength < 0)
                 trimLength = (int)_position;
 
             if (trimLength <= 0)
                 return;
 
-            if (trimLength >= _length + _origin)
+            var newOrigin = _origin + trimLength;
+            var chunksCount = _chunks.Count;
+
+            var releaseCnt = Math.Min(chunksCount, (int)(newOrigin  / _chunkSize));
+            if (releaseCnt > 0 && releaseCnt >= chunksCount)
             {
                 ReleaseChunks(true);
                 return;
             }
 
-            var initialLen = _length;
-            var initialOrigin = _origin;
+            var previousLen = _length;
+            var previousOrigin = _origin;
             try
             {
-                var releaseCnt = (_origin + trimLength) / _chunkSize;
-
-                while ((releaseCnt-- > 0) && (_chunks.Count > 0))
+                while ((releaseCnt-- > 0) && (chunksCount > 0))
                 {
                     var chunk = _chunks[0];
                     _chunks.RemoveAt(0);
 
-                    if (_release)
-                        _cache.Release(chunk);
+                    chunksCount--;                    
+                    newOrigin -= _chunkSize;
+
+                    _cache.Release(chunk);
                 }
 
-                _origin = trimLength % _chunkSize;
+                _origin = newOrigin;
                 _length = Math.Max(0L, _length - trimLength);
                 _position = Math.Max(0L, _position - trimLength);
 
                 ValidateIndexedChunk(GetChunkIndexOf(_position));
-
-                if (_origin > 0 && _length > 0 &&
-                    _chunks.Count == 1)
-                {
-                    var chunk = _chunks[0];
-                    Buffer.BlockCopy(chunk, _origin, chunk, 0, (int)_length);
-
-                    _origin = 0;
-                }
             }
             finally
             {
-                OnOriginChanged(initialOrigin, _origin);
-                OnLengthChanged(initialLen, _length);
+                OnOriginChanged(previousOrigin, _origin);
+                OnLengthChanged(previousLen, _length);
             }
         }
     }

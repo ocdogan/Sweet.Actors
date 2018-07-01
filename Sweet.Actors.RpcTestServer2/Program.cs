@@ -65,7 +65,7 @@ namespace Sweet.Actors.RpcTestServer2
             sw.Restart();
 
             for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("0000"));
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
 
             sw.Stop();
             Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
@@ -115,7 +115,7 @@ namespace Sweet.Actors.RpcTestServer2
 
         private static ConsoleKey ReadKey()
         {
-            if (IsWinPlatform)
+            if (IsWinPlatform || !Console.IsInputRedirected)
                 return Console.ReadKey(true).Key;
 
             var prevKey = -1;
