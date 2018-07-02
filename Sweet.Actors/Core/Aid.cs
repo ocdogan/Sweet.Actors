@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Text;
 
 namespace Sweet.Actors
 {
@@ -77,7 +78,15 @@ namespace Sweet.Actors
 
         public override string ToString()
         {
-            return $"{_actorSystem}/{_actor}";
+            //$"{_actorSystem}/{_actor}";
+
+            var sb = new StringBuilder(24);
+
+            sb.Append(_actorSystem ?? String.Empty);
+            sb.Append('/');
+            sb.Append(_actor ?? String.Empty);
+
+            return sb.ToString();
         } 
 
         public override int GetHashCode()

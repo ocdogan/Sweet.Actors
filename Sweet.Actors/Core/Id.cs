@@ -22,6 +22,7 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System.Text;
 using System.Threading;
 
 namespace Sweet.Actors
@@ -83,6 +84,10 @@ namespace Sweet.Actors
         private static readonly IdPart s_MinorRevisionGen;
 
         private int _processId;
+        private long _major;
+        private long _majorRevision;
+        private long _minor;
+        private long _minorRevision;
 
         static Id()
         {
@@ -96,24 +101,49 @@ namespace Sweet.Actors
 
         protected Id(long major, long majorRevision, long minor, long minorRevision, int processId = -1)
         {
-            Major = major;
-            MajorRevision = majorRevision;
-            Minor = minor;
-            MinorRevision = minorRevision;
+            _major = major;
+            _majorRevision = majorRevision;
+            _minor = minor;
+            _minorRevision = minorRevision;
             _processId = processId < 0 ? Common.ProcessId : processId;
         }
 
-        public long Major { get; }
+        public long Major => _major;
 
-        public long MajorRevision { get; }
+        public long MajorRevision => _majorRevision;
 
-        public long Minor { get; }
+        public long Minor => _minor;
 
-        public long MinorRevision { get; }
+        public long MinorRevision => _minorRevision;
 
         public int ProcessId => _processId;
 
-        public override string ToString() => $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]";
+        public override string ToString()
+        {
+            // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
+            var sb = new StringBuilder(24);
+
+            sb.Append('[');
+
+            sb.Append(_processId.ToString());
+            sb.Append('-');
+
+            sb.Append(_major.ToString());
+            sb.Append('.');
+
+            sb.Append(_majorRevision.ToString());
+            sb.Append('.');
+
+            sb.Append(_minor.ToString());
+            sb.Append('.');
+
+            sb.Append(_minorRevision.ToString());
+            sb.Append('.');
+
+            sb.Append(']');
+
+            return sb.ToString();
+        }
 
         public override int GetHashCode()
         {
