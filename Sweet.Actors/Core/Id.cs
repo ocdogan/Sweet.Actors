@@ -149,10 +149,10 @@ namespace Sweet.Actors
         {
             unchecked
             {
-                var hash = MinorRevision.GetHashCode();
-                hash = 31 * hash + Minor.GetHashCode();
-                hash = 31 * hash + MajorRevision.GetHashCode();
-                return 31 * hash + Major.GetHashCode();
+                var hash = _minorRevision.GetHashCode();
+                hash = 31 * hash + _minor.GetHashCode();
+                hash = 31 * hash + _majorRevision.GetHashCode();
+                return 31 * hash + _major.GetHashCode();
             }
         }
 
@@ -162,14 +162,15 @@ namespace Sweet.Actors
                 return false;
 
             var other = obj as Id<T>;
-            if (ReferenceEquals(other, null))
+            if (other is null)
                 return false;
             
-            return other.ProcessId == ProcessId &&
-                        other.MinorRevision == MinorRevision &&
-                        other.Minor == Minor &&
-                        other.MajorRevision == MajorRevision &&
-                        other.Major == Major;
+            return other.GetHashCode() == GetHashCode() &&
+                other.ProcessId == ProcessId &&
+                other.MinorRevision == MinorRevision &&
+                other.Minor == Minor &&
+                other.MajorRevision == MajorRevision &&
+                other.Major == Major;
         }
 
         protected static long[] Generate()

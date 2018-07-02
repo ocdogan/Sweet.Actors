@@ -326,7 +326,7 @@ namespace Sweet.Actors.Rpc
             finally
             {
                 Interlocked.Exchange(ref _inProcess, Constants.False);
-                if (_requestQueue.Count > 0)
+                if (!_requestQueue.IsEmpty)
                     Schedule();
             }
             return Completed;
@@ -383,7 +383,7 @@ namespace Sweet.Actors.Rpc
             }
             finally
             {
-                request.Completed();
+                AsyncEventPool.Run(request.Completed);
             }
         }
 

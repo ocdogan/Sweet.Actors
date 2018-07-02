@@ -214,7 +214,7 @@ namespace Sweet.Actors
             finally
             {
 				Interlocked.Exchange(ref _inProcess, 0L);
-                if (!Disposed && _mailbox.Count > 0)
+                if (!Disposed && !_mailbox.IsEmpty)
                     StartProcessTask();
             }
             return Completed;
@@ -319,11 +319,8 @@ namespace Sweet.Actors
 
         public Task OnReceive(IContext ctx, IMessage message)
         {
-            var remoteMngr = ActorSystem?.RemoteManager;
-            if (remoteMngr == null)
-                return Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
-
-            return remoteMngr.Send(message, _remoteAddress, RequestTimeoutMSec);
+            return ActorSystem?.RemoteManager?.Send(message, _remoteAddress, RequestTimeoutMSec) ??
+                Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
         }
     }
 }

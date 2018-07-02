@@ -93,7 +93,8 @@ namespace Sweet.Actors.Rpc
             if (outStream == null)
                 return false;
 
-            using (var dataStream = new ChunkedStream())
+            var dataStream = new ChunkedStream();
+            try
             {
                 var dataLen = _serializer.Serialize(message, dataStream);
                 if (dataLen > RpcConstants.MaxDataSize)
@@ -146,6 +147,10 @@ namespace Sweet.Actors.Rpc
                 if (flush)
                     outStream.Flush();
             }
+            finally
+            {
+                AsyncEventPool.Run(dataStream.Dispose);
+            }
             return true;
         }
 
@@ -155,7 +160,8 @@ namespace Sweet.Actors.Rpc
 
             if (socket.IsConnected())
             {
-                using (var outStream = new ChunkedStream())
+                var outStream = new ChunkedStream();
+                try
                 {
                     if (Write(outStream, message))
                     {
@@ -169,6 +175,10 @@ namespace Sweet.Actors.Rpc
                         }
                         return true;
                     }
+                }
+                finally
+                {
+                    AsyncEventPool.Run(outStream.Dispose);
                 }
             }
             return false;

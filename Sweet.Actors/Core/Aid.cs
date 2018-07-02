@@ -93,8 +93,8 @@ namespace Sweet.Actors
         {
             if (_hashCode == 0)
             {
-                var hash = 1 + (_actorSystem ?? String.Empty).GetHashCode();
-                _hashCode = 31 * hash + (_actor ?? String.Empty).GetHashCode();
+                var hash = 1 + (_actorSystem?.GetHashCode() ?? 0);
+                _hashCode = 31 * hash + (_actor?.GetHashCode() ?? 0);
             }
             return _hashCode;
         }

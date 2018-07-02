@@ -150,7 +150,7 @@ namespace Sweet.Actors.Rpc
         protected void CancelWaitingResponses()
         {
             var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<WireMessageId, RemoteRequest>());
-            if (responses.Count > 0)
+            if (!responses.IsEmpty)
             {
                 foreach (var kv in responses)
                 {
@@ -200,6 +200,7 @@ namespace Sweet.Actors.Rpc
                 catch (Exception e)
                 {
                     completor?.TrySetException(e);
+                    AsyncEventPool.Run(request.Dispose);
                 }
                 return result;
             }

@@ -409,24 +409,21 @@ namespace Sweet.Actors
         private ByteArrayCache _cache = ByteArrayCache.Default;
 
         private ChunkedStreamReader _defaultReader;
+        private object _defaultReaderLock = new object();
 
         private event EventHandler<ValueChangedEventArgs<long>> Changed;
 
         public ChunkedStream()
-        {
-            _defaultReader = new ChunkedStreamReader(this, _chunks);
-        }
+        { }
 
         public ChunkedStream(int chunkSize = -1)
         {
             InitializeCache(chunkSize);
-            _defaultReader = new ChunkedStreamReader(this, _chunks);
         }
 
         public ChunkedStream(byte[] source, int chunkSize = -1)
         {
             InitializeCache(chunkSize);
-            _defaultReader = new ChunkedStreamReader(this, _chunks);
 
             if (source != null)
             {
@@ -438,8 +435,6 @@ namespace Sweet.Actors
 
         public ChunkedStream(IList<ArraySegment<byte>> source)
         {
-            _defaultReader = new ChunkedStreamReader(this, _chunks);
-
             var sourceCount = source?.Count ?? 0;
             if (sourceCount > 0)
             {
@@ -460,6 +455,25 @@ namespace Sweet.Actors
                     }
                 }
             }
+        }
+
+        private ChunkedStreamReader GetDefaultReader()
+        {
+            if (!_isClosed)
+            {
+                var result = _defaultReader;
+                if (result == null)
+                {
+                    lock (_defaultReaderLock)
+                    {
+                        result = _defaultReader;
+                        if (result == null)
+                            result = (_defaultReader = new ChunkedStreamReader(this, _chunks));
+                    }
+                }
+                return result;
+            }
+            return null;
         }
 
         public ChunkedStream(int length, int chunkSize = -1)
@@ -510,11 +524,15 @@ namespace Sweet.Actors
 
         public long ReadPosition
         {
-            get { return !_isClosed ? _defaultReader.Position : 0L; }
+            get { return !_isClosed ? (GetDefaultReader()?.Position ?? 0) : 0L; }
             set
             {
                 if (!_isClosed)
-                    _defaultReader.Position = value;
+                {
+                    var reader = GetDefaultReader();
+                    if (reader != null)
+                        reader.Position = value;
+                }
             }
         }
 
@@ -661,7 +679,7 @@ namespace Sweet.Actors
             ThrowIfDisposed();
 
             if (count > 0)
-                return _defaultReader.Read(buffer, offset, count);
+                return GetDefaultReader()?.Read(buffer, offset, count) ?? 0;
             return 0;
         }
 
@@ -670,7 +688,7 @@ namespace Sweet.Actors
             ThrowIfDisposed();
 
             if (count > 0)
-                return _defaultReader.ReadAsync(buffer, offset, count, cancellationToken);
+                return GetDefaultReader()?.ReadAsync(buffer, offset, count, cancellationToken) ?? ReadCompleted;
             return ReadCompleted;
         }
 
@@ -778,10 +796,7 @@ namespace Sweet.Actors
         public override int ReadByte()
         {
             ThrowIfDisposed();
-
-            if (_defaultReader != null)
-                return _defaultReader.ReadByte();
-            return -1;
+            return GetDefaultReader()?.ReadByte() ?? -1;
         }
 
         public override void WriteByte(byte value)
@@ -852,10 +867,7 @@ namespace Sweet.Actors
         public byte[] ToArray()
         {
             ThrowIfDisposed();
-
-            if (_defaultReader != null)
-                return _defaultReader.ToArray();
-            return EmptyChunk;
+            return GetDefaultReader()?.ToArray() ?? EmptyChunk;
         }
 
         public void ReadFrom(Stream source, long length)

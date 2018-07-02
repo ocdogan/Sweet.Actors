@@ -174,12 +174,12 @@ namespace Sweet.Actors
 
         public static bool TryRegister(TaskCompletor<T> taskCompletor, int timeoutMSec)
         {
-            if ((taskCompletor != null) && (timeoutMSec > 0) && !taskCompletor.IsCanceled)
+            if ((timeoutMSec > 0) && !(taskCompletor?.IsCanceled ?? true))
             {
                 Unregister(taskCompletor);
 
                 var waitHandle = taskCompletor.WaitHandle;
-                if (!(waitHandle.SafeWaitHandle?.IsClosed ?? true))
+                if (!(waitHandle?.SafeWaitHandle?.IsClosed ?? true))
                 {
                     _timeoutRegisterations[waitHandle] =
                         ThreadPool.RegisterWaitForSingleObject(waitHandle, CallbackTaskCompletor, taskCompletor, timeoutMSec, true);

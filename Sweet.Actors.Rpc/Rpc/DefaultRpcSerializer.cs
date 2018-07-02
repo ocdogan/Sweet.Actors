@@ -54,10 +54,15 @@ namespace Sweet.Actors.Rpc
         {
             if (message != null)
             {
-                using (var stream = new ChunkedStream())
+                var stream = new ChunkedStream();
+                try
                 {
                     _serializer.Serialize(message, stream);
                     return stream.ToArray();
+                }
+                finally
+                {
+                    AsyncEventPool.Run(stream.Dispose);
                 }
             }
             return null;
