@@ -269,7 +269,7 @@ namespace Sweet.Actors.Rpc
             _requestQueue.Enqueue(request);
 
             Schedule();
-            return request.TaskCompletor.Task;
+            return request.Completor.Task;
         }
 
         private void Schedule()
@@ -311,7 +311,8 @@ namespace Sweet.Actors.Rpc
                         continue;
 
                     if (!task.IsCompleted)
-                        task.ContinueWith((previousTask) => {
+                        task.ContinueWith((previousTask) =>
+                        {
                             if (!Disposed)
                                 Schedule();
                         });
@@ -334,12 +335,12 @@ namespace Sweet.Actors.Rpc
         private Task ProcessRequest(RemoteRequest request, bool flush = true)
         {
             var message = request.Message;
-            var future = (message as FutureMessage);
+            var future = request.IsFuture ? (FutureMessage)message : null;
             try
             {
                 if (future?.IsCanceled ?? false)
                 {
-                    request.TaskCompletor.TrySetCanceled();
+                    request.Completor.TrySetCanceled();
                     future.Cancel();
 
                     return Completed;
@@ -349,15 +350,15 @@ namespace Sweet.Actors.Rpc
                 {
                     var error = new Exception(Errors.MessageExpired);
 
-                    request.TaskCompletor.TrySetException(error);
+                    request.Completor.TrySetException(error);
                     future?.RespondToWithError(error, future.From);
 
                     return Completed;
                 }
 
-                if (!Transmit(request, flush) && flush)
+                if (!Transmit(request, flush))
                 {
-                    request.TaskCompletor.TrySetCanceled();
+                    request.Completor.TrySetCanceled();
                     future.Cancel();
 
                     TryToFlush();
@@ -380,6 +381,10 @@ namespace Sweet.Actors.Rpc
 
                 return Task.FromException(e);
             }
+            finally
+            {
+                request.Completed();
+            }
         }
 
         private void TryToFlush()
@@ -401,7 +406,7 @@ namespace Sweet.Actors.Rpc
         {
             try
             {
-                request?.TaskCompletor.TrySetException(e);
+                request?.Completor.TrySetException(e);
             }
             catch (Exception)
             { }
@@ -409,14 +414,11 @@ namespace Sweet.Actors.Rpc
 
         private bool Transmit(RemoteRequest request, bool flush)
         {
-            if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed)
+            if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed &&
+                WriteMessage(request.Message.ToWireMessage(request.To, request.MessageId), flush))
             {
-                var message = request.Message;
-                if (WriteMessage(message.ToWireMessage(request.To, request.MessageId), flush))
-                {
-                    BeginReceive();
-                    return true;
-                }
+                BeginReceive();
+                return true;
             }
             return false;
         }
@@ -424,19 +426,22 @@ namespace Sweet.Actors.Rpc
         protected virtual bool WriteMessage(WireMessage message, bool flush = true)
         {
             var result = false;
-            var waitingCount = 0L;
-            try
+            if (message != null)
             {
-                waitingCount = Interlocked.Increment(ref _waitingToTransmit);
-                result = _writer.Write(_connection?.Out, message, flush);
-            }
-            finally
-            {
-                if (result && flush)
+                var waitingCount = 0L;
+                try
                 {
-                    var currentCount = Interlocked.Add(ref _waitingToTransmit, -waitingCount);
-                    if (currentCount < 0)
-                        Interlocked.Add(ref _waitingToTransmit, currentCount);
+                    waitingCount = Interlocked.Increment(ref _waitingToTransmit);
+                    result = _writer.Write(_connection?.Out, message, flush);
+                }
+                finally
+                {
+                    if (result && flush)
+                    {
+                        var currentCount = Interlocked.Add(ref _waitingToTransmit, -waitingCount);
+                        if (currentCount < 0)
+                            Interlocked.Add(ref _waitingToTransmit, currentCount);
+                    }
                 }
             }
             return result;

@@ -23,11 +23,11 @@
 #endregion License
 
 using System;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace Sweet.Actors
 {
-    public class RemoteRequest : RemoteMessage, IDisposable
+    public class RemoteRequest : RemoteMessage
     {
         private TaskCompletor<object> _taskCompletor;
 
@@ -40,20 +40,41 @@ namespace Sweet.Actors
             _taskCompletor.OnTimeout += DoTimedOut;
         }
 
-        public TaskCompletor<object> TaskCompletor => _taskCompletor;
+        public TaskCompletor<object> Completor => _taskCompletor;
 
-        public void Dispose()
+        public override void Dispose()
         {
-            _taskCompletor.Dispose();
+            var taskCompletor = Interlocked.Exchange(ref _taskCompletor, null);
+            if (taskCompletor != null)
+            {
+                taskCompletor.OnTimeout -= DoTimedOut;
+                taskCompletor.Dispose();
+            }
+        }
+
+        public void Completed()
+        {
+            var taskCompletor = _taskCompletor;
+            if (taskCompletor != null)
+            {
+                taskCompletor.OnTimeout -= DoTimedOut;
+                taskCompletor.Unregister();
+
+                taskCompletor.TrySetResult(0);
+                taskCompletor.Dispose();
+            }
         }
 
         protected virtual void DoTimedOut(object sender, TaskCompletionStatus status)
         {
             try
             {
-                _taskCompletor.OnTimeout -= DoTimedOut;
-                if (Message is IFutureMessage future)
-                    future.Cancel();
+                var taskCompletor = _taskCompletor;
+                if (taskCompletor != null)
+                    taskCompletor.OnTimeout -= DoTimedOut;
+
+                if (IsFuture)
+                    ((IFutureMessage)Message).Cancel();
             }
             finally
             {

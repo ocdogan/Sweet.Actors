@@ -36,9 +36,7 @@ namespace Sweet.Actors
         private void Dispose(bool disposing)
         {
             if (Common.CompareAndSet(ref _disposed, false, true))
-            {
                 OnDispose(disposing);
-            }
         }
 
         protected virtual void OnDispose(bool disposing)

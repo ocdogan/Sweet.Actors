@@ -52,9 +52,7 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
-            if (disposing)
-                Unregister();
-            base.OnDispose(disposing);
+            TrySetCanceled();
         }
 
         public virtual bool IsCanceled => _tcs.Task.IsCanceled ||
@@ -76,26 +74,31 @@ namespace Sweet.Actors
         {
             Unregister();
 
-            _cts.Cancel();
-            return _tcs.TrySetCanceled(_cts.Token);
+            var task = _tcs?.Task;
+            if (task != null && !task.IsCompleted)
+            {
+                _cts?.Cancel();
+                return _tcs?.TrySetCanceled(_cts.Token) ?? false;
+            }
+            return false;
         }
 
         public bool TrySetException(IEnumerable<Exception> exceptions)
         {
             Unregister();
-            return _tcs.TrySetException(exceptions);
+            return _tcs?.TrySetException(exceptions) ?? false;
         }
 
         public bool TrySetException(Exception exception)
         {
             Unregister();
-            return _tcs.TrySetException(exception);
+            return _tcs?.TrySetException(exception) ?? false;
         }
 
         public bool TrySetResult(T result)
         {
             Unregister();
-            return _tcs.TrySetResult(result);
+            return _tcs?.TrySetResult(result) ?? false;
         }
 
         internal virtual void DoTimedOut()
@@ -105,12 +108,12 @@ namespace Sweet.Actors
             {
                 Interlocked.Exchange(ref _unregistered, 1);
 
-                status = _tcs.Task.Status;
+                status = _tcs?.Task?.Status ?? TaskStatus.RanToCompletion;
                 if (!(status == TaskStatus.RanToCompletion ||
                     status == TaskStatus.Canceled || status == TaskStatus.Faulted))
                 {
                     TrySetCanceled();
-                    status = _tcs.Task.Status;
+                    status = _tcs?.Task?.Status ?? TaskStatus.RanToCompletion;
                 }
             }
             finally

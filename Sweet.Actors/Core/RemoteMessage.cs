@@ -22,21 +22,36 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
+
 namespace Sweet.Actors
 {
-    public class RemoteMessage
+    public class RemoteMessage : IDisposable
     {
+        private Aid _to;
+        private bool _isFuture;
+        private IMessage _message;
+        private WireMessageId _messageId;
+
         public RemoteMessage(IMessage message, Aid to, WireMessageId messageId)
         {
-            Message = message ?? Actors.Message.Empty;
-            To = to ?? Aid.Unknown;
-            MessageId = messageId ?? WireMessageId.Empty;
+            _message = message ?? Actors.Message.Empty;
+            _to = to ?? Aid.Unknown;
+            _messageId = messageId ?? WireMessageId.Next();
+            _isFuture = _message is IFutureMessage;
         }
 
-        public IMessage Message { get; }
+        public IMessage Message => _message;
 
-        public Aid To { get; }
+        public Aid To => _to;
 
-        public WireMessageId MessageId { get; }
+        public WireMessageId MessageId => _messageId;
+
+        public bool IsFuture => _isFuture;
+
+        public virtual void Dispose()
+        {
+            _message = null;
+        }
     }
 }

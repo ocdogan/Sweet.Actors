@@ -158,7 +158,7 @@ namespace Sweet.Actors.Rpc
                     {
                         var request = kv.Value;
 
-                        request.TaskCompletor.TrySetCanceled();
+                        request.Completor.TrySetCanceled();
                         if (request.Message is IFutureMessage future)
                             future.Cancel();
                     }
@@ -170,7 +170,6 @@ namespace Sweet.Actors.Rpc
 
         public Task Send(IMessage message, RemoteAddress to, int timeoutMSec = 0)
         {
-            RemoteRequest request = null;
             try
             {
                 ThrowIfDisposed();
@@ -185,28 +184,29 @@ namespace Sweet.Actors.Rpc
                 if (client == null)
                     throw new Exception(RpcErrors.CannotResolveEndPoint);
 
-                request = new RemoteRequest(message, to.Actor, timeoutMSec);
-                request.OnTimeout += RequestTimedOut;
+                var request = new RemoteRequest(message, to.Actor, timeoutMSec);
 
-                if (message is IFutureMessage)
-                    _responseList[request.MessageId] = request;
+                var completor = request.Completor;
+                var result = completor.Task;
+                try
+                {
+                    request.OnTimeout += RequestTimedOut;
 
-                client.Send(request);
+                    if (message is IFutureMessage)
+                        _responseList[request.MessageId] = request;
 
-                return request.TaskCompletor.Task;
+                    client.Send(request);
+                }
+                catch (Exception e)
+                {
+                    completor?.TrySetException(e);
+                }
+                return result;
             }
             catch (Exception e)
             {
-                var isSocketError = (e is SocketException);
-                try
-                {
-                    request?.TaskCompletor.TrySetException(e);
-                }
-                finally
-                {
-                    if (isSocketError)
-                        CancelWaitingResponses();
-                }
+                if (e is SocketException)
+                    CancelWaitingResponses();
 
                 return Task.FromException(e);
             }

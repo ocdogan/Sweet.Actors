@@ -101,7 +101,6 @@ namespace Sweet.Actors
                     { }
                 }
             }
-            base.OnDispose(disposing);
         }
 
         internal void SetRemoteManager(IRemoteManager remoteManager)

@@ -73,13 +73,11 @@ namespace Sweet.Actors
             protected override void OnDispose(bool disposing)
             {
                 _chunks = null;
-
                 if (_stream != null)
                 {
                     _stream.Changed -= StreamChanged;
                     _stream = null;
                 }
-                base.OnDispose(disposing);
             }
 
             private void StreamChanged(object sender, ValueChangedEventArgs<long> eventArgs)

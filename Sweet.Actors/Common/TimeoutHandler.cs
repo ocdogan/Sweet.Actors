@@ -28,14 +28,14 @@ using System.Threading;
 
 namespace Sweet.Actors
 {
-    internal class TimeoutRegistery : IDisposable
+    internal class TimeoutRegistery : Disposable
     {
         private int _hashCode;
         private object _state;
         private WaitHandle _waitHandle;
         private RegisteredWaitHandle _registeredWaitHandle;
 
-        public TimeoutRegistery(WaitHandle waitHandle, 
+        internal TimeoutRegistery(WaitHandle waitHandle, 
             RegisteredWaitHandle registeredWaitHandle, object state)
         {
             _state = state;
@@ -63,18 +63,30 @@ namespace Sweet.Actors
         {
             if (obj == null)
                 return false;
-            
+
             if (obj is TimeoutRegistery ts)
                 return (ts.GetHashCode() == GetHashCode()) &&
-                    ts._waitHandle == _waitHandle;
+                    (Disposed || ts._waitHandle == _waitHandle);
             return false;
         }
 
-        public void Dispose()
+        protected override void OnDispose(bool disposing)
         {
-            _state = null;
-            _waitHandle = null;
-            _registeredWaitHandle = null;
+            var waitHandle = Interlocked.Exchange(ref _waitHandle, null);
+            var registeredWaitHandle = Interlocked.Exchange(ref _registeredWaitHandle, null);
+
+            if (!disposing)
+                _state = null;
+
+            if (waitHandle != null)
+            {
+                try
+                {
+                    registeredWaitHandle?.Unregister(waitHandle);
+                }
+                catch (Exception)
+                { }
+            }
         }
     }
 
@@ -119,23 +131,34 @@ namespace Sweet.Actors
             return false;
         }
 
+        private static void Unregister(TimeoutRegistery registery)
+        {
+            try
+            {
+                registery?.RegisteredWaitHandle?.Unregister(registery?.WaitHandle);
+            }
+            catch (Exception)
+            { }
+        }
+
         public static void Unregister(WaitHandle waitHandle)
         {
             if (waitHandle != null &&
                 _timeoutRegisterations.TryRemove(waitHandle, out TimeoutRegistery registery))
-                registery.RegisteredWaitHandle.Unregister(registery.WaitHandle);
+                Unregister(registery);
         }
     }
 
     internal static class TimeoutHandler<T>
     {
-        private static readonly ConcurrentDictionary<WaitHandle, TimeoutRegistery> _timeoutRegisterations = 
-            new ConcurrentDictionary<WaitHandle, TimeoutRegistery>();
+        private static readonly ConcurrentDictionary<WaitHandle, RegisteredWaitHandle> _timeoutRegisterations = 
+            new ConcurrentDictionary<WaitHandle, RegisteredWaitHandle>();
 
         private static void CallbackTaskCompletor(object state, bool timedOut)
         {
             if (state is TaskCompletor<T> taskCompletor)
             {
+                var waitHandle = taskCompletor.WaitHandle;
                 try
                 {
                     if (timedOut)
@@ -143,8 +166,8 @@ namespace Sweet.Actors
                 }
                 finally
                 {
-                    if (_timeoutRegisterations.TryRemove(taskCompletor.WaitHandle, out TimeoutRegistery registery))
-                        registery?.Dispose();
+                    if (_timeoutRegisterations.TryRemove(waitHandle, out RegisteredWaitHandle registeredWaitHandle))
+                        Unregister(waitHandle, registeredWaitHandle);
                 }
             }
         }
@@ -157,22 +180,34 @@ namespace Sweet.Actors
 
                 var waitHandle = taskCompletor.WaitHandle;
                 if (!(waitHandle.SafeWaitHandle?.IsClosed ?? true))
-                {                     
-                    _timeoutRegisterations[waitHandle] = 
-                        new TimeoutRegistery(waitHandle, 
-                            ThreadPool.RegisterWaitForSingleObject(waitHandle, CallbackTaskCompletor, taskCompletor, timeoutMSec, true),
-                            taskCompletor);
+                {
+                    _timeoutRegisterations[waitHandle] =
+                        ThreadPool.RegisterWaitForSingleObject(waitHandle, CallbackTaskCompletor, taskCompletor, timeoutMSec, true);
                     return true;
                 }
             }
             return false;
         }
 
+        private static void Unregister(WaitHandle waitHandle, RegisteredWaitHandle registeredWaitHandle)
+        {
+            try
+            {
+                if (waitHandle != null)
+                    registeredWaitHandle?.Unregister(waitHandle);
+            }
+            catch (Exception)
+            { }
+        }
+
         public static void Unregister(TaskCompletor<T> taskCompletor)
         {
-            if (taskCompletor != null &&
-                _timeoutRegisterations.TryRemove(taskCompletor.WaitHandle, out TimeoutRegistery registery))
-                registery.RegisteredWaitHandle.Unregister(registery.WaitHandle);
+            if (taskCompletor != null)
+            {
+                var waitHandle = taskCompletor.WaitHandle;
+                if (_timeoutRegisterations.TryRemove(waitHandle, out RegisteredWaitHandle registeredWaitHandle))
+                    Unregister(waitHandle, registeredWaitHandle);
+            }
         }
     }
 }

@@ -84,8 +84,6 @@ namespace Sweet.Actors.Rpc
             if (!disposing)
                 TryToStop();
             else Stop();
-
-            base.OnDispose(disposing);
         }
 
         public int Id => _id;

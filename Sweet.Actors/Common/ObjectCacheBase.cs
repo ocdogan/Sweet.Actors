@@ -58,7 +58,6 @@ namespace Sweet.Actors
         {
             if (disposing)
                 Clear();
-            base.OnDispose(disposing);
         }
 
         protected void Enqueue(T item)

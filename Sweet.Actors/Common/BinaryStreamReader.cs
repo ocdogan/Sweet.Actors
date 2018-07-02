@@ -50,8 +50,6 @@ namespace Sweet.Actors
             Interlocked.Exchange(ref _input, null);
             using (Interlocked.Exchange(ref _reader, null))
             { }
-
-            base.OnDispose(disposing);
         }
 
         public long Position

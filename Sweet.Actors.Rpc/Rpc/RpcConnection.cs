@@ -71,7 +71,6 @@ namespace Sweet.Actors.Rpc
             {
                 if (disposing)
                     ByteArrayCache.Default.Release(_buffer);
-                base.OnDispose(disposing);
             }
         }
 

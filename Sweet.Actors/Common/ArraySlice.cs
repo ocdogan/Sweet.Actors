@@ -101,8 +101,6 @@ namespace Sweet.Actors
         {
             if (disposing && !(_owner?.Disposed ?? true))
                 _owner.Release(_array);
-
-            base.OnDispose(disposing);
         }
 
         public bool Equals(byte[] other)

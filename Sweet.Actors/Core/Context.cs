@@ -58,8 +58,6 @@ namespace Sweet.Actors
         {
             _pid = null;
             _process = null;
-
-            base.OnDispose(disposing);
         }
 
         public bool HasData(string key)

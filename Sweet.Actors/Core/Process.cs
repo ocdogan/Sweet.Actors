@@ -120,8 +120,6 @@ namespace Sweet.Actors
             Interlocked.Exchange(ref _inProcess, 0L);
             if (disposing)
                 _processRegistery.TryRemove(_pid, out Process process);
-
-            base.OnDispose(disposing);
         }
 
         public Task Send(IMessage message)
