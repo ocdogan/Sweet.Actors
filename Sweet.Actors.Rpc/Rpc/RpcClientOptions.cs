@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -23,46 +23,44 @@
 #endregion License
 
 using System;
-using System.Net.Sockets;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
-    internal static class NetCommon
+    public class RpcClientOptions : RpcOptions<RpcClientOptions>
     {
-        #region Sockets
+        public static readonly RpcClientOptions Default = new RpcClientOptions();
 
-        internal static bool IsSocketError(this SocketError errorCode)
+        private int _readBufferSize;
+        private int _connectionTimeoutMSec = -1;
+
+        public RpcClientOptions()
+            : base()
+        { }
+
+        protected override RpcClientOptions New()
         {
-            return !(errorCode == SocketError.Success || 
-                errorCode == SocketError.IOPending ||
-                errorCode == SocketError.WouldBlock);
+            return new RpcClientOptions();
         }
 
-        internal static void SetIOLoopbackFastPath(this Socket socket)
+        public RpcClientOptions UsingReadBufferSize(int size)
         {
-            if (Common.IsWinPlatform)
-            {
-                try
-                {
-                    var ops = BitConverter.GetBytes(1);
-                    socket.IOControl(NetConstants.SIO_LOOPBACK_FAST_PATH, ops, null);
-                }
-                catch (Exception)
-                { }
-            }
+            _readBufferSize = size;
+            return this;
         }
 
-        internal static bool IsConnected(this Socket socket, int poll = -1)
+        public RpcClientOptions UsingConnectionTimeoutMSec(int connectionTimeoutMSec)
         {
-            if ((socket != null) && socket.Connected && socket.Handle != IntPtr.Zero)
-            {
-                if (poll > -1)
-                    return !(socket.Poll(poll, SelectMode.SelectRead) && (socket.Available == 0));
-                return true;
-            }
-            return false;
+            if (connectionTimeoutMSec < 0)
+                _connectionTimeoutMSec = -1;
+            else if (connectionTimeoutMSec == 0)
+                _connectionTimeoutMSec = RpcConstants.DefaultConnectionTimeout;
+            else _connectionTimeoutMSec = Math.Min(RpcConstants.MaxConnectionTimeout, Math.Max(RpcConstants.MinConnectionTimeout, connectionTimeoutMSec));
+
+            return this;
         }
 
-        #endregion Sockets
+        public int ConnectionTimeoutMSec => _connectionTimeoutMSec;
+
+        public int ReadBufferSize => _readBufferSize;
     }
 }

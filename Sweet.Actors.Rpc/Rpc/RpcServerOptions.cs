@@ -24,7 +24,7 @@
 
 using System;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public class RpcServerOptions : RpcOptions<RpcServerOptions>
     {

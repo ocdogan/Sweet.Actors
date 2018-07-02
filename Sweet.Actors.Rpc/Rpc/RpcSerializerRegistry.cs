@@ -26,7 +26,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Text;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public static class RpcSerializerRegistry
     {

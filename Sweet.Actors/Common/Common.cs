@@ -25,9 +25,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+//ADD THE ATTRIBUTE WITH NAME OF THE ASSEMBLY
+[assembly: InternalsVisibleTo("Sweet.Actors.Rpc")]
 
 namespace Sweet.Actors
 {
@@ -175,11 +179,6 @@ namespace Sweet.Actors
         internal static bool IsEmpty(this ICollection obj)
         {
             return (obj == null || obj.Count == 0);
-        }
-
-        internal static bool IsEmpty(this ServerEndPoint endPoint)
-        {
-            return (endPoint is null || endPoint.IsEmpty);
         }
 
         #endregion IsEmpty

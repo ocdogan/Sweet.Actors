@@ -22,38 +22,17 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
-    internal class RpcPartitionedHeader
+    public interface IRpcConnection
     {
-        public int ProcessId { get; set; }
-
-        public int MessageId { get; set; }
-
-        public string SerializerKey { get; set; }
-
-        public ushort FrameCount { get; set; }
-    }
-
-    internal class RpcPartitionedFrame
-    {
-        public int ProcessId { get; set; }
-
-        public int MessageId { get; set; }
-
-        public ushort FrameId { get; set; }
-
-        public ushort DataLength { get; set; }
-
-        public byte[] Data { get; set; }
-    }
-
-    internal class RpcPartitionedMessage
-    {
-        public RpcPartitionedHeader Header { get; } = new RpcPartitionedHeader();
-
-        public IList<RpcPartitionedFrame> Frames { get; } = new List<RpcPartitionedFrame>();
+        Socket Connection { get; }
+        IPEndPoint RemoteEndPoint { get; }
+        object State { get; }
+        Stream Out { get; }
     }
 }

@@ -27,7 +27,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     internal class RpcReceiveBuffer : Disposable
     {

@@ -29,7 +29,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     internal class RpcConnection : Disposable, IRpcConnection
     {

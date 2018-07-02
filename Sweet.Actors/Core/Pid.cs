@@ -37,7 +37,7 @@ namespace Sweet.Actors
             _process = process;
             if (process != null)
             {
-                SetActorSystem(process.System?.Name);
+                SetActorSystem(process.ActorSystem?.Name);
                 SetActor(process.Name);
             }
         }

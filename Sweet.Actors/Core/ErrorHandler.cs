@@ -28,29 +28,41 @@ namespace Sweet.Actors
 {
     public interface IErrorHandler
     {
-        void HandleError(IProcess process, IMessage message, Exception error);
+        void HandleError(ActorSystem actorSystem, Exception error);
+        void HandleProcessError(ActorSystem actorSystem, Pid pid, IMessage message, Exception error);
     }
 
     internal class DefaultErrorHandler : IErrorHandler
     {
         public static readonly IErrorHandler Instance = new DefaultErrorHandler();
 
-        public void HandleError(IProcess process, IMessage message, Exception error)
+        public void HandleError(ActorSystem actorSystem, Exception error)
+        { }
+
+        public void HandleProcessError(ActorSystem actorSystem, Pid pid, IMessage message, Exception error)
         { }
     }
 
     internal class ErrorHandlerAction : IErrorHandler
     {
-        private Action<IProcess, IMessage, Exception> _handlerAction;
+        private Action<ActorSystem, Exception> _generalErrorHandler;
+        private Action<ActorSystem, Pid, IMessage, Exception> _processErrorHandler;
 
-        internal ErrorHandlerAction(Action<IProcess, IMessage, Exception> handlerAction)
+        internal ErrorHandlerAction(Action<ActorSystem, Exception> generalErrorHandler,
+            Action<ActorSystem, Pid, IMessage, Exception> processErrorHandler)
         {
-            _handlerAction = handlerAction ?? DefaultErrorHandler.Instance.HandleError;
+            _generalErrorHandler = _generalErrorHandler ?? DefaultErrorHandler.Instance.HandleError;
+            _processErrorHandler = processErrorHandler ?? DefaultErrorHandler.Instance.HandleProcessError;
         }
 
-        public void HandleError(IProcess process, IMessage message, Exception error)
+        public void HandleError(ActorSystem actorSystem, Exception error)
         {
-            _handlerAction(process, message, error);
+            _generalErrorHandler(actorSystem, error);
+        }
+
+        public void HandleProcessError(ActorSystem actorSystem, Pid pid, IMessage message, Exception error)
+        {
+            _processErrorHandler(actorSystem, pid, message, error);
         }
     }
 }

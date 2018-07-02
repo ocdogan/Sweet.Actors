@@ -24,9 +24,10 @@
 
 using System;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+using Sweet.Actors.Rpc;
 
 namespace Sweet.Actors.ConsoleTest
 {
@@ -44,7 +45,7 @@ namespace Sweet.Actors.ConsoleTest
 
         static void Main(string[] args)
         {
-            // RunRemoteSystem();
+            RunRemoteSystem();
             InitLocalSystem();
 
             Console.WriteLine("Press ESC to exit, any key to continue ...");
@@ -70,7 +71,9 @@ namespace Sweet.Actors.ConsoleTest
 
             var systemOptions = ActorSystemOptions
                 .UsingName(localSystem)
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+                .UsingErrorHandler(
+                    (actorSys, error) => { Console.WriteLine(error); },
+                    (actorSys, process, msg, error) => { Console.WriteLine(error); });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
 
@@ -119,7 +122,9 @@ namespace Sweet.Actors.ConsoleTest
 
             var systemOptions = ActorSystemOptions
                 .UsingName(remoteSystem)
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+                .UsingErrorHandler(
+                    (actorSys, error) => { Console.WriteLine(error); },
+                    (actorSys, process, msg, error) => { Console.WriteLine(error); });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
             manager.Bind(actorSystem);

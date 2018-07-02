@@ -28,7 +28,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     internal static class RpcMessageParser
     {

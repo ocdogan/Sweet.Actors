@@ -28,7 +28,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     internal class RpcMessageWriter : Disposable
     {

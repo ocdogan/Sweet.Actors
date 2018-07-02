@@ -25,6 +25,8 @@
 using System;
 using System.Diagnostics;
 
+using Sweet.Actors.Rpc;
+
 namespace Sweet.Actors.RpcTestServer2
 {
     class Program
@@ -42,7 +44,9 @@ namespace Sweet.Actors.RpcTestServer2
 
             var systemOptions = ActorSystemOptions
                 .UsingName("system-2")
-                .UsingErrorHandler((process, msg, error) => { Console.WriteLine(error); });
+                .UsingErrorHandler(
+                    (actorSys, error) => { Console.WriteLine(error); },
+                    (actorSys, process, msg, error) => { Console.WriteLine(error); });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
 

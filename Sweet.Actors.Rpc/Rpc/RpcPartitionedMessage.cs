@@ -22,14 +22,38 @@
 //      THE SOFTWARE.
 #endregion License
 
-namespace Sweet.Actors
+using System.Collections.Generic;
+
+namespace Sweet.Actors.Rpc
 {
-	public static class RpcServerStatus
+    internal class RpcPartitionedHeader
     {
-        public const long Stopped = 0L;
-		public const long Stopping = 1L;
-		public const long Starting = 2L;
-		public const long Started = 3L;
-		public const long Accepting = 4L;
+        public int ProcessId { get; set; }
+
+        public int MessageId { get; set; }
+
+        public string SerializerKey { get; set; }
+
+        public ushort FrameCount { get; set; }
+    }
+
+    internal class RpcPartitionedFrame
+    {
+        public int ProcessId { get; set; }
+
+        public int MessageId { get; set; }
+
+        public ushort FrameId { get; set; }
+
+        public ushort DataLength { get; set; }
+
+        public byte[] Data { get; set; }
+    }
+
+    internal class RpcPartitionedMessage
+    {
+        public RpcPartitionedHeader Header { get; } = new RpcPartitionedHeader();
+
+        public IList<RpcPartitionedFrame> Frames { get; } = new List<RpcPartitionedFrame>();
     }
 }

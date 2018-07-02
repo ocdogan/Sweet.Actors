@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Sweet.Actors.Rpc\Sweet.Actors.Rpc.csproj" />
     <ProjectReference Include="..\Sweet.Actors\Sweet.Actors.csproj" />
   </ItemGroup>
 

@@ -22,7 +22,7 @@
 //      THE SOFTWARE.
 #endregion License
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public static class RpcConstants
     {

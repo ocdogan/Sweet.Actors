@@ -35,7 +35,7 @@ namespace Sweet.Actors
         IActor Actor { get; }
         IContext Context { get; }
         Pid Pid { get; }
-        ActorSystem System { get; }
+        ActorSystem ActorSystem { get; }
     }
 
     internal class Process : Disposable, IProcess
@@ -49,9 +49,13 @@ namespace Sweet.Actors
         private Pid _pid;
         private string _name;
         private Context _ctx;
+
         private long _inProcess;
         private int _requestTimeoutMSec = -1;
         private int _sequentialInvokeLimit;
+
+        private IActor _actor;
+        private ActorSystem _actorSystem;
         private IErrorHandler _errorHandler;
 
         private ConcurrentQueue<IMessage> _mailbox = new ConcurrentQueue<IMessage>();
@@ -60,8 +64,8 @@ namespace Sweet.Actors
         {
             _name = name;
 
-            Actor = actor;
-            System = actorSystem;
+            _actor = actor;
+            _actorSystem = actorSystem;
 
             _pid = new Pid(this);
             _ctx = new Context(this);
@@ -81,9 +85,9 @@ namespace Sweet.Actors
             _processRegistery.TryAdd(_pid, this);
         }
 
-        public ActorSystem System { get; }
+        public ActorSystem ActorSystem => _actorSystem;
 
-        public IActor Actor { get; protected set; }
+        public IActor Actor { get => _actor; protected set => _actor = value; }
 
         public IContext Context { get { return _ctx; } }
 
@@ -238,13 +242,13 @@ namespace Sweet.Actors
                 var t = SendToActor(_ctx, message);
 
                 if (t.IsFaulted)
-                    HandleError(message, t.Exception);
+                    HandleProcessError(message, t.Exception);
 
                 return t;
             }
             catch (Exception e)
             {
-                HandleError(message, e);
+                HandleProcessError(message, e);
 
                 try
                 {
@@ -262,11 +266,21 @@ namespace Sweet.Actors
             return Actor.OnReceive(ctx, message);
         }
 
-        protected virtual void HandleError(IMessage message, Exception e)
+        protected virtual void HandleError(Exception e)
         {
             try
             {
-                _errorHandler?.HandleError(this, message, e);
+                _errorHandler?.HandleError(_actorSystem, e);
+            }
+            catch (Exception)
+            { }
+        }
+
+        protected virtual void HandleProcessError(IMessage message, Exception e)
+        {
+            try
+            {
+                _errorHandler?.HandleProcessError(_actorSystem, _pid, message, e);
             }
             catch (Exception)
             { }
@@ -307,7 +321,7 @@ namespace Sweet.Actors
 
         public Task OnReceive(IContext ctx, IMessage message)
         {
-            var remoteMngr = System?.RemoteManager;
+            var remoteMngr = ActorSystem?.RemoteManager;
             if (remoteMngr == null)
                 return Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
 

@@ -29,7 +29,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public class ServerEndPoint : EndPoint, IEquatable<ServerEndPoint>, ICloneable
     {
@@ -278,7 +278,7 @@ namespace Sweet.Actors
                     isIp = IPAddress.TryParse(host, out IPAddress ipAddress);
 
                     ipAddresses = isIp ? new[] { ipAddress } :
-                        AsyncEx.GetHostAddressesAsync(host).Result;
+                        NetAsyncEx.GetHostAddressesAsync(host).Result;
 
                     if (!ipAddresses.IsEmpty())
                     {

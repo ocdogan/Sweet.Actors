@@ -26,7 +26,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public abstract class RpcOptions<T>
         where T : RpcOptions<T>

@@ -23,57 +23,56 @@
 #endregion License
 
 using System;
-using System.IO;
-using Wire;
+using System.Net.Sockets;
 
-namespace Sweet.Actors
+using Sweet.Actors;
+
+namespace Sweet.Actors.Rpc
 {
-    public class DefaultRpcSerializer : IWireSerializer
+    internal static class NetCommon
     {
-        private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
-
-        public RemoteMessage Deserialize(byte[] data)
+        #region General
+        internal static bool IsEmpty(this ServerEndPoint endPoint)
         {
-            if (data == null || data.Length == 0)
-                return null;
-
-            using (var stream = new ChunkedStream(data))
-            {
-                return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
-            }
+            return (endPoint is null || endPoint.IsEmpty);
         }
 
-        public RemoteMessage Deserialize(Stream stream)
+        #endregion General
+
+        #region Sockets
+
+        internal static bool IsSocketError(this SocketError errorCode)
         {
-            if (stream == null)
-                return null;
-            return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
+            return !(errorCode == SocketError.Success || 
+                errorCode == SocketError.IOPending ||
+                errorCode == SocketError.WouldBlock);
         }
 
-        public byte[] Serialize(WireMessage message)
+        internal static void SetIOLoopbackFastPath(this Socket socket)
         {
-            if (message != null)
+            if (Common.IsWinPlatform)
             {
-                using (var stream = new ChunkedStream())
+                try
                 {
-                    _serializer.Serialize(message, stream);
-                    return stream.ToArray();
+                    var ops = BitConverter.GetBytes(1);
+                    socket.IOControl(NetConstants.SIO_LOOPBACK_FAST_PATH, ops, null);
                 }
+                catch (Exception)
+                { }
             }
-            return null;
         }
 
-        public long Serialize(WireMessage message, Stream stream)
+        internal static bool IsConnected(this Socket socket, int poll = -1)
         {
-            if (message != null && 
-                stream != null && stream.CanWrite)
+            if ((socket != null) && socket.Connected && socket.Handle != IntPtr.Zero)
             {
-                var previousPos = stream.Position;
-                 _serializer.Serialize(message, stream);
-
-                return Math.Max(-1L, stream.Position - previousPos);
+                if (poll > -1)
+                    return !(socket.Poll(poll, SelectMode.SelectRead) && (socket.Available == 0));
+                return true;
             }
-            return -1L;
+            return false;
         }
+
+        #endregion Sockets
     }
 }

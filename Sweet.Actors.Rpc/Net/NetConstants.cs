@@ -22,18 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
-    public static class RpcErrors
+    public static class NetConstants
     {
-        public const string RequestCanceled = "request canceled";
-        public const string InvalidMessage = "Invalid message";
-        public const string InvalidMessageResponse = "Invalid message response";
-        public const string InvalidMessageReceiver = "Invalid message receiver";
-        public const string InvalidSerializerKey = "Invalid serializer key";
-        public const string CannotConnectToRemoteEndPoint = "Can not connect to remote end-point";
-        public const string CannotResolveEndPoint = "Can not resolve end-point";
-        public const string CannotStartToReceive = "Can not start to receive";
-        public const string AnotherActorSystemAlreadyBindedWithName = "Another actor system is already binded with the same name";
+        public const string LocalHost = "localhost";
+        public const string IP4Loopback = "127.0.0.1";
+        public const string IP6Loopback = "::1";
+
+        public const int SIO_LOOPBACK_FAST_PATH = -1744830448;
     }
 }

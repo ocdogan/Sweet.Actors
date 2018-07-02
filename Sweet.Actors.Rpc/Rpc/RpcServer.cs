@@ -30,7 +30,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public abstract partial class RpcServer : Disposable, IRemoteServer
     {

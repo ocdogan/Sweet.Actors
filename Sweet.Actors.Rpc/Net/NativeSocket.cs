@@ -26,7 +26,7 @@ using System;
 using System.Net.Sockets;
 using System.Threading;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
     public class NativeSocket : Socket
     {

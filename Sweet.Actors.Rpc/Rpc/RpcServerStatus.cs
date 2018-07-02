@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,14 +22,14 @@
 //      THE SOFTWARE.
 #endregion License
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
-    public static class NetConstants
+	public static class RpcServerStatus
     {
-        public const string LocalHost = "localhost";
-        public const string IP4Loopback = "127.0.0.1";
-        public const string IP6Loopback = "::1";
-
-        public const int SIO_LOOPBACK_FAST_PATH = -1744830448;
+        public const long Stopped = 0L;
+		public const long Stopping = 1L;
+		public const long Starting = 2L;
+		public const long Started = 3L;
+		public const long Accepting = 4L;
     }
 }
