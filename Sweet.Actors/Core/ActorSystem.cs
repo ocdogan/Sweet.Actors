@@ -91,11 +91,11 @@ namespace Sweet.Actors
                 _systemRegistery.TryRemove(Name, out ActorSystem actorSystem);
 
                 var processes = Interlocked.Exchange(ref _processRegistery, null);
-                foreach (var registery in processes.Values)
+                foreach (var registry in processes.Values)
                 {
                     try
                     {
-                        registery.Dispose();
+                        registry.Dispose();
                     }
                     catch (Exception)
                     { }
@@ -182,9 +182,9 @@ namespace Sweet.Actors
         internal bool TryGetInternal(string actorName, out Pid pid)
         {
             pid = null;
-            if (_processRegistery.TryGetValue(actorName, out ProcessRegistery registery))
+            if (_processRegistery.TryGetValue(actorName, out ProcessRegistery registry))
             {
-                pid = registery.Process?.Pid;
+                pid = registry.Process?.Pid;
                 return pid != null;
             }
             return false;
@@ -249,7 +249,7 @@ namespace Sweet.Actors
             var isNew = false;
             var processType = ProcessType.Class;
 
-            var registery = _processRegistery.GetOrAdd(actorName,
+            var registry = _processRegistery.GetOrAdd(actorName,
                 (an) =>
                 {
                     isNew = true;
@@ -267,10 +267,10 @@ namespace Sweet.Actors
                 });
 
             if (!isNew && 
-                ((registery.ProcessType != processType) || (registery.ActorType != actorType)))
+                ((registry.ProcessType != processType) || (registry.ActorType != actorType)))
                 throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
-            return registery.Process.Pid;
+            return registry.Process.Pid;
         }
 
         private int GetRequestTimeoutMSec(ActorOptions options)
@@ -309,7 +309,7 @@ namespace Sweet.Actors
             var actorType = typeof(FunctionCallProcess);
             var processType = ProcessType.Function;
 
-            var registery = _processRegistery.GetOrAdd(actorName,
+            var registry = _processRegistery.GetOrAdd(actorName,
                 (an) =>
                 {
                     isNew = true;
@@ -328,10 +328,10 @@ namespace Sweet.Actors
 
             if (!isNew)
             {
-                if (registery.ProcessType != processType)
+                if (registry.ProcessType != processType)
                     throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
-                var fp = registery.Process as FunctionCallProcess;
+                var fp = registry.Process as FunctionCallProcess;
                 if (fp == null)
                     throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
@@ -339,7 +339,7 @@ namespace Sweet.Actors
                     throw new Exception(Errors.ActorAlreadyExsists);
             }
 
-            return registery.Process.Pid;
+            return registry.Process.Pid;
         }
 
         public Pid FromRemote(ActorOptions options)
@@ -362,7 +362,7 @@ namespace Sweet.Actors
             var actorType = typeof(RemoteProcess);
             var processType = ProcessType.Remote;
 
-            var registery = _processRegistery.GetOrAdd($"remote://{remoteActorSystem}/{remoteActor}",
+            var registry = _processRegistery.GetOrAdd($"remote://{remoteActorSystem}/{remoteActor}",
                 (an) =>
                 {
                     isNew = true;
@@ -379,10 +379,10 @@ namespace Sweet.Actors
                 });
 
             if (!isNew &&
-                (registery.ProcessType != processType) || (registery.ActorType != actorType))
+                (registry.ProcessType != processType) || (registry.ActorType != actorType))
                 throw new Exception(Errors.ActorWithNameOfDifferentTypeAlreadyExists);
 
-            return registery.Process.Pid;
+            return registry.Process.Pid;
         }
 
         void IResponseHandler.OnResponse(IMessage message, RemoteAddress from)

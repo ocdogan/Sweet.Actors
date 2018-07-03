@@ -25,8 +25,6 @@
 using System;
 using System.Net.Sockets;
 
-using Sweet.Actors;
-
 namespace Sweet.Actors.Rpc
 {
     internal static class NetCommon

@@ -34,8 +34,8 @@ namespace Sweet.Actors
         private const int WaitDuration = 5000;
 
         private static int _processing;
-        private static ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
-        private static ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
+        private static readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
+        private static readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
 
         private static void Schedule()
         {
