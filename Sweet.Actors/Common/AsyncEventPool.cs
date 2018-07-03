@@ -31,39 +31,66 @@ namespace Sweet.Actors
 {
     public static class AsyncEventPool
     {
-        private static long _processing;
+        private const int WaitDuration = 5000;
+
+        private static int _processing;
         private static ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
+        private static ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
 
         private static void Schedule()
         {
-            if (Interlocked.CompareExchange(ref _processing, 1L, 0L) == 0L)
-            {
+            var previousState = Interlocked.CompareExchange(ref _processing, 1, 0);
+            if (previousState == 0)
                 Task.Factory.StartNew(ProcessQueue);
-            }
+            else if (!_resetEvent.IsSet)
+                _resetEvent.Set();
         }
 
         private static void ProcessQueue()
         {
             try
             {
-                var loopCount = 0;
-                while (_queue.TryDequeue(out Action action) &&
-                    (loopCount++ <= 500))
-                {
-                    try
-                    {
-                        action();
-                    }
-                    catch (Exception)
-                    { }
-                }
+                DequeueOrWait();
             }
             finally
             {
-                Interlocked.CompareExchange(ref _processing, 0L, 1L);
+                _resetEvent.Reset();
+                Interlocked.CompareExchange(ref _processing, 0, 1);
+
                 if (!_queue.IsEmpty)
                     Schedule();
             }
+        }
+
+        private static void DequeueOrWait()
+        {
+            do
+            {
+                var loopCount = 0;
+                try
+                {
+                    while (_queue.TryDequeue(out Action action))
+                    {
+                        try
+                        {
+                            action();
+                        }
+                        catch (Exception)
+                        { }
+
+                        if (loopCount++ >= 100)
+                        {
+                            loopCount = 0;
+                            Thread.Sleep(1);
+                        }
+                    }
+                }
+                finally
+                {
+                    _resetEvent.Reset();
+                }
+            }
+            while (_resetEvent.Wait(WaitDuration));
         }
 
         public static void Run(Action action)

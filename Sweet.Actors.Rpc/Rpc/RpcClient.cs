@@ -38,7 +38,7 @@ namespace Sweet.Actors.Rpc
         private const object DefaultResponse = null;
 
         private const int BulkSendLength = 10;
-        private const int SequentialSendLimit = 100;
+        private const int SequentialSendLimit = 500;
 
         #endregion Constants
 
@@ -177,18 +177,18 @@ namespace Sweet.Actors.Rpc
                     if (result == null)
                     {
                         var remoteEP = _options.EndPoint;
-
                         var addressFamily = remoteEP.AddressFamily;
-                        if (addressFamily == AddressFamily.Unknown || addressFamily == AddressFamily.Unspecified)
+
+                        if (addressFamily == AddressFamily.Unknown || 
+                            addressFamily == AddressFamily.Unspecified)
                             addressFamily = IPAddress.Any.AddressFamily;
 
-                        result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
-                        Configure(result);
+                        Configure(result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp));
 
-                        using (Interlocked.Exchange(ref _connection, new RpcConnection(this, result, HandleResponse, null))) { }
+                        using (Interlocked.Exchange(ref _connection, new RpcConnection(this, result, HandleResponse, null)))
+                        { }
 
-                        var prevSocket = Interlocked.Exchange(ref _socket, result);
-                        Close(prevSocket);
+                        Close(Interlocked.Exchange(ref _socket, result));
                     }
                 }
             }
@@ -197,8 +197,8 @@ namespace Sweet.Actors.Rpc
 
         public Task Connect()
         {
-            if ((_closing != Constants.True) &&
-                Common.CompareAndSet(ref _status, RpcClientStatus.Closed, RpcClientStatus.Connecting))
+            if (_closing != Constants.True &&
+                Interlocked.CompareExchange(ref _status, RpcClientStatus.Connecting, RpcClientStatus.Closed) == RpcClientStatus.Closed)
             {
                 Socket socket = null;
                 try
@@ -274,7 +274,7 @@ namespace Sweet.Actors.Rpc
 
         private void Schedule()
         {
-            if (Common.CompareAndSet(ref _inProcess, false, true))
+            if (Interlocked.CompareExchange(ref _inProcess, Constants.True, Constants.False) == Constants.False)
             {
                 Task.Factory.StartNew(ProcessRequestQueue);
             }
@@ -356,13 +356,13 @@ namespace Sweet.Actors.Rpc
                     return Completed;
                 }
 
-                if (!Transmit(request, flush))
+                /* if (!Transmit(request, flush))
                 {
                     request.Completor.TrySetCanceled();
                     future.Cancel();
 
                     TryToFlush();
-                }
+                } */
 
                 return Completed;
             }

@@ -27,24 +27,15 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Sweet.Actors.Rpc;
-
-namespace Sweet.Actors.RpcTestServer1
+namespace Sweet.Actors
 {
     class Program
     {
         private static int counter;
-        private const int loop = 20000;
+        private const int loop = 1000000;
 
-        private static void RunRemoteSystem(int port)
+        private static void RunSystem()
         {
-            var serverOptions = (new RpcServerOptions())
-                .UsingIPAddress("127.0.0.1")
-                .UsingPort(port);
-
-            var manager = new RpcManager(serverOptions);
-            manager.Start();
-
             var systemOptions = ActorSystemOptions
                 .UsingName("system-1")
                 .UsingErrorHandler(
@@ -52,7 +43,6 @@ namespace Sweet.Actors.RpcTestServer1
                     (actorSys, process, msg, error) => { Console.WriteLine(error); });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
-            manager.Bind(actorSystem);
 
             var actorOptions = ActorOptions
                 .UsingName("system-1-actor-1");
@@ -61,7 +51,8 @@ namespace Sweet.Actors.RpcTestServer1
 
             var sw = new Stopwatch();
 
-            var pid = actorSystem.FromFunction((ctx, message) => {
+            var pid = actorSystem.FromFunction((ctx, message) =>
+            {
                 var count = Interlocked.Increment(ref counter);
 
                 if (count == 1)
@@ -89,40 +80,43 @@ namespace Sweet.Actors.RpcTestServer1
             actorOptions);
         }
 
-        static void FunctionTest()
+        static void Call()
         {
+            ActorSystem.TryGet("system-1", out ActorSystem actorSystem);
+            actorSystem.TryGet("system-1-actor-1", out Pid pid);
+
             var sw = new Stopwatch();
-
-            int counter = 0;
-            Action a = () => {
-                var count = Interlocked.Increment(ref counter);
-
-                if (count == 1)
-                    sw.Restart();
-                else if (count == loop)
-                {
-                    Interlocked.Exchange(ref counter, 0);
-
-                    sw.Stop();
-                    Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
-                }
-            };
+            sw.Restart();
 
             for (var i = 0; i < loop; i++)
-                a();
+                pid.Tell("hello (fire & forget) - " + i.ToString("000000"));
+
+            sw.Stop();
+            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+
+            /* var task = pid.Request("hello (do not forget)");
+            task.ContinueWith((previousTask) => {
+                IFutureResponse response = null;
+                if (!(previousTask.IsCanceled || previousTask.IsFaulted))
+                    response = previousTask.Result;
+
+                Console.WriteLine(response?.Data ?? "(null response)");
+            }); */
         }
 
         static void Main(string[] args)
         {
-            RunRemoteSystem(17777);
-            // FunctionTest();
+            RunSystem();
 
-            do
+            Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+            while (ReadKey() != ConsoleKey.Escape)
             {
                 Console.Clear();
-                Console.WriteLine("Press any key to exit");
+                Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+                Call();
             }
-            while (ReadKey() != ConsoleKey.Escape);
         }
 
         private static bool IsWinPlatform

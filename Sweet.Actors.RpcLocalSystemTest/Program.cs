@@ -27,7 +27,7 @@ using System.Diagnostics;
 
 using Sweet.Actors.Rpc;
 
-namespace Sweet.Actors.RpcTestServer2
+namespace Sweet.Actors.RpcLocalSystemTest
 {
     class Program
     {

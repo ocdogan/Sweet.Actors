@@ -29,99 +29,24 @@ using System.Threading.Tasks;
 
 using Sweet.Actors.Rpc;
 
-namespace Sweet.Actors.ConsoleTest
+namespace Sweet.Actors.RpcRemoteSystemTest
 {
     class Program
     {
         private static int counter;
         private const int loop = 20000;
 
-        private const string localSystem = "lsystem-1";
-        private const string remoteSystem = "rsystem-1";
-        private const string remoteActor = "ractor-1";
-
-        private const int localPort = 17777;
-        private const int remotePort = 18888;
-
-        static void Main(string[] args)
-        {
-            RunRemoteSystem();
-            InitLocalSystem();
-
-            Console.WriteLine("Press ESC to exit, any key to continue ...");
-
-            do
-            {
-                Console.Clear();
-                Console.WriteLine("Press ESC to exit, any key to continue ...");
-
-                CallRemote();
-            }
-            while (ReadKey() != ConsoleKey.Escape);
-        }
-
-        private static void InitLocalSystem()
-        {
-            var serverOptions = (new RpcServerOptions())
-                 .UsingIPAddress("127.0.0.1")
-                 .UsingPort(localPort);
-
-            var manager = new RpcManager(serverOptions);
-            manager.Start();
-
-            var systemOptions = ActorSystemOptions
-                .UsingName(localSystem)
-                .UsingErrorHandler(
-                    (actorSys, error) => { Console.WriteLine(error); },
-                    (actorSys, process, msg, error) => { Console.WriteLine(error); });
-
-            var actorSystem = ActorSystem.GetOrAdd(systemOptions);
-
-            manager.Bind(actorSystem);
-
-            var remoteActorOptions = ActorOptions
-                .UsingName(remoteActor)
-                .UsingRemoteActorSystem(remoteSystem)
-                .UsingRemoteEndPoint("127.0.0.1", remotePort);
-
-            actorSystem.FromRemote(remoteActorOptions);
-        }
-
-        static void CallRemote()
-        {
-            ActorSystem.TryGet(localSystem, out ActorSystem actorSystem);
-            actorSystem.TryGetRemote(new Aid(remoteSystem, remoteActor), out Pid remotePid);
-
-            var sw = new Stopwatch();
-            sw.Restart();
-
-            for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
-
-            sw.Stop();
-            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
-
-            /* var task = remotePid.Request("hello (do not forget)");
-            task.ContinueWith((previousTask) => {
-                IFutureResponse response = null;
-                if (!(previousTask.IsCanceled || previousTask.IsFaulted))
-                    response = previousTask.Result;
-
-                Console.WriteLine(response?.Data ?? "(null response)");
-            }); */
-        }
-
-        private static void RunRemoteSystem()
+        private static void RunRemoteSystem(int port)
         {
             var serverOptions = (new RpcServerOptions())
                 .UsingIPAddress("127.0.0.1")
-                .UsingPort(remotePort);
+                .UsingPort(port);
 
             var manager = new RpcManager(serverOptions);
             manager.Start();
 
             var systemOptions = ActorSystemOptions
-                .UsingName(remoteSystem)
+                .UsingName("system-1")
                 .UsingErrorHandler(
                     (actorSys, error) => { Console.WriteLine(error); },
                     (actorSys, process, msg, error) => { Console.WriteLine(error); });
@@ -130,7 +55,7 @@ namespace Sweet.Actors.ConsoleTest
             manager.Bind(actorSystem);
 
             var actorOptions = ActorOptions
-                .UsingName(remoteActor);
+                .UsingName("system-1-actor-1");
 
             var Completed = Task.FromResult(0);
 
@@ -162,7 +87,18 @@ namespace Sweet.Actors.ConsoleTest
                 return Completed;
             },
             actorOptions);
-        }       
+        }
+
+        static void Main(string[] args)
+        {
+            RunRemoteSystem(17777);
+            do
+            {
+                Console.Clear();
+                Console.WriteLine("Press any key to exit");
+            }
+            while (ReadKey() != ConsoleKey.Escape);
+        }
 
         private static bool IsWinPlatform
         {
