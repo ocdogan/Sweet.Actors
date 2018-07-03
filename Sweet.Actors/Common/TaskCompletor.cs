@@ -47,7 +47,7 @@ namespace Sweet.Actors
 
             _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
 
-            TimeoutHandler<T>.TryRegister(this, _timeoutMSec);
+            // TimeoutHandler<T>.TryRegister(this, _timeoutMSec);
         }
 
         protected override void OnDispose(bool disposing)
@@ -146,8 +146,8 @@ namespace Sweet.Actors
 
         public void Unregister()
         {
-            if (Interlocked.CompareExchange(ref _unregistered, 1, 0) == 0)
-                TimeoutHandler<T>.Unregister(this);
+            /* if (Interlocked.CompareExchange(ref _unregistered, 1, 0) == 0)
+                TimeoutHandler<T>.Unregister(this); */
         }
     }
 }

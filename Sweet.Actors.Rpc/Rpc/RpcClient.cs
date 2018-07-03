@@ -356,13 +356,13 @@ namespace Sweet.Actors.Rpc
                     return Completed;
                 }
 
-                /* if (!Transmit(request, flush))
+                if (!Transmit(request, flush))
                 {
                     request.Completor.TrySetCanceled();
                     future.Cancel();
 
                     TryToFlush();
-                } */
+                }
 
                 return Completed;
             }
