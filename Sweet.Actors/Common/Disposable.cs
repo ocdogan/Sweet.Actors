@@ -10,7 +10,8 @@ namespace Sweet.Actors
 
         ~Disposable()
         {
-            Dispose(false);
+            if (Common.CompareAndSet(ref _disposed, false, true))
+                OnDispose(false);
         }
 
 		public bool Disposed => (_disposed != Constants.False);
@@ -18,7 +19,10 @@ namespace Sweet.Actors
         protected virtual void ThrowIfDisposed(string name = null)
         {
             if (Disposed)
-                 throw new ObjectDisposedException(String.IsNullOrEmpty(name) ? GetType().Name : name);
+            {
+                name = name?.Trim();
+                throw new ObjectDisposedException(String.IsNullOrEmpty(name) ? GetType().Name : name);
+            }
         }
 
         protected void SuppressFinalizeOnDispose(bool value)
@@ -28,15 +32,12 @@ namespace Sweet.Actors
 
         public void Dispose()
         {
-            Dispose(true);
-            if (!_doNotSuppressFinalizeOnDispose)
-                GC.SuppressFinalize(this);
-        }
-
-        private void Dispose(bool disposing)
-        {
             if (Common.CompareAndSet(ref _disposed, false, true))
-                OnDispose(disposing);
+            {
+                OnDispose(true);
+                if (!_doNotSuppressFinalizeOnDispose)
+                    GC.SuppressFinalize(this);
+            }
         }
 
         protected virtual void OnDispose(bool disposing)

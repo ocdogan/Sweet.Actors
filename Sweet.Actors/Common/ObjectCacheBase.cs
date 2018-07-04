@@ -92,7 +92,7 @@ namespace Sweet.Actors
         {
             if (item != null)
             {
-                if ((_limit < 1) || (_cache.Count >= _limit))
+                if ((_limit < 1) || (_cache.Count >= _limit) || Disposed)
                     OnDispose(item);
                 else
                     Enqueue(item);

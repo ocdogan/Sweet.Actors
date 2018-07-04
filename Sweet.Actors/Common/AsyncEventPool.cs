@@ -39,8 +39,7 @@ namespace Sweet.Actors
 
         private static void Schedule()
         {
-            var previousState = Interlocked.CompareExchange(ref _processing, 1, 0);
-            if (previousState == 0)
+            if (Interlocked.CompareExchange(ref _processing, 1, 0) == 0)
                 Task.Factory.StartNew(ProcessQueue);
             else if (!_resetEvent.IsSet)
                 _resetEvent.Set();

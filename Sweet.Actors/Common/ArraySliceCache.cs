@@ -28,7 +28,7 @@ namespace Sweet.Actors
 {
     public sealed class ArraySliceCache : ObjectCacheBase<ArraySlice>
     {
-        public static readonly ArraySliceCache Default = new ArraySliceCache(10);
+        public static readonly ArraySliceCache Default = new ArraySliceCache(20);
 
         public const int MinArraySize = 512;
         public const int MaxArraySize = 4 * Constants.MB;
@@ -39,15 +39,11 @@ namespace Sweet.Actors
         public ArraySliceCache(int initialCount = 0, int limit = DefaultLimit, int arraySize = DefaultArraySize)
             : base(ArrayProvider, 0, limit)
         {
-            if (arraySize < 1)
-                _arraySize = DefaultArraySize;
-            else
-                _arraySize = Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
+            _arraySize = (arraySize < 1) ? DefaultArraySize :
+                Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
 
-            initialCount = Math.Max(0, initialCount);
-            if (initialCount > 0)
-                for (var i = 0; i < initialCount; i++)
-                    Enqueue(ArrayProvider(this));
+            for (var i = 0; i < initialCount; i++)
+                Enqueue(new ArraySlice(new byte[_arraySize], this));
         }
 
         public int ArraySize => _arraySize;

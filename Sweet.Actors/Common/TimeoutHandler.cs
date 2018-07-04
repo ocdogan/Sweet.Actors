@@ -23,8 +23,9 @@
 #endregion License
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,23 +33,34 @@ namespace Sweet.Actors
 {
     internal static class TimeoutHandler
     {
-        private class TimeoutRegistry : Disposable
+        private class TimeoutEvent : Disposable
         {
             private int _hashCode;
             private object _state;
             private Action _action;
             private int _timeoutAt;
 
-            public TimeoutRegistry(object state, Action action, int timeoutMSec)
+            public TimeoutEvent Prev;
+            public TimeoutEvent Next;
+
+            public TimeoutEvent(object state, Action action, int timeoutMSec)
             {
                 _state = state;
                 _action = action;
                 _timeoutAt = timeoutMSec < 1 ? int.MaxValue : Environment.TickCount + timeoutMSec;
             }
 
+            public Action Action => _action;
+
             public object State => _state;
 
-            public bool Expired => Environment.TickCount >= _timeoutAt;
+            public int TimeoutAt => _timeoutAt;
+
+            public void Reset(Action action, int timeoutMSec)
+            {
+                _action = action;
+                _timeoutAt = timeoutMSec < 1 ? int.MaxValue : Environment.TickCount + timeoutMSec;
+            }
 
             public override int GetHashCode()
             {
@@ -62,7 +74,7 @@ namespace Sweet.Actors
                 if (obj == null)
                     return false;
 
-                if (obj is TimeoutRegistry ts)
+                if (obj is TimeoutEvent ts)
                     return (ts.GetHashCode() == GetHashCode()) &&
                         ts._state == _state;
                 return false;
@@ -91,25 +103,219 @@ namespace Sweet.Actors
             }
         }
 
+        private class TimeoutRegistry : IEnumerable<TimeoutEvent>, IEnumerable
+        {
+            private struct Enumerator : IEnumerator<TimeoutEvent>, IEnumerator
+            {
+                private TimeoutEvent _next;
+                private TimeoutEvent _current;
+                private TimeoutRegistry _list;
+
+                public Enumerator(TimeoutRegistry list)
+                {
+                    _list = list;
+                    _current = null;
+                    _next = list._head;
+                }
+
+                public TimeoutEvent Current => _current;
+
+                object IEnumerator.Current => _current;
+
+                public bool MoveNext()
+                {
+                    if (_next == null)
+                        return false;
+
+                    _list._syncRoot.EnterUpgradeableReadLock();
+                    try
+                    {
+                        _current = _next;
+                        _next = _next.Next;
+                        if (_next == _list._head)
+                            _next = null;
+                    }
+                    finally
+                    {
+                        _list._syncRoot.ExitUpgradeableReadLock();
+                    }
+
+                    return true;
+                }
+
+                public void Reset()
+                {
+                    _current = null;
+                    _list._syncRoot.EnterUpgradeableReadLock();
+                    try
+                    {
+                        _next = _list._head;
+                    }
+                    finally
+                    {
+                        _list._syncRoot.ExitUpgradeableReadLock();
+                    }
+                }
+
+                public void Dispose()
+                { }
+            }
+
+            private int _count;
+            private TimeoutEvent _head;
+            private TimeoutEvent _tail;
+
+            private ReaderWriterLockSlim _syncRoot = new ReaderWriterLockSlim();
+            private readonly Dictionary<object, TimeoutEvent> _registerations = new Dictionary<object, TimeoutEvent>();
+
+            public int Count => _count;
+
+            public bool TryRemove(object state, out TimeoutEvent registry)
+            {
+                registry = null;
+                if (state != null)
+                {
+                    _syncRoot.EnterUpgradeableReadLock();
+                    try
+                    {
+                        if (_registerations.TryGetValue(state, out TimeoutEvent tmpRegistry))
+                        {
+                            _syncRoot.EnterWriteLock();
+                            try
+                            {
+                                if (_registerations.Remove(state))
+                                {
+                                    Interlocked.Add(ref _count, -1);
+
+                                    registry = tmpRegistry;
+
+                                    var prev = registry.Prev;
+                                    var next = registry.Next;
+
+                                    if (registry == _head)
+                                    {
+                                        _head = next;
+                                        if (registry == _tail)
+                                            _tail = prev;
+
+                                        if (next != null)
+                                            next.Prev = null;
+                                    }
+                                    else if (registry == _tail)
+                                    {
+                                        _tail = prev;
+                                        if (prev != null)
+                                            prev.Next = null;
+                                    }
+                                    else
+                                    {
+                                        if (prev != null)
+                                            prev.Next = next;
+
+                                        if (next != null)
+                                            next.Prev = prev;
+                                    }
+
+                                    registry.Prev = null;
+                                    registry.Next = null;
+
+                                    return true;
+                                }
+                            }
+                            finally
+                            {
+                                _syncRoot.ExitWriteLock();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _syncRoot.ExitUpgradeableReadLock();
+                    }
+                }
+                return false;
+            }
+
+            public bool Add(object state, Action action, int timeoutMSec)
+            {
+                if ((state != null) && (timeoutMSec > 0) && (action != null))
+                {
+                    _syncRoot.EnterUpgradeableReadLock();
+                    try
+                    {
+                        if (_registerations.TryGetValue(state, out TimeoutEvent registry))
+                        {
+                            registry.Reset(action, timeoutMSec);
+                            return true;
+                        }
+
+                        _syncRoot.EnterWriteLock();
+                        try
+                        {
+                            registry = new TimeoutEvent(state, action, timeoutMSec);
+                            if (_head == null)
+                            {
+                                _head = registry;
+                                _tail = registry;
+                            }
+                            else
+                            {
+                                _tail.Next = registry;
+                                registry.Prev = _tail;
+
+                                _tail = registry;
+                            }
+
+                            _registerations[state] = registry;
+                            Interlocked.Add(ref _count, 1);
+
+                            return true;
+                        }
+                        finally
+                        {
+                            _syncRoot.ExitWriteLock();
+                        }
+                    }
+                    finally
+                    {
+                        _syncRoot.ExitUpgradeableReadLock();
+                    }
+                }
+                return false;
+            }
+
+            public IEnumerator<TimeoutEvent> GetEnumerator()
+            {
+                return new Enumerator(this);
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return new Enumerator(this);
+            }
+        }
+
         private struct TimedOutPair
         {
             public object State;
-            public TimeoutRegistry Registry;
+            public TimeoutEvent Registry;
         }
 
+        private const int _1K = 1000;
+        private const int _10K = 10 * _1K;
         private const int WaitDuration = 1000;
 
         private static Timer _timer;
         private static int _scheduled;
         private static long _inProcess;
+        private static int _circularCount;
 
-        private static readonly ConcurrentDictionary<object, TimeoutRegistry> _registerations = 
-            new ConcurrentDictionary<object, TimeoutRegistry>();
+        private static readonly TimeoutRegistry _registerations = new TimeoutRegistry();
 
         private static void Callback(object state, bool @async)
         {
             if (!(state is null) &&
-                _registerations.TryRemove(state, out TimeoutRegistry registry))
+                _registerations.TryRemove(state, out TimeoutEvent registry))
             {
                 using (registry)
                     registry.Invoke(@async);
@@ -118,13 +324,9 @@ namespace Sweet.Actors
 
         public static bool TryRegister(object state, Action action, int timeoutMSec)
         {
-            if (!(state is null) && (timeoutMSec > 0) && (action != null))
+            if (_registerations.Add(state, action, timeoutMSec))
             {
-                _registerations.TryRemove(state, out TimeoutRegistry registry);
-
-                _registerations[state] = new TimeoutRegistry(state, action, timeoutMSec);
                 Schedule();
-
                 return true;
             }
             return false;
@@ -133,102 +335,112 @@ namespace Sweet.Actors
         public static bool Unregister(object state)
         {
             if (!(state is null))
-                return _registerations.TryRemove(state, out TimeoutRegistry registry);
+                return _registerations.TryRemove(state, out TimeoutEvent registry);
             return false;
         }
 
         private static void Schedule()
         {
             if (Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
-                _timer = new Timer(CheckTimeouts, null, 0L, 20L);
+                _timer = new Timer(CheckTimeouts, null, 0, _1K);
         }
 
         private static void CheckTimeouts(object state)
         {
-            if (Interlocked.Increment(ref _inProcess) == 1L)
+            Cycle(false);
+        }
+
+        private static void Cycle(bool circular)
+        {
+            if (Interlocked.Add(ref _inProcess, 1) != 1L)
+                return;
+
+            try
             {
-                try
+                if (_registerations.Count == 0)
+                    return;
+
+                var headState = 0;
+                var head = new TimedOutPair();
+
+                var timedOuts = (List<TimedOutPair>)null;
+
+                var loop = 0;
+                var now = Environment.TickCount;
+
+                foreach (var registry in _registerations)
                 {
-                    var headState = 0;
-                    var head = new TimedOutPair { State = null, Registry = null };
+                    if (++loop % _10K == 0)
+                        Thread.Sleep(1);
 
-                    var timedOuts = (PartitionedList<TimedOutPair>)null;
-
-                    foreach (var kv in _registerations)
+                    if (now >= registry.TimeoutAt)
                     {
-                        if (kv.Value.Expired)
+                        var pair = new TimedOutPair { State = registry.State, Registry = registry };
+                        switch (headState)
                         {
-                            var pair = new TimedOutPair { State = kv.Key, Registry = kv.Value };
-
-                            if (headState == 0)
-                            {
-                                headState = 1;
+                            case 0:
                                 head = pair;
-                            }
-                            else
-                            {
-                                if (timedOuts == null)
-                                    timedOuts = new PartitionedList<TimedOutPair>();
+                                headState++;
+                                break;
+                            case 1:
+                                timedOuts = new List<TimedOutPair>();
 
-                                if (headState == 1)
-                                {
-                                    timedOuts.Put(pair);
-                                    headState = 2;
-                                }
+                                timedOuts.Add(head);
+                                timedOuts.Add(pair);
 
-                                timedOuts.Put(pair);
-                            }
-                        }
-                    }
-
-                    var loopCount = 0;
-                    if (headState == 1)
-                    {
-                        var @async = (loopCount++ >= 100);
-
-                        if (_registerations.TryRemove(head.State, out TimeoutRegistry registry))
-                            registry.Invoke(async);
-
-                        if (@async)
-                        {
-                            loopCount = 0;
-                            Thread.Sleep(1);
-                        }
-                    }
-                    else if (headState == 2 && timedOuts != null)
-                    {
-                        try
-                        {
-                            foreach (var pair in timedOuts)
-                            {
-                                var @async = (loopCount++ >= 100);
-
-                                if (_registerations.TryRemove(pair.State, out TimeoutRegistry registry))
-                                    registry.Invoke(@async);
-
-                                if (@async)
-                                {
-                                    loopCount = 0;
-                                    Thread.Sleep(1);
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            timedOuts.Dispose();
+                                headState++;
+                                break;
+                            default:
+                                timedOuts.Add(pair);
+                                break;
                         }
                     }
                 }
-                catch (Exception)
-                { }
-                finally
+
+                switch (headState)
                 {
-                    if (Interlocked.Exchange(ref _inProcess, 0L) > 1L)
-                    {
-                        Thread.Sleep(1);
-                        if (Interlocked.Read(ref _inProcess) == 0L)
-                            CheckTimeouts(null);
-                    }
+                    case 1:
+                        {
+                            if (_registerations.TryRemove(head.State, out TimeoutEvent registry))
+                                registry.Invoke(false);
+                        }
+                        break;
+                    case 2:
+                        var count = timedOuts.Count;
+                        if (count <= _1K)
+                        {
+                            for (var i = 0; i < count; i++)
+                            {
+                                var pair = timedOuts[i];
+                                if (_registerations.TryRemove(pair.State, out TimeoutEvent registry))
+                                {
+                                    registry.Invoke(false);
+                                    if (i % 100 == 0)
+                                        Thread.Sleep(1);
+                                }
+                            }
+                            return;
+                        }
+
+                        Parallel.ForEach(timedOuts,
+                            (pair) =>
+                            {
+                                if (_registerations.TryRemove(pair.State, out TimeoutEvent registry))
+                                    registry.Invoke(false);
+                            });
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch (Exception)
+            { }
+            finally
+            {
+                if (Interlocked.Exchange(ref _inProcess, 0L) > 1L)
+                {
+                    Thread.Sleep(10);
+                    Cycle(true);
                 }
             }
         }

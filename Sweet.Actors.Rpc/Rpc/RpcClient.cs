@@ -39,13 +39,18 @@ namespace Sweet.Actors.Rpc
 
         private const int BulkSendLength = 10;
         private const int SequentialSendLimit = 500;
+        private const int ConnectionErrorTreshold = 5;
+        private const int ConnectionRefuseTimeMSec = 10000;
 
         #endregion Constants
 
         private static int IdSeed;
         private static readonly Task Completed = Task.FromResult(0);
 
-        private Socket _socket;
+        private static readonly Exception ConnectionError = new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
+        private static readonly Task ConnectionErrorTask = Task.FromException(ConnectionError);
+
+        private NativeSocket _socket;
         private object _socketLock = new object();
 
         private RpcClientOptions _options;
@@ -57,6 +62,8 @@ namespace Sweet.Actors.Rpc
         // States
         private int _closing;
         private long _inProcess;
+        private int _connErrorStart;
+        private long _connErrorCount;
         private long _status = RpcClientStatus.Closed;
 
         private RpcMessageWriter _writer;
@@ -169,11 +176,17 @@ namespace Sweet.Actors.Rpc
         protected virtual Socket GetClientSocket()
         {
             var result = _socket;
-            if (result == null)
+            if (result == null || result.Disposed)
             {
                 lock (_socketLock)
                 {
                     result = _socket;
+                    if (result?.Disposed ?? false)
+                    {
+                        Interlocked.Exchange(ref _socket, null);
+                        result = null;
+                    }
+
                     if (result == null)
                     {
                         var remoteEP = _options.EndPoint;
@@ -280,18 +293,54 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private Task ProcessRequestQueue()
+        private Task WaitToConnect(out Socket socket)
         {
-            if (Disposed)
-                return Completed;
-
+            socket = null;
             try
             {
+                if (Interlocked.Read(ref _connErrorCount) >= ConnectionErrorTreshold)
+                {
+                    Thread.Sleep(1);
+                    if (Environment.TickCount - _connErrorStart >= ConnectionRefuseTimeMSec)
+                        Interlocked.Exchange(ref _connErrorCount, 0);
+
+                    return ConnectionErrorTask;
+                }
+
                 Connect().Wait();
 
-                var socket = GetClientSocket();
+                socket = GetClientSocket();
+                if (socket.IsConnected())
+                {
+                    Interlocked.Exchange(ref _connErrorCount, 0);
+                    return Completed;
+                }
+            }
+            catch (Exception)
+            { }
+
+            Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
+
+            var errorCnt = Interlocked.Add(ref _connErrorCount, 1);               
+            if (errorCnt >= ConnectionErrorTreshold)
+                _connErrorStart = Environment.TickCount;
+
+            return ConnectionErrorTask;
+        }
+
+        private Task ProcessRequestQueue()
+        {
+            try
+            {
+                if (Disposed)
+                    return Completed;
+
+                var t = WaitToConnect(out Socket socket);
+                if (t.IsFaulted)
+                    return t;
+
                 if (!socket.IsConnected())
-                    return Task.FromException(new Exception(RpcErrors.CannotConnectToRemoteEndPoint));
+                    return Task.FromException(ConnectionError);
 
                 var seqProcessCount = 0;
                 for (var i = 0; i < SequentialSendLimit; i++)

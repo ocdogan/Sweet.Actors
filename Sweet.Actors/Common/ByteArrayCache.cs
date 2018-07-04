@@ -28,7 +28,7 @@ namespace Sweet.Actors
 {
     public sealed class ByteArrayCache : ObjectCacheBase<byte[]>
     {
-        public static readonly ByteArrayCache Default = new ByteArrayCache(10);
+        public static readonly ByteArrayCache Default = new ByteArrayCache(20);
 
         public const int MinArraySize = 512;
         public const int MaxArraySize = 64 * Constants.KB;
@@ -39,22 +39,18 @@ namespace Sweet.Actors
         public ByteArrayCache(int initialCount = 0, int limit = DefaultLimit, int arraySize = DefaultArraySize)
             : base(ArrayProvider, 0, limit)
         {
-            if (arraySize < 1)
-                _arraySize = DefaultArraySize;
-            else
-                _arraySize = Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
+            _arraySize = (arraySize < 1) ? DefaultArraySize :
+                Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
 
-            initialCount = Math.Max(0, initialCount);
-            if (initialCount > 0)
-                for (var i = 0; i < initialCount; i++)
-                    Enqueue(ArrayProvider(this));
+            for (var i = 0; i < initialCount; i++)
+                Enqueue(new byte[_arraySize]);
         }
 
         public int ArraySize => _arraySize;
 
         private static byte[] ArrayProvider(ObjectCacheBase<byte[]> cache)
         {
-            return new byte[(((ByteArrayCache)cache)._arraySize)];
+            return new byte[((ByteArrayCache)cache)._arraySize];
         }
 
         protected override void OnDispose(byte[] item)

@@ -24,6 +24,7 @@
 
 using System;
 using System.Text;
+using System.Threading;
 
 namespace Sweet.Actors
 {
@@ -99,8 +100,11 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
-            if (disposing && !(_owner?.Disposed ?? true))
-                _owner.Release(_array);
+            if (disposing)
+            {
+                var owner = Interlocked.Exchange(ref _owner, null);
+                owner?.Release(_array);
+            }
         }
 
         public bool Equals(byte[] other)

@@ -34,7 +34,7 @@ namespace Sweet.Actors.Rpc
     {
         private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
 
-        private static ArraySliceCache SliceCache = new ArraySliceCache(arraySize: RpcConstants.FrameSize);
+        private static ArraySliceCache SliceCache = new ArraySliceCache(initialCount: 20, arraySize: RpcConstants.FrameSize);
 
         private int _messageIdSeed;
         private IWireSerializer _serializer;
