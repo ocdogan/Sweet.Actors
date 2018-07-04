@@ -26,6 +26,8 @@ namespace Sweet.Actors
 {
     public static class Errors
     {
+        public const string CircuitIsClosed = "Circuit is closed";
+
         public const string EndOfFile = "End of file";
         public const string StreamIsClosed = "Stream is closed";
         public const string UnwritableStream = "Unwritable stream";
