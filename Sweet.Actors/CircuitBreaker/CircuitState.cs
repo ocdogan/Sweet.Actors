@@ -56,6 +56,9 @@ namespace Sweet.Actors
 
         protected virtual T OnExecute<T>(Func<T> function, out bool success)
         {
+            if (_invoker != null)
+                return _invoker.Execute(function, out success);
+
             success = true;
             return function();
         }
