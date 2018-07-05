@@ -25,7 +25,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -308,7 +307,6 @@ namespace Sweet.Actors
         private static Timer _timer;
         private static int _scheduled;
         private static long _inProcess;
-        private static int _circularCount;
 
         private static readonly TimeoutRegistry _registerations = new TimeoutRegistry();
 
