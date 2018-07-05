@@ -74,7 +74,11 @@ namespace Sweet.Actors
             while (_failures.Count > 0)
             {
                 if (_failures.First.Value < windowStartTime)
+                {
                     _failures.RemoveFirst();
+                    continue;
+                }
+                break;
             }
         }
 
