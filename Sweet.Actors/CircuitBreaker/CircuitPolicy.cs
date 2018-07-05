@@ -42,10 +42,10 @@ namespace Sweet.Actors
             TimeSpan keepOpenDuration, int successCountToClose, bool throwErrors = true)
         {
             _throwErrors = throwErrors;
-            _failureCountToOpen = Math.Min(1, failureCountToOpen);
-            _successCountToClose = Math.Min(1, successCountToClose);
-            _failureTrackWindow = Math.Min(1, Convert.ToInt32(failureTrackWindow.TotalMilliseconds));
-            _keepOpenDuration = Math.Min(1, Convert.ToInt32(keepOpenDuration.TotalMilliseconds));
+            _failureCountToOpen = Math.Max(1, failureCountToOpen);
+            _successCountToClose = Math.Max(1, successCountToClose);
+            _failureTrackWindow = Math.Max(1, Convert.ToInt32(failureTrackWindow.TotalMilliseconds));
+            _keepOpenDuration = Math.Max(1, Convert.ToInt32(keepOpenDuration.TotalMilliseconds));
         }
 
         public bool ThrowErrors => _throwErrors;
