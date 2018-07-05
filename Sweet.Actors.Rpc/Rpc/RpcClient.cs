@@ -81,9 +81,12 @@ namespace Sweet.Actors.Rpc
         {
             _id = Interlocked.Increment(ref IdSeed);
 
-            _circuitForConnection = new CircuitBreaker(onFailure: (circuitBreaker, exception) => {
-                Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
-            });
+            _circuitForConnection = new CircuitBreaker(
+                policy: new CircuitPolicy(2, TimeSpan.FromSeconds(10000), TimeSpan.FromSeconds(10), 2, false),
+                invoker: new ChainedInvoker(ConnectionValidator),
+                onFailure: (circuitBreaker, exception) => {
+                    Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
+                });
 
             _onResponse = onResponse;
             _options = options?.Clone() ?? RpcClientOptions.Default;
@@ -236,8 +239,7 @@ namespace Sweet.Actors.Rpc
                                 {
                                     Close(socket);
                                     Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
-
-                                    throw new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
+                                    return;
                                 }
 
                                 Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
@@ -298,17 +300,31 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private void WaitToConnect()
+        private Socket WaitToConnect()
         {
             var t = Connect();
 
             t.Wait();
             if (t.IsFaulted)
-                throw new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
+                return null;
 
             var socket = GetClientSocket();
             if (!socket.IsConnected())
-                throw new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
+                return null;
+
+            return socket;
+        }
+
+        private static object ConnectionValidator((object @result, bool success) prev, out bool success)
+        {
+            if (!prev.success || !((Socket)prev.@result).IsConnected())
+            {
+                success = false;
+                return null;
+            }
+
+            success = true;
+            return prev.@result;
         }
 
         private Task ProcessRequestQueue()
@@ -318,11 +334,9 @@ namespace Sweet.Actors.Rpc
                 if (Disposed)
                     return Completed;
 
-                if (!_circuitForConnection.Execute(WaitToConnect))
-                    return Task.FromException(ConnectionError);
-
-                var socket = GetClientSocket();
-                if (!socket.IsConnected())
+                bool success;
+                var socket = _circuitForConnection.Execute(WaitToConnect, out success);
+                if (!success || !socket.IsConnected())
                     return Task.FromException(ConnectionError);
 
                 var seqProcessCount = 0;
