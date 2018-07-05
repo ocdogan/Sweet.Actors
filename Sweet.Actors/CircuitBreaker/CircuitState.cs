@@ -23,7 +23,6 @@
 #endregion License
 
 using System;
-using System.Threading;
 
 namespace Sweet.Actors
 {
@@ -44,11 +43,16 @@ namespace Sweet.Actors
 
         protected CircuitBreaker CircuitBreaker => _circuitBreaker;
 
-        public virtual bool Execute(Action action)
+        public bool Execute(Action action)
         {
             try
             {
-                action();
+                if (!OnExecute(action))
+                {
+                    if (!_policy.ThrowErrors)
+                        return false;
+                    throw new Exception(CircuitErrors.CircuitExecutionError);
+                }
 
                 Succeeded();
                 return true;
@@ -60,6 +64,12 @@ namespace Sweet.Actors
                     throw;
             }
             return false;
+        }
+
+        protected virtual bool OnExecute(Action action)
+        {
+            action();
+            return true;
         }
 
         private void Failed(Exception exception)

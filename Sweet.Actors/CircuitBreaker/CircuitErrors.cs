@@ -22,42 +22,11 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-
 namespace Sweet.Actors
 {
-    internal class OpenState : CircuitState
+    public static class CircuitErrors
     {
-        private int _enteredTime;
-
-        public OpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
-        { }
-
-        public override CircuitStatus Status => CircuitStatus.Closed;
-
-        protected override bool OnExecute(Action action)
-        {
-            if (!Policy.ThrowErrors)
-                return false;
-            throw new Exception(CircuitErrors.CircuitIsClosed);
-        }
-
-        public override void Entered()
-        {
-            _enteredTime = Environment.TickCount;
-        }
-
-        protected override void OnFail(Exception exception)
-        {
-            if (Environment.TickCount - _enteredTime >= Policy.KeepOpenDuration)
-            {
-                _enteredTime = 0;
-                CircuitBreaker.SwitchToState(CircuitStatus.Closed);
-            }
-        }
-
-        protected override void OnSucceed()
-        { }
+        public const string CircuitIsClosed = "Circuit is closed";
+        public const string CircuitExecutionError = "Circuit execution error";
     }
 }
