@@ -28,6 +28,9 @@ namespace Sweet.Actors
 {
     public class CircuitPolicy
     {
+        public static readonly CircuitPolicy DefaultPolicy = new CircuitPolicy(3, TimeSpan.FromSeconds(10000),
+            TimeSpan.FromSeconds(1), 2, true);
+
         private bool _throwErrors;
 
         private int _failureCountToOpen;

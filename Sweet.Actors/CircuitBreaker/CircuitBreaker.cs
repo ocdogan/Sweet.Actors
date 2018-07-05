@@ -28,9 +28,6 @@ namespace Sweet.Actors
 {
     public class CircuitBreaker
     {
-        private static readonly CircuitPolicy DefaultPolicy = new CircuitPolicy(3, TimeSpan.FromSeconds(10000), 
-            TimeSpan.FromSeconds(1), 2, true);
-
         private CircuitState _closedState;
         private CircuitState _halfOpenState;
         private CircuitState _openState;
@@ -40,9 +37,9 @@ namespace Sweet.Actors
 
         private readonly object _syncRoot = new object();
 
-        public CircuitBreaker(CircuitPolicy policy)
+        public CircuitBreaker(CircuitPolicy policy = null)
         {
-            _policy = policy ?? DefaultPolicy;
+            _policy = policy ?? CircuitPolicy.DefaultPolicy;
 
             _closedState = new ClosedState(this, _policy);
             _halfOpenState = new HalfOpenState(this, _policy);
