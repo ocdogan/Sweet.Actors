@@ -26,46 +26,16 @@ using System;
 
 namespace Sweet.Actors
 {
-    internal class OpenState : CircuitState
+    public class DefaultInvoker : ICircuitInvoker
     {
-        private int _enteredTime;
-
-        public OpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
-        { }
-
-        public override CircuitStatus Status => CircuitStatus.Closed;
-
-        protected override bool OnExecute(Action action)
+        public bool Execute(ICircuitState currentState, Action action)
         {
-            if (!Policy.ThrowErrors)
-                return false;
-            throw new Exception(CircuitErrors.CircuitIsClosed);
+            return currentState.Execute(action);
         }
 
-        protected override T OnExecute<T>(Func<T> function, out bool success)
+        public TResult Execute<TResult>(ICircuitState currentState, Func<TResult> function, out bool success)
         {
-            success = false;
-            if (!Policy.ThrowErrors)
-                return default(T);
-            throw new Exception(CircuitErrors.CircuitIsClosed);
+            return currentState.Execute(function, out success);
         }
-
-        public override void Entered()
-        {
-            _enteredTime = Environment.TickCount;
-        }
-
-        protected override void OnFailure(Exception exception)
-        {
-            if (Environment.TickCount - _enteredTime >= Policy.KeepOpenDuration)
-            {
-                _enteredTime = 0;
-                CircuitBreaker.SwitchToState(CircuitStatus.Closed);
-            }
-        }
-
-        protected override void OnSucceed()
-        { }
     }
 }

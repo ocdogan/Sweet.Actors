@@ -23,17 +23,21 @@
 #endregion License
 
 using System;
+using System.Threading;
 
 namespace Sweet.Actors
 {
-    public class CircuitBreaker
+    public partial class CircuitBreaker
     {
+        private static readonly DefaultInvoker DefaultInvoker = new DefaultInvoker();
+
         private CircuitState _closedState;
         private CircuitState _halfOpenState;
         private CircuitState _openState;
 
         private CircuitPolicy _policy;
         private CircuitState _currentState;
+        private ICircuitInvoker _invoker;
 
         private Action<CircuitBreaker, Exception> _onFailure;
         private Action<CircuitBreaker, CircuitStatus> _onStateChange;
@@ -41,9 +45,12 @@ namespace Sweet.Actors
         private readonly object _syncRoot = new object();
 
         public CircuitBreaker(CircuitPolicy policy = null, 
+            ICircuitInvoker invoker = null,            
             Action<CircuitBreaker, Exception> onFailure = null, 
             Action<CircuitBreaker, CircuitStatus> onStateChange = null)
         {
+            _invoker = invoker ?? DefaultInvoker;
+
             _onFailure = onFailure;
             _onStateChange = onStateChange;
 
@@ -56,6 +63,8 @@ namespace Sweet.Actors
             _currentState = _closedState;
         }
 
+        public CircuitPolicy Policy => _policy;
+
         public bool IsClosed => _currentState.Status == CircuitStatus.Closed;
 
         public bool IsOpen => _currentState.Status != CircuitStatus.Closed;
@@ -67,34 +76,26 @@ namespace Sweet.Actors
 
         internal void SwitchToState(CircuitStatus status)
         {
-            var newState = _currentState;
+            var currentState = _currentState;
+
+            var switchTo = currentState;
             switch (status)
             {
                 case CircuitStatus.HalfOpen:
-                    newState = _halfOpenState;
+                    switchTo = _halfOpenState;
                     break;
                 case CircuitStatus.Open:
-                    newState = _openState;
+                    switchTo = _openState;
                     break;
                 case CircuitStatus.Closed:
-                    newState = _closedState;
+                    switchTo = _closedState;
                     break;
             }
 
-            var changed = false;
-            lock (_syncRoot)
+            if (currentState != switchTo &&
+                Interlocked.CompareExchange(ref _currentState, switchTo, currentState) == currentState)
             {
-                if (_currentState != newState)
-                {
-                    _currentState = newState;
-                    changed = true;
-
-                    newState.Entered();
-                }
-            }
-
-            if (changed)
-            {
+                switchTo.Entered();
                 try
                 {
                     _onStateChange?.Invoke(this, status);
@@ -108,14 +109,14 @@ namespace Sweet.Actors
         {
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
-            return _currentState.Execute(action);
+            return _invoker.Execute(_currentState, action);
         }
 
         public TResult Execute<TResult>(Func<TResult> function, out bool success)
         {
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
-            return _currentState.Execute(function, out success);
+            return _invoker.Execute(_currentState, function, out success);
         }
 
         public bool Execute<T>(Action<T> action, T value)

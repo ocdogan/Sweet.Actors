@@ -26,7 +26,7 @@ using System;
 
 namespace Sweet.Actors
 {
-    internal abstract class CircuitState
+    internal abstract class CircuitState : ICircuitState
     {
         private CircuitPolicy _policy;
         private CircuitBreaker _circuitBreaker;

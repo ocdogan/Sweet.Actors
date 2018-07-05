@@ -26,46 +26,29 @@ using System;
 
 namespace Sweet.Actors
 {
-    internal class OpenState : CircuitState
+    public delegate object ChainedInvokerDelegate((object prevResult, bool prevSuccess) prev, out bool success);
+
+    public class ChainedInvoker : ICircuitInvoker
     {
-        private int _enteredTime;
+        private ChainedInvokerDelegate _nextChain;
 
-        public OpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
-        { }
-
-        public override CircuitStatus Status => CircuitStatus.Closed;
-
-        protected override bool OnExecute(Action action)
+        public ChainedInvoker(ChainedInvokerDelegate next)
         {
-            if (!Policy.ThrowErrors)
-                return false;
-            throw new Exception(CircuitErrors.CircuitIsClosed);
+            _nextChain = next;
         }
 
-        protected override T OnExecute<T>(Func<T> function, out bool success)
+        public bool Execute(ICircuitState currentState, Action action)
         {
-            success = false;
-            if (!Policy.ThrowErrors)
-                return default(T);
-            throw new Exception(CircuitErrors.CircuitIsClosed);
+            var success = currentState.Execute(action);
+            _nextChain?.Invoke((null, success), out success);
+            return success;
         }
 
-        public override void Entered()
+        public TResult Execute<TResult>(ICircuitState currentState, Func<TResult> function, out bool success)
         {
-            _enteredTime = Environment.TickCount;
+            var result = currentState.Execute(function, out success);
+            _nextChain?.Invoke((result, success), out success);
+            return result;
         }
-
-        protected override void OnFailure(Exception exception)
-        {
-            if (Environment.TickCount - _enteredTime >= Policy.KeepOpenDuration)
-            {
-                _enteredTime = 0;
-                CircuitBreaker.SwitchToState(CircuitStatus.Closed);
-            }
-        }
-
-        protected override void OnSucceed()
-        { }
     }
 }
