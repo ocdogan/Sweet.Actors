@@ -31,8 +31,8 @@ namespace Sweet.Actors
     {
         private int _successCount;
 
-        public HalfOpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
+        public HalfOpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy, ICircuitInvoker invoker)
+            : base(circuitBreaker, policy, invoker)
         { }
 
         public override CircuitStatus Status => CircuitStatus.Closed;

@@ -28,14 +28,16 @@ namespace Sweet.Actors
 {
     public class DefaultInvoker : ICircuitInvoker
     {
-        public bool Execute(ICircuitState currentState, Action action)
+        public bool Execute(Action action)
         {
-            return currentState.Execute(action);
+            action();
+            return true;
         }
 
-        public TResult Execute<TResult>(ICircuitState currentState, Func<TResult> function, out bool success)
+        public TResult Execute<TResult>(Func<TResult> function, out bool success)
         {
-            return currentState.Execute(function, out success);
+            success = true;
+            return function();
         }
     }
 }

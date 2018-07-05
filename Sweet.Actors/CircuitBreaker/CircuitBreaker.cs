@@ -37,7 +37,6 @@ namespace Sweet.Actors
 
         private CircuitPolicy _policy;
         private CircuitState _currentState;
-        private ICircuitInvoker _invoker;
 
         private Action<CircuitBreaker, Exception> _onFailure;
         private Action<CircuitBreaker, CircuitStatus> _onStateChange;
@@ -49,16 +48,16 @@ namespace Sweet.Actors
             Action<CircuitBreaker, Exception> onFailure = null, 
             Action<CircuitBreaker, CircuitStatus> onStateChange = null)
         {
-            _invoker = invoker ?? DefaultInvoker;
-
             _onFailure = onFailure;
             _onStateChange = onStateChange;
 
             _policy = policy ?? CircuitPolicy.DefaultPolicy;
 
-            _closedState = new ClosedState(this, _policy);
-            _halfOpenState = new HalfOpenState(this, _policy);
-            _openState = new OpenState(this, _policy);
+            invoker = invoker ?? DefaultInvoker;
+
+            _closedState = new ClosedState(this, _policy, invoker);
+            _halfOpenState = new HalfOpenState(this, _policy, invoker);
+            _openState = new OpenState(this, _policy, invoker);
 
             _currentState = _closedState;
         }
@@ -109,14 +108,14 @@ namespace Sweet.Actors
         {
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
-            return _invoker.Execute(_currentState, action);
+            return _currentState.Execute(action);
         }
 
         public TResult Execute<TResult>(Func<TResult> function, out bool success)
         {
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
-            return _invoker.Execute(_currentState, function, out success);
+            return _currentState.Execute(function, out success);
         }
 
         public bool Execute<T>(Action<T> action, T value)

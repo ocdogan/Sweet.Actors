@@ -26,7 +26,7 @@ using System;
 
 namespace Sweet.Actors
 {
-    public delegate object ChainedInvokerDelegate((object prevResult, bool prevSuccess) prev, out bool success);
+    public delegate object ChainedInvokerDelegate((object @return, bool success) prevResult, out bool success);
 
     public class ChainedInvoker : ICircuitInvoker
     {
@@ -37,16 +37,19 @@ namespace Sweet.Actors
             _nextChain = next;
         }
 
-        public bool Execute(ICircuitState currentState, Action action)
+        public bool Execute(Action action)
         {
-            var success = currentState.Execute(action);
-            _nextChain?.Invoke((null, success), out success);
+            action();
+
+            var success = false;
+            _nextChain?.Invoke((null, true), out success);
             return success;
         }
 
-        public TResult Execute<TResult>(ICircuitState currentState, Func<TResult> function, out bool success)
+        public TResult Execute<TResult>(Func<TResult> function, out bool success)
         {
-            var result = currentState.Execute(function, out success);
+            success = true;
+            var result = function();
             _nextChain?.Invoke((result, success), out success);
             return result;
         }

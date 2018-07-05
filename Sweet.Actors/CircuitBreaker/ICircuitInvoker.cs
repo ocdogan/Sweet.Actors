@@ -28,7 +28,7 @@ namespace Sweet.Actors
 {
     public interface ICircuitInvoker
     {
-        bool Execute(ICircuitState currentState, Action action);
-        TResult Execute<TResult>(ICircuitState currentState, Func<TResult> function, out bool success);
+        bool Execute(Action action);
+        TResult Execute<TResult>(Func<TResult> function, out bool success);
     }
 }

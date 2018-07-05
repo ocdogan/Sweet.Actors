@@ -29,11 +29,13 @@ namespace Sweet.Actors
     internal abstract class CircuitState : ICircuitState
     {
         private CircuitPolicy _policy;
+        private ICircuitInvoker _invoker;
         private CircuitBreaker _circuitBreaker;
 
-        public CircuitState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
+        public CircuitState(CircuitBreaker circuitBreaker, CircuitPolicy policy, ICircuitInvoker invoker)
         {
             _policy = policy;
+            _invoker = invoker;
             _circuitBreaker = circuitBreaker;
         }
 
@@ -45,6 +47,9 @@ namespace Sweet.Actors
 
         protected virtual bool OnExecute(Action action)
         {
+            if (_invoker != null)
+                return _invoker.Execute(action);
+
             action();
             return true;
         }

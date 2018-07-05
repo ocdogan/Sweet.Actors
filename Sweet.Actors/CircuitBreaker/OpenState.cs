@@ -30,8 +30,8 @@ namespace Sweet.Actors
     {
         private int _enteredTime;
 
-        public OpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
+        public OpenState(CircuitBreaker circuitBreaker, CircuitPolicy policy, ICircuitInvoker invoker)
+            : base(circuitBreaker, policy, invoker)
         { }
 
         public override CircuitStatus Status => CircuitStatus.Closed;

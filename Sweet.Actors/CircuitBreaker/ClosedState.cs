@@ -33,8 +33,8 @@ namespace Sweet.Actors
 
         private LinkedList<int> _failures = new LinkedList<int>();
 
-        public ClosedState(CircuitBreaker circuitBreaker, CircuitPolicy policy)
-            : base(circuitBreaker, policy)
+        public ClosedState(CircuitBreaker circuitBreaker, CircuitPolicy policy, ICircuitInvoker invoker)
+            : base(circuitBreaker, policy, invoker)
         { }
 
         public override CircuitStatus Status => CircuitStatus.Closed;
