@@ -217,35 +217,43 @@ namespace Sweet.Actors.Rpc
 
         public Task Connect()
         {
-            if (_closing != Constants.True &&
-                Interlocked.CompareExchange(ref _status, RpcClientStatus.Connecting, RpcClientStatus.Closed) == RpcClientStatus.Closed)
+            if (_closing == Constants.True)
+                return Completed;
+
+            var currentStatus = Interlocked.Read(ref _status);
+
+            if (currentStatus != RpcClientStatus.Connecting &&
+                Interlocked.CompareExchange(ref _status, RpcClientStatus.Connecting, currentStatus) == currentStatus)
             {
                 Socket socket = null;
                 try
                 {
                     socket = GetClientSocket();
-                    if (!socket.IsConnected())
+                    if (socket.IsConnected())
                     {
-                        var remoteEP = _options.EndPoint;
-
-                        var connectionTimeoutMSec = _options.ConnectionTimeoutMSec;
-                        if (connectionTimeoutMSec < 0)
-                            connectionTimeoutMSec = RpcConstants.MaxConnectionTimeout;
-
-                        return socket.ConnectAsync(remoteEP, connectionTimeoutMSec)
-                            .ContinueWith((previousTask) =>
-                            {
-                                if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
-                                {
-                                    Close(socket);
-                                    Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
-                                    return;
-                                }
-
-                                Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
-                                _connection?.OnConnect();
-                            });
+                        Interlocked.CompareExchange(ref _status, RpcClientStatus.Connected, RpcClientStatus.Connecting);
+                        return Completed;
                     }
+
+                    var remoteEP = _options.EndPoint;
+
+                    var connectionTimeoutMSec = _options.ConnectionTimeoutMSec;
+                    if (connectionTimeoutMSec < 0)
+                        connectionTimeoutMSec = RpcConstants.MaxConnectionTimeout;
+
+                    return socket.ConnectAsync(remoteEP, connectionTimeoutMSec)
+                        .ContinueWith((previousTask) =>
+                        {
+                            if (previousTask.IsFaulted || previousTask.IsCanceled || !socket.IsConnected())
+                            {
+                                Close(socket);
+                                Interlocked.Exchange(ref _status, RpcClientStatus.Closed);
+                                return;
+                            }
+
+                            Interlocked.Exchange(ref _status, RpcClientStatus.Connected);
+                            _connection?.OnConnect();
+                        });
                 }
                 catch (Exception e)
                 {
@@ -337,7 +345,10 @@ namespace Sweet.Actors.Rpc
                 bool success;
                 var socket = _circuitForConnection.Execute(WaitToConnect, out success);
                 if (!success || !socket.IsConnected())
+                {
+                    Thread.Sleep(100);
                     return Task.FromException(ConnectionError);
+                }
 
                 var seqProcessCount = 0;
                 for (var i = 0; i < SequentialSendLimit; i++)
