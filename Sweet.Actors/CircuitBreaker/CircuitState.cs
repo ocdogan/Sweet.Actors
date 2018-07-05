@@ -43,35 +43,16 @@ namespace Sweet.Actors
 
         protected CircuitBreaker CircuitBreaker => _circuitBreaker;
 
-        public bool Execute(Action action)
-        {
-            try
-            {
-                if (!OnExecute(action))
-                {
-                    if (!_policy.ThrowErrors)
-                        return false;
-                    throw new Exception(CircuitErrors.CircuitExecutionError);
-                }
-
-                Succeeded();
-                return true;
-            }
-            catch (Exception e)
-            {
-                Failed(OnFailure, e);
-                Failed(CircuitBreaker.OnFailure, e);
-
-                if (_policy.ThrowErrors)
-                    throw;
-            }
-            return false;
-        }
-
         protected virtual bool OnExecute(Action action)
         {
             action();
             return true;
+        }
+
+        protected virtual T OnExecute<T>(Func<T> function, out bool success)
+        {
+            success = true;
+            return function();
         }
 
         private void Failed(Action<Exception> failureAction, Exception exception)
@@ -97,7 +78,55 @@ namespace Sweet.Actors
         public abstract void Entered();
 
         protected abstract void OnFailure(Exception exception);
-        
+
         protected abstract void OnSucceed();
+
+        public bool Execute(Action action)
+        {
+            try
+            {
+                if (!OnExecute(action))
+                {
+                    if (!_policy.ThrowErrors)
+                        return false;
+                    throw new Exception(CircuitErrors.CircuitExecutionError);
+                }
+
+                Succeeded();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Failed(OnFailure, e);
+                Failed(CircuitBreaker.OnFailure, e);
+
+                if (_policy.ThrowErrors)
+                    throw;
+            }
+            return false;
+        }
+
+        public T Execute<T>(Func<T> function, out bool success)
+        {
+            success = false;
+            try
+            {
+                var result = OnExecute(function, out success);
+
+                Succeeded();
+                return result;
+            }
+            catch (Exception e)
+            {
+                success = false;
+
+                Failed(OnFailure, e);
+                Failed(CircuitBreaker.OnFailure, e);
+
+                if (_policy.ThrowErrors)
+                    throw;
+            }
+            return default(T);
+        }
     }
 }

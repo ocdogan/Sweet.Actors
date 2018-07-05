@@ -110,5 +110,85 @@ namespace Sweet.Actors
                 throw new ArgumentNullException(nameof(action));
             return _currentState.Execute(action);
         }
+
+        public TResult Execute<TResult>(Func<TResult> function, out bool success)
+        {
+            if (function == null)
+                throw new ArgumentNullException(nameof(function));
+            return _currentState.Execute(function, out success);
+        }
+
+        public bool Execute<T>(Action<T> action, T value)
+        {
+            return Execute(() => action(value));
+        }
+
+        public bool Execute<T1, T2>(Action<T1, T2> action, T1 value1, T2 value2)
+        {
+            return Execute(() => action(value1, value2));
+        }
+
+        public bool Execute<T1, T2, T3>(Action<T1, T2, T3> action, T1 value1, T2 value2, T3 value3)
+        {
+            return Execute(() => action(value1, value2, value3));
+        }
+
+        public bool Execute<T1, T2, T3, T4>(Action<T1, T2, T3, T4> action, T1 value1, T2 value2,
+            T3 value3, T4 value4)
+        {
+            return Execute(() => action(value1, value2, value3, value4));
+        }
+
+        public bool Execute<T1, T2, T3, T4, T5>(Action<T1, T2, T3, T4, T5> action, T1 value1, T2 value2,
+            T3 value3, T4 value4, T5 value5)
+        {
+            return Execute(() => action(value1, value2, value3, value4, value5));
+        }
+
+        public bool Execute<T1, T2, T3, T4, T5, T6>(Action<T1, T2, T3, T4, T5, T6> action, T1 value1, T2 value2,
+            T3 value3, T4 value4, T5 value5, T6 value6)
+        {
+            return Execute(() => action(value1, value2, value3, value4, value5, value6));
+        }
+
+        public bool Execute<T1, T2, T3, T4, T5, T6, T7>(Action<T1, T2, T3, T4, T5, T6, T7> action, T1 value1, T2 value2,
+            T3 value3, T4 value4, T5 value5, T6 value6, T7 value7)
+        {
+            return Execute(() => action(value1, value2, value3, value4, value5, value6, value7));
+        }
+
+        public TResult Execute<T1, TResult>(Func<T1, TResult> function, T1 value1, out bool success)
+        {
+            return Execute(() => function(value1), out success);
+        }
+
+        public TResult Execute<T1, T2, TResult>(Func<T1, T2, TResult> function, T1 value1, T2 value2, out bool success)
+        {
+            return Execute(() => function(value1, value2), out success);
+        }
+
+        public TResult Execute<T1, T2, T3, TResult>(Func<T1, T2, T3, TResult> function, T1 value1, T2 value2,
+            T3 value3, out bool success)
+        {
+            return Execute(() => function(value1, value2, value3), out success);
+        }
+
+        public TResult Execute<T1, T2, T3, T4, TResult>(Func<T1, T2, T3, T4, TResult> function, T1 value1, T2 value2,
+            T3 value3, T4 value4, out bool success)
+        {
+            return Execute(() => function(value1, value2, value3, value4), out success);
+        }
+
+        public TResult Execute<T1, T2, T3, T4, T5, TResult>(Func<T1, T2, T3, T4, T5, TResult> function, T1 value1, T2 value2,
+            T3 value3, T4 value4, T5 value5, out bool success)
+        {
+            return Execute(() => function(value1, value2, value3, value4, value5), out success);
+        }
+
+        public TResult Execute<T1, T2, T3, T4, T5, T6, TResult>(Func<T1, T2, T3, T4, T5, T6, TResult> function, T1 value1, T2 value2,
+            T3 value3, T4 value4, T5 value5, T6 value6, out bool success)
+        {
+            return Execute(() => function(value1, value2, value3, value4, value5, value6), out success);
+        }
     }
 }
