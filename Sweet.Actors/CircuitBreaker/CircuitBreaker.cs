@@ -35,10 +35,18 @@ namespace Sweet.Actors
         private CircuitPolicy _policy;
         private CircuitState _currentState;
 
+        private Action<CircuitBreaker, Exception> _onFailure;
+        private Action<CircuitBreaker, CircuitStatus> _onStateChange;
+
         private readonly object _syncRoot = new object();
 
-        public CircuitBreaker(CircuitPolicy policy = null)
+        public CircuitBreaker(CircuitPolicy policy = null, 
+            Action<CircuitBreaker, Exception> onFailure = null, 
+            Action<CircuitBreaker, CircuitStatus> onStateChange = null)
         {
+            _onFailure = onFailure;
+            _onStateChange = onStateChange;
+
             _policy = policy ?? CircuitPolicy.DefaultPolicy;
 
             _closedState = new ClosedState(this, _policy);
@@ -52,10 +60,15 @@ namespace Sweet.Actors
 
         public bool IsOpen => _currentState.Status != CircuitStatus.Closed;
 
-        internal void SwitchToState(CircuitStatus newStatus)
+        internal void OnFailure(Exception exception)
+        {
+            _onFailure?.Invoke(this, exception);
+        }
+
+        internal void SwitchToState(CircuitStatus status)
         {
             var newState = _currentState;
-            switch (newStatus)
+            switch (status)
             {
                 case CircuitStatus.HalfOpen:
                     newState = _halfOpenState;
@@ -68,13 +81,26 @@ namespace Sweet.Actors
                     break;
             }
 
+            var changed = false;
             lock (_syncRoot)
             {
                 if (_currentState != newState)
                 {
                     _currentState = newState;
+                    changed = true;
+
                     newState.Entered();
                 }
+            }
+
+            if (changed)
+            {
+                try
+                {
+                    _onStateChange?.Invoke(this, status);
+                }
+                catch (Exception)
+                { }
             }
         }
 

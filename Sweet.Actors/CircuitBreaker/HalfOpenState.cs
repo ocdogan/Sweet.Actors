@@ -42,7 +42,7 @@ namespace Sweet.Actors
             Interlocked.Exchange(ref _successCount, 0);
         }
 
-        protected override void OnFail(Exception exception)
+        protected override void OnFailure(Exception exception)
         {
             Interlocked.Exchange(ref _successCount, 0);
             CircuitBreaker.SwitchToState(CircuitStatus.Open);

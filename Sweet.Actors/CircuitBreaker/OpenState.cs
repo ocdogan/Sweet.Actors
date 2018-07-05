@@ -48,7 +48,7 @@ namespace Sweet.Actors
             _enteredTime = Environment.TickCount;
         }
 
-        protected override void OnFail(Exception exception)
+        protected override void OnFailure(Exception exception)
         {
             if (Environment.TickCount - _enteredTime >= Policy.KeepOpenDuration)
             {

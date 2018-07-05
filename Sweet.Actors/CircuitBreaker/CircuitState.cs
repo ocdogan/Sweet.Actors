@@ -59,7 +59,9 @@ namespace Sweet.Actors
             }
             catch (Exception e)
             {
-                Failed(e);
+                Failed(OnFailure, e);
+                Failed(CircuitBreaker.OnFailure, e);
+
                 if (_policy.ThrowErrors)
                     throw;
             }
@@ -72,11 +74,11 @@ namespace Sweet.Actors
             return true;
         }
 
-        private void Failed(Exception exception)
+        private void Failed(Action<Exception> failureAction, Exception exception)
         {
             try
             {
-                OnFail(exception);
+                failureAction(exception);
             }
             catch (Exception)
             { }
@@ -94,7 +96,7 @@ namespace Sweet.Actors
 
         public abstract void Entered();
 
-        protected abstract void OnFail(Exception exception);
+        protected abstract void OnFailure(Exception exception);
         
         protected abstract void OnSucceed();
     }

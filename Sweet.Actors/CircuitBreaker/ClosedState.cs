@@ -47,7 +47,7 @@ namespace Sweet.Actors
             }
         }
 
-        protected override void OnFail(Exception exception)
+        protected override void OnFailure(Exception exception)
         {
             var thresholdExceeded = false;
             lock (_syncRoot)
