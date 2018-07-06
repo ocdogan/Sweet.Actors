@@ -33,13 +33,14 @@ namespace Sweet.Actors
     {
         private const int WaitDuration = 5000;
 
-        private static int _processing;
-        private static readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
+        private static int _inProcess;
         private static readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
+
+        private static readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
 
         private static void Schedule()
         {
-            if (Interlocked.CompareExchange(ref _processing, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
                 Task.Factory.StartNew(ProcessQueue);
             else if (!_resetEvent.IsSet)
                 _resetEvent.Set();
@@ -54,7 +55,7 @@ namespace Sweet.Actors
             finally
             {
                 _resetEvent.Reset();
-                Interlocked.CompareExchange(ref _processing, 0, 1);
+                Interlocked.CompareExchange(ref _inProcess, 0, 1);
 
                 if (!_queue.IsEmpty)
                     Schedule();

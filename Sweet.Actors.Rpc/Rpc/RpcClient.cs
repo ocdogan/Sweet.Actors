@@ -35,6 +35,7 @@ namespace Sweet.Actors.Rpc
     {
         #region Constants
 
+        private const int WaitDuration = 5000;
         private const object DefaultResponse = null;
 
         private const int BulkSendLength = 10;
@@ -68,6 +69,8 @@ namespace Sweet.Actors.Rpc
         private RpcConnection _connection;
 
         private CircuitBreaker _circuitForConnection;
+
+        private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
 
         private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
 
@@ -123,7 +126,7 @@ namespace Sweet.Actors.Rpc
 
         protected override void OnDispose(bool disposing)
         {
-            Interlocked.Exchange(ref _inProcess, Constants.False);
+            Interlocked.Exchange(ref _inProcess, 0L);
             if (disposing)
             {
                 using (Interlocked.Exchange(ref _writer, null)) { }
@@ -302,9 +305,12 @@ namespace Sweet.Actors.Rpc
 
         private void Schedule()
         {
-            if (Interlocked.CompareExchange(ref _inProcess, Constants.True, Constants.False) == Constants.False)
+            if (!Disposed)
             {
-                Task.Factory.StartNew(ProcessRequestQueue);
+                if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
+                    Task.Factory.StartNew(ProcessRequestQueue);
+                else if (!_resetEvent.IsSet)
+                    _resetEvent.Set();
             }
         }
 
@@ -339,40 +345,45 @@ namespace Sweet.Actors.Rpc
         {
             try
             {
-                if (Disposed)
-                    return Completed;
-
-                bool success;
-                var socket = _circuitForConnection.Execute(WaitToConnect, out success);
-                if (!success || !socket.IsConnected())
+                if (!Disposed)
                 {
-                    Thread.Sleep(100);
-                    return Task.FromException(ConnectionError);
-                }
+                    _resetEvent.Reset();
 
-                var seqProcessCount = 0;
-                for (var i = 0; i < SequentialSendLimit; i++)
-                {
-                    if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                        !_requestQueue.TryDequeue(out RemoteRequest request))
-                        break;
+                    bool success;
+                    var socket = _circuitForConnection.Execute(WaitToConnect, out success);
+                    if (!success || !socket.IsConnected())
+                    {
+                        Thread.Sleep(100);
+                        return Task.FromException(ConnectionError);
+                    }
 
-                    seqProcessCount++;
-
-                    var flush = (seqProcessCount == BulkSendLength) || (_requestQueue.Count == 0);
-                    if (flush)
-                        seqProcessCount = 0;
-
-                    var task = ProcessRequest(request, flush);
-                    if (task.IsFaulted || task.IsCanceled)
-                        continue;
-
-                    if (!task.IsCompleted)
-                        task.ContinueWith((previousTask) =>
+                    var seqProcessCount = 0;
+                    do
+                    {
+                        for (var i = 0; i < SequentialSendLimit; i++)
                         {
-                            if (!Disposed)
-                                Schedule();
-                        });
+                            if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
+                                !_requestQueue.TryDequeue(out RemoteRequest request))
+                                break;
+
+                            seqProcessCount++;
+
+                            var flush = (seqProcessCount == BulkSendLength) || (_requestQueue.Count == 0);
+                            if (flush)
+                                seqProcessCount = 0;
+
+                            var task = ProcessRequest(request, flush);
+                            if (task.IsFaulted || task.IsCanceled)
+                                continue;
+
+                            if (!task.IsCompleted)
+                                task.ContinueWith((previousTask) =>
+                                {
+                                    if (!Disposed)
+                                        Schedule();
+                                });
+                        }
+                    } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
                 }
             }
             catch (Exception e)
@@ -382,9 +393,14 @@ namespace Sweet.Actors.Rpc
             }
             finally
             {
-                Interlocked.Exchange(ref _inProcess, Constants.False);
-                if (!_requestQueue.IsEmpty)
-                    Schedule();
+                if (!Disposed)
+                {
+                    Interlocked.Exchange(ref _inProcess, 0L);
+                    _resetEvent.Reset();
+
+                    if (!_requestQueue.IsEmpty)
+                        Schedule();
+                }
             }
             return Completed;
         }

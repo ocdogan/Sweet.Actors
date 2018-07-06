@@ -40,6 +40,7 @@ namespace Sweet.Actors
 
     internal class Process : Disposable, IProcess
     {
+        private const int WaitDuration = 5000;
         private const object DefaultResponse = null;
 
         private static readonly Task Completed = Task.FromResult(0);
@@ -57,6 +58,8 @@ namespace Sweet.Actors
         private IActor _actor;
         private ActorSystem _actorSystem;
         private IErrorHandler _errorHandler;
+
+        private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
 
         private ConcurrentQueue<IMessage> _mailbox = new ConcurrentQueue<IMessage>();
 
@@ -119,7 +122,10 @@ namespace Sweet.Actors
         {
             Interlocked.Exchange(ref _inProcess, 0L);
             if (disposing)
+            {
+                _resetEvent.Reset();
                 _processRegistery.TryRemove(_pid, out Process process);
+            }
         }
 
         public Task Send(IMessage message)
@@ -137,7 +143,7 @@ namespace Sweet.Actors
             try
             {
                 _mailbox.Enqueue(message);
-                StartProcessTask();
+                Schedule();
 
                 return Completed;
             }
@@ -172,7 +178,7 @@ namespace Sweet.Actors
                 var taskCompletor = new TaskCompletor<IFutureResponse>(_requestTimeoutMSec);
 
                 _mailbox.Enqueue(new FutureMessage(message, taskCompletor, _ctx.Pid, header));
-                StartProcessTask();
+                Schedule();
 
                 return taskCompletor.Task;
             }
@@ -182,11 +188,14 @@ namespace Sweet.Actors
             }
         }
 
-        private void StartProcessTask()
+        private void Schedule()
         {
-            if (Interlocked.CompareExchange(ref _inProcess, 1L, 0L) == 0L && !Disposed)
+            if (!Disposed)
             {
-                Task.Factory.StartNew(ProcessMailbox);
+                if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
+                    Task.Factory.StartNew(ProcessMailbox);
+                else if (!_resetEvent.IsSet)
+                    _resetEvent.Set();
             }
         }
 
@@ -194,28 +203,42 @@ namespace Sweet.Actors
         {
             try
             {
-                for (var i = 0; i < _sequentialInvokeLimit; i++)
+                if (!Disposed)
                 {
-                    if ((Interlocked.Read(ref _inProcess) != 1L) ||
-                        !_mailbox.TryDequeue(out IMessage message))
-                        break;
+                    _resetEvent.Reset();
 
-                    var task = ProcessMessage(message);
-                    if (task.IsFaulted)
-                        continue;
+                    do
+                    {
+                        for (var i = 0; i < _sequentialInvokeLimit; i++)
+                        {
+                            if ((Interlocked.Read(ref _inProcess) != 1L) ||
+                                !_mailbox.TryDequeue(out IMessage message))
+                                break;
 
-                    if (!task.IsCompleted)
-                        task.ContinueWith((previousTask) => {
-                            if (!Disposed)
-                                StartProcessTask();
-                        });
+                            var task = ProcessMessage(message);
+                            if (task.IsFaulted)
+                                continue;
+
+                            if (!task.IsCompleted)
+                                task.ContinueWith((previousTask) =>
+                                {
+                                    if (!Disposed)
+                                        Schedule();
+                                });
+                        }
+                    } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
                 }
             }
             finally
             {
-				Interlocked.Exchange(ref _inProcess, 0L);
-                if (!Disposed && !_mailbox.IsEmpty)
-                    StartProcessTask();
+                if (!Disposed)
+                {
+                    Interlocked.Exchange(ref _inProcess, 0L);
+                    _resetEvent.Reset();
+
+                    if (!_mailbox.IsEmpty)
+                        Schedule();
+                }
             }
             return Completed;
         }
