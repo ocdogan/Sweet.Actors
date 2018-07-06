@@ -343,9 +343,9 @@ namespace Sweet.Actors.Rpc
 
         private Task ProcessRequestQueue()
         {
-            try
+            if (!Disposed)
             {
-                if (!Disposed)
+                try
                 {
                     _resetEvent.Reset();
 
@@ -385,21 +385,21 @@ namespace Sweet.Actors.Rpc
                         }
                     } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
                 }
-            }
-            catch (Exception e)
-            {
-                HandleError(null, e);
-                return Task.FromException(e);
-            }
-            finally
-            {
-                if (!Disposed)
+                catch (Exception e)
                 {
-                    Interlocked.Exchange(ref _inProcess, 0L);
-                    _resetEvent.Reset();
+                    HandleError(null, e);
+                    return Task.FromException(e);
+                }
+                finally
+                {
+                    if (!Disposed)
+                    {
+                        Interlocked.Exchange(ref _inProcess, 0L);
+                        _resetEvent.Reset();
 
-                    if (!_requestQueue.IsEmpty)
-                        Schedule();
+                        if (!_requestQueue.IsEmpty)
+                            Schedule();
+                    }
                 }
             }
             return Completed;

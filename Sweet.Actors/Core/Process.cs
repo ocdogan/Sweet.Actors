@@ -201,9 +201,9 @@ namespace Sweet.Actors
 
         private Task ProcessMailbox()
         {
-            try
+            if (!Disposed)
             {
-                if (!Disposed)
+                try
                 {
                     _resetEvent.Reset();
 
@@ -228,16 +228,16 @@ namespace Sweet.Actors
                         }
                     } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
                 }
-            }
-            finally
-            {
-                if (!Disposed)
+                finally
                 {
-                    Interlocked.Exchange(ref _inProcess, 0L);
-                    _resetEvent.Reset();
+                    if (!Disposed)
+                    {
+                        Interlocked.Exchange(ref _inProcess, 0L);
+                        _resetEvent.Reset();
 
-                    if (!_mailbox.IsEmpty)
-                        Schedule();
+                        if (!_mailbox.IsEmpty)
+                            Schedule();
+                    }
                 }
             }
             return Completed;
