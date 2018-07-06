@@ -38,12 +38,9 @@ namespace Sweet.Actors
         ActorSystem ActorSystem { get; }
     }
 
-    internal class Process : Disposable, IProcess
+    internal class Process : Processor<IMessage>, IProcess
     {
-        private const int WaitDuration = 5000;
         private const object DefaultResponse = null;
-
-        private static readonly Task Completed = Task.FromResult(0);
 
         private static ConcurrentDictionary<Pid, Process> _processRegistery = new ConcurrentDictionary<Pid, Process>();
 
@@ -51,19 +48,14 @@ namespace Sweet.Actors
         private string _name;
         private Context _ctx;
 
-        private long _inProcess;
         private int _requestTimeoutMSec = -1;
-        private int _sequentialInvokeLimit;
 
         private IActor _actor;
         private ActorSystem _actorSystem;
         private IErrorHandler _errorHandler;
 
-        private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
-
-        private ConcurrentQueue<IMessage> _mailbox = new ConcurrentQueue<IMessage>();
-
         public Process(string name, ActorSystem actorSystem, IActor actor, ActorOptions options)
+            : base(-1, -1)
         {
             _name = name;
 
@@ -77,9 +69,7 @@ namespace Sweet.Actors
             
             _requestTimeoutMSec = Math.Min(Math.Max(-1, GetRequestTimeoutMSec(actorSystem, options)), Constants.MaxRequestTimeoutMSec); 
 
-            var sequentialInvokeLimit = Common.CheckSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
-            _sequentialInvokeLimit = (sequentialInvokeLimit < 1) ?
-                    Constants.DefaultSequentialInvokeLimit : sequentialInvokeLimit;
+            SetSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
 
             if (options.InitialContextData != null)
                 foreach (var kv in options.InitialContextData)
@@ -120,12 +110,9 @@ namespace Sweet.Actors
 
         protected override void OnDispose(bool disposing)
         {
-            Interlocked.Exchange(ref _inProcess, 0L);
+            base.OnDispose(disposing);
             if (disposing)
-            {
-                _resetEvent.Reset();
                 _processRegistery.TryRemove(_pid, out Process process);
-            }
         }
 
         public Task Send(IMessage message)
@@ -135,28 +122,13 @@ namespace Sweet.Actors
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            return SendInternal(message);
-        }
-
-        private Task SendInternal(IMessage message)
-        {
-            try
-            {
-                _mailbox.Enqueue(message);
-                Schedule();
-
-                return Completed;
-            }
-            catch (Exception e)
-            {
-                return Task.FromException(e);
-            }
+            return Enqueue(message);
         }
 
         public Task Send(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return SendInternal(new Message(message, _ctx.Pid, header));
+            return Enqueue(new Message(message, _ctx.Pid, header));
         }
 
         public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null)
@@ -177,8 +149,7 @@ namespace Sweet.Actors
             {
                 var taskCompletor = new TaskCompletor<IFutureResponse>(_requestTimeoutMSec);
 
-                _mailbox.Enqueue(new FutureMessage(message, taskCompletor, _ctx.Pid, header));
-                Schedule();
+                Enqueue(new FutureMessage(message, taskCompletor, _ctx.Pid, header));
 
                 return taskCompletor.Task;
             }
@@ -188,62 +159,7 @@ namespace Sweet.Actors
             }
         }
 
-        private void Schedule()
-        {
-            if (!Disposed)
-            {
-                if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
-                    Task.Factory.StartNew(ProcessMailbox);
-                else if (!_resetEvent.IsSet)
-                    _resetEvent.Set();
-            }
-        }
-
-        private Task ProcessMailbox()
-        {
-            if (!Disposed)
-            {
-                try
-                {
-                    _resetEvent.Reset();
-
-                    do
-                    {
-                        for (var i = 0; i < _sequentialInvokeLimit; i++)
-                        {
-                            if ((Interlocked.Read(ref _inProcess) != 1L) ||
-                                !_mailbox.TryDequeue(out IMessage message))
-                                break;
-
-                            var task = ProcessMessage(message);
-                            if (task.IsFaulted)
-                                continue;
-
-                            if (!task.IsCompleted)
-                                task.ContinueWith((previousTask) =>
-                                {
-                                    if (!(Disposed || _mailbox.IsEmpty))
-                                        Schedule();
-                                });
-                        }
-                    } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
-                }
-                finally
-                {
-                    if (!Disposed)
-                    {
-                        Interlocked.Exchange(ref _inProcess, 0L);
-                        _resetEvent.Reset();
-
-                        if (!_mailbox.IsEmpty)
-                            Schedule();
-                    }
-                }
-            }
-            return Completed;
-        }
-
-        protected virtual Task ProcessMessage(IMessage message)
+        protected override Task ProcessItem(IMessage message, bool flush)
         {
             var future = (message as FutureMessage);
             try
