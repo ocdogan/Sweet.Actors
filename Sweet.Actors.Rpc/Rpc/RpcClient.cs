@@ -31,11 +31,10 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors.Rpc
 {
-    internal class RpcClient : Disposable, IRemoteClient
+    internal class RpcClient : Processor<RemoteRequest>, IRemoteClient
     {
         #region Constants
 
-        private const int WaitDuration = 5000;
         private const object DefaultResponse = null;
 
         private const int BulkSendLength = 10;
@@ -46,7 +45,6 @@ namespace Sweet.Actors.Rpc
         #endregion Constants
 
         private static int IdSeed;
-        private static readonly Task Completed = Task.FromResult(0);
 
         private static readonly Exception ConnectionError = new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
         private static readonly Task ConnectionErrorTask = Task.FromException(ConnectionError);
@@ -60,19 +58,16 @@ namespace Sweet.Actors.Rpc
         private int _id;
         private long _waitingToTransmit;
 
+        private long _sequentialProcessCount;
+
         // States
         private int _closing;
-        private long _inProcess;
         private long _status = RpcClientStatus.Closed;
 
         private RpcMessageWriter _writer;
         private RpcConnection _connection;
 
         private CircuitBreaker _circuitForConnection;
-
-        private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
-
-        private ConcurrentQueue<RemoteRequest> _requestQueue = new ConcurrentQueue<RemoteRequest>();
 
         static RpcClient()
         {
@@ -126,7 +121,7 @@ namespace Sweet.Actors.Rpc
 
         protected override void OnDispose(bool disposing)
         {
-            Interlocked.Exchange(ref _inProcess, 0L);
+            base.OnDispose(disposing);
             if (disposing)
             {
                 using (Interlocked.Exchange(ref _writer, null)) { }
@@ -297,21 +292,9 @@ namespace Sweet.Actors.Rpc
             if (request == null)
                 return Task.FromException(new ArgumentNullException(nameof(request)));
 
-            _requestQueue.Enqueue(request);
+            Enqueue(request);
 
-            Schedule();
             return request.Completor.Task;
-        }
-
-        private void Schedule()
-        {
-            if (!Disposed)
-            {
-                if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
-                    Task.Factory.StartNew(ProcessRequestQueue);
-                else if (!_resetEvent.IsSet)
-                    _resetEvent.Set();
-            }
         }
 
         private Socket WaitToConnect()
@@ -341,70 +324,18 @@ namespace Sweet.Actors.Rpc
             return prev.@result;
         }
 
-        private Task ProcessRequestQueue()
+        protected override bool CanFlush()
         {
-            if (!Disposed)
-            {
-                try
-                {
-                    _resetEvent.Reset();
+            var count = Interlocked.Increment(ref _sequentialProcessCount);
 
-                    var socket = _circuitForConnection.Execute(WaitToConnect, out bool success);
-                    if (!success || !socket.IsConnected())
-                    {
-                        Thread.Sleep(100);
-                        return Task.FromException(ConnectionError);
-                    }
+            var doFlush = (count == BulkSendLength) || IsEmpty();
+            if (doFlush)
+                Interlocked.Exchange(ref _sequentialProcessCount, 0L);
 
-                    var seqProcessCount = 0;
-                    do
-                    {
-                        for (var i = 0; i < SequentialSendLimit; i++)
-                        {
-                            if ((Interlocked.Read(ref _inProcess) != Constants.True) ||
-                                !_requestQueue.TryDequeue(out RemoteRequest request))
-                                break;
-
-                            seqProcessCount++;
-
-                            var flush = (seqProcessCount == BulkSendLength) || (_requestQueue.Count == 0);
-                            if (flush)
-                                seqProcessCount = 0;
-
-                            var task = ProcessRequest(request, flush);
-                            if (task.IsFaulted || task.IsCanceled)
-                                continue;
-
-                            if (!task.IsCompleted)
-                                task.ContinueWith((previousTask) =>
-                                {
-                                    if (!(Disposed || _requestQueue.IsEmpty))
-                                        Schedule();
-                                });
-                        }
-                    } while ((Interlocked.Read(ref _inProcess) != 1L) && _resetEvent.Wait(WaitDuration));
-                }
-                catch (Exception e)
-                {
-                    HandleError(null, e);
-                    return Task.FromException(e);
-                }
-                finally
-                {
-                    if (!Disposed)
-                    {
-                        Interlocked.Exchange(ref _inProcess, 0L);
-                        _resetEvent.Reset();
-
-                        if (!_requestQueue.IsEmpty)
-                            Schedule();
-                    }
-                }
-            }
-            return Completed;
+            return doFlush;
         }
 
-        private Task ProcessRequest(RemoteRequest request, bool flush = true)
+        protected override Task ProcessItem(RemoteRequest request, bool flush)
         {
             var message = request.Message;
             var future = request.IsFuture ? (FutureMessage)message : null;
@@ -486,7 +417,7 @@ namespace Sweet.Actors.Rpc
 
         private bool Transmit(RemoteRequest request, bool flush)
         {
-            if ((Interlocked.Read(ref _inProcess) == Constants.True) && !Disposed &&
+            if (Processing() && !Disposed &&
                 WriteMessage(request.Message.ToWireMessage(request.To, request.MessageId), flush))
             {
                 BeginReceive();
