@@ -222,7 +222,7 @@ namespace Sweet.Actors
                             if (!task.IsCompleted)
                                 task.ContinueWith((previousTask) =>
                                 {
-                                    if (!Disposed)
+                                    if (!(Disposed || _mailbox.IsEmpty))
                                         Schedule();
                                 });
                         }

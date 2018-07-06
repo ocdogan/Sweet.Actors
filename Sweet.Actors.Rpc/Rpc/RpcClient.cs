@@ -349,8 +349,7 @@ namespace Sweet.Actors.Rpc
                 {
                     _resetEvent.Reset();
 
-                    bool success;
-                    var socket = _circuitForConnection.Execute(WaitToConnect, out success);
+                    var socket = _circuitForConnection.Execute(WaitToConnect, out bool success);
                     if (!success || !socket.IsConnected())
                     {
                         Thread.Sleep(100);
@@ -379,7 +378,7 @@ namespace Sweet.Actors.Rpc
                             if (!task.IsCompleted)
                                 task.ContinueWith((previousTask) =>
                                 {
-                                    if (!Disposed)
+                                    if (!(Disposed || _requestQueue.IsEmpty))
                                         Schedule();
                                 });
                         }
