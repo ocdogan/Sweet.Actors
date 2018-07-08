@@ -312,6 +312,20 @@ namespace Sweet.Actors.Rpc
             return socket;
         }
 
+        protected override Task OnBeforeProcessCycle(out bool @continue)
+        { 
+            @continue = true;
+
+            bool success;
+            var socket = _circuitForConnection.Execute(WaitToConnect, out success);
+            if (!success || !socket.IsConnected())
+            {
+                @continue = false;
+                return Task.FromException(ConnectionError);
+            }
+            return Completed;
+        }
+
         private static object ConnectionValidator((object @result, bool success) prev, out bool success)
         {
             if (!prev.success || !((Socket)prev.@result).IsConnected())
@@ -344,7 +358,7 @@ namespace Sweet.Actors.Rpc
                 if (future?.IsCanceled ?? false)
                 {
                     request.Completor.TrySetCanceled();
-                    future.Cancel();
+                    future?.Cancel();
 
                     return Completed;
                 }
@@ -362,7 +376,7 @@ namespace Sweet.Actors.Rpc
                 if (!Transmit(request, flush))
                 {
                     request.Completor.TrySetCanceled();
-                    future.Cancel();
+                    future?.Cancel();
 
                     TryToFlush();
                 }
