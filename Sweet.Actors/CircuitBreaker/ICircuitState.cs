@@ -29,6 +29,8 @@ namespace Sweet.Actors
     public interface ICircuitState
     {
         CircuitStatus Status { get; }
+        
+        void Entered();
 
         bool Execute(Action action);
         T Execute<T>(Func<T> function, out bool success);

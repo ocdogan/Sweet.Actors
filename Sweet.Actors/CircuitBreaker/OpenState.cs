@@ -34,7 +34,7 @@ namespace Sweet.Actors
             : base(circuitBreaker, policy, invoker)
         { }
 
-        public override CircuitStatus Status => CircuitStatus.Closed;
+        public override CircuitStatus Status => CircuitStatus.Open;
 
         protected override bool OnExecute(Action action)
         {
@@ -61,11 +61,14 @@ namespace Sweet.Actors
             if (Environment.TickCount - _enteredTime >= Policy.KeepOpenDuration)
             {
                 _enteredTime = 0;
-                CircuitBreaker.SwitchToState(CircuitStatus.Closed);
+                CircuitBreaker.OnFailure(this);
             }
         }
 
-        protected override void OnSucceed()
-        { }
+        protected override void OnSuccess()
+        {
+            _enteredTime = 0;
+            CircuitBreaker.OnFailure(this);
+        }
     }
 }

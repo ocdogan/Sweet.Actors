@@ -77,7 +77,7 @@ namespace Sweet.Actors
         {
             try
             {
-                OnSucceed();
+                OnSuccess();
             }
             catch (Exception)
             { }
@@ -87,7 +87,7 @@ namespace Sweet.Actors
 
         protected abstract void OnFailure(Exception exception);
 
-        protected abstract void OnSucceed();
+        protected abstract void OnSuccess();
 
         public bool Execute(Action action)
         {
@@ -96,7 +96,13 @@ namespace Sweet.Actors
                 if (!OnExecute(action))
                 {
                     if (!_policy.ThrowErrors)
+                    {
+                        Failed(OnFailure, null);
+                        Failed(CircuitBreaker.OnFailure, null);
+
                         return false;
+                    }
+                    
                     throw new Exception(CircuitErrors.CircuitExecutionError);
                 }
 
@@ -120,6 +126,16 @@ namespace Sweet.Actors
             try
             {
                 var result = OnExecute(function, out success);
+                if (!success)
+                {
+                    if (_policy.ThrowErrors)
+                        throw new Exception(CircuitErrors.CircuitExecutionError);
+
+                    Failed(OnFailure, null);
+                    Failed(CircuitBreaker.OnFailure, null);
+
+                    return default(T);
+                }
 
                 Succeeded();
                 return result;

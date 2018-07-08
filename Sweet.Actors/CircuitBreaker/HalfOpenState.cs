@@ -35,7 +35,7 @@ namespace Sweet.Actors
             : base(circuitBreaker, policy, invoker)
         { }
 
-        public override CircuitStatus Status => CircuitStatus.Closed;
+        public override CircuitStatus Status => CircuitStatus.HalfOpen;
 
         public override void Entered()
         {
@@ -45,15 +45,15 @@ namespace Sweet.Actors
         protected override void OnFailure(Exception exception)
         {
             Interlocked.Exchange(ref _successCount, 0);
-            CircuitBreaker.SwitchToState(CircuitStatus.Open);
+            CircuitBreaker.OnFailure(this);
         }
 
-        protected override void OnSucceed()
+        protected override void OnSuccess()
         {
             if (Interlocked.Increment(ref _successCount) >= Policy.SuccessCountToClose)
             {
                 Interlocked.Exchange(ref _successCount, 0);
-                CircuitBreaker.SwitchToState(CircuitStatus.Closed);
+                CircuitBreaker.OnSuccess(this);
             }
         }
     }

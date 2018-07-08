@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/Sweet.Actors.RpcTest/Sweet.Actors.RpcTest.csproj"
+                "${workspaceFolder}/Sweet.Actors.RpcLocalSystemTest/Sweet.Actors.RpcLocalSystemTest.csproj"
             ],
             "problemMatcher": "$msCompile"
         }

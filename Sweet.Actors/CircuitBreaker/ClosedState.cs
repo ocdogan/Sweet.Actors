@@ -65,7 +65,7 @@ namespace Sweet.Actors
             }
 
             if (thresholdExceeded)
-                CircuitBreaker.SwitchToState(CircuitStatus.HalfOpen);
+                CircuitBreaker.OnFailure(this);
         }
 
         private void UpdateWindow(int windowEndTime)
@@ -82,7 +82,7 @@ namespace Sweet.Actors
             }
         }
 
-        protected override void OnSucceed()
+        protected override void OnSuccess()
         { }
     }
 }

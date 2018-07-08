@@ -36,7 +36,7 @@ namespace Sweet.Actors
         private CircuitState _openState;
 
         private CircuitPolicy _policy;
-        private CircuitState _currentState;
+        private ICircuitState _currentState;
 
         private Action<CircuitBreaker, Exception> _onFailure;
         private Action<CircuitBreaker, CircuitStatus> _onStateChange;
@@ -73,31 +73,52 @@ namespace Sweet.Actors
             _onFailure?.Invoke(this, exception);
         }
 
-        internal void SwitchToState(CircuitStatus status)
+        public void Open()
         {
-            var currentState = _currentState;
+            SwitchToState(_openState);
+        }
 
-            var switchTo = currentState;
-            switch (status)
+        public void HalfOpen()
+        {
+            SwitchToState(_halfOpenState);
+        }
+
+        public void Close()
+        {
+            SwitchToState(_closedState);
+        }
+
+        internal void OnFailure(ICircuitState state)
+        {
+            switch (state.Status)
             {
+                case CircuitStatus.Closed:
+                    SwitchToState(_halfOpenState);
+                    break;
                 case CircuitStatus.HalfOpen:
-                    switchTo = _halfOpenState;
+                    SwitchToState(_openState);
                     break;
                 case CircuitStatus.Open:
-                    switchTo = _openState;
-                    break;
-                case CircuitStatus.Closed:
-                    switchTo = _closedState;
+                    SwitchToState(_closedState);
                     break;
             }
+        }
 
-            if (currentState != switchTo &&
-                Interlocked.CompareExchange(ref _currentState, switchTo, currentState) == currentState)
+        internal void OnSuccess(ICircuitState state)
+        {
+            SwitchToState(_closedState);
+        }
+
+        private void SwitchToState(ICircuitState state)
+        {
+            var currentState = _currentState;
+            if (currentState != state &&
+                Interlocked.CompareExchange(ref _currentState, state, currentState) == currentState)
             {
-                switchTo.Entered();
+                state.Entered();
                 try
                 {
-                    _onStateChange?.Invoke(this, status);
+                    _onStateChange?.Invoke(this, state.Status);
                 }
                 catch (Exception)
                 { }

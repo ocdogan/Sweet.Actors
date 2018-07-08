@@ -158,8 +158,7 @@ namespace Sweet.Actors
                     {
                         ResetScheduleRequest();
 
-
-                        var onBefore = OnBeforeProcessCycle(out bool @continue);
+                        var onBefore = InitProcessCycle(out bool @continue);
                         if (onBefore.IsFaulted || onBefore.IsCanceled)
                             return onBefore;
 
@@ -178,7 +177,7 @@ namespace Sweet.Actors
                         }
                         finally
                         {
-                            OnAfterProcessCycle(exception, out @continue);
+                            CompleteProcessCycle(exception, out @continue);
                         }
 
                         if (!@continue)
@@ -200,13 +199,13 @@ namespace Sweet.Actors
             return Completed;
         }
 
-        protected virtual Task OnBeforeProcessCycle(out bool @continue)
+        protected virtual Task InitProcessCycle(out bool @continue)
         { 
             @continue = true;
             return Completed;
         }
 
-        protected virtual void OnAfterProcessCycle(Exception exception, out bool @continue)
+        protected virtual void CompleteProcessCycle(Exception exception, out bool @continue)
         { 
             @continue = true;
         }

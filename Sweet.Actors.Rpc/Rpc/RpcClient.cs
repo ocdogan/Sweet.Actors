@@ -312,7 +312,7 @@ namespace Sweet.Actors.Rpc
             return socket;
         }
 
-        protected override Task OnBeforeProcessCycle(out bool @continue)
+        protected override Task InitProcessCycle(out bool @continue)
         { 
             @continue = true;
 
@@ -321,6 +321,7 @@ namespace Sweet.Actors.Rpc
             if (!success || !socket.IsConnected())
             {
                 @continue = false;
+                Thread.Sleep(10);
                 return Task.FromException(ConnectionError);
             }
             return Completed;

@@ -90,13 +90,13 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
             Console.WriteLine("Press ESC to exit, any key to continue ...");
 
-            while (ReadKey() != ConsoleKey.Escape)
+            do
             {
                 Console.Clear();
                 Console.WriteLine("Press ESC to exit, any key to continue ...");
 
                 Call();
-            }
+            } while (ReadKey() != ConsoleKey.Escape);
         }
 
         private static bool IsWinPlatform
