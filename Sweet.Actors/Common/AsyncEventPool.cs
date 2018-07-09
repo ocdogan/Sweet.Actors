@@ -31,75 +31,37 @@ namespace Sweet.Actors
 {
     public static class AsyncEventPool
     {
-        private const int WaitDuration = 5000;
-
-        private static int _inProcess;
-        private static readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
-
-        private static readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
-
-        private static void Schedule()
+        private class ActionProcessor : Processor<Action>
         {
-            if (Interlocked.CompareExchange(ref _inProcess, 1, 0) == 0)
-                Task.Factory.StartNew(ProcessQueue);
-            else if (!_resetEvent.IsSet)
-                _resetEvent.Set();
-        }
-
-        private static void ProcessQueue()
-        {
-            try
+            public void Run(Action action)
             {
-                DequeueOrWait();
+                Enqueue(action);
             }
-            finally
-            {
-                _resetEvent.Reset();
-                Interlocked.CompareExchange(ref _inProcess, 0, 1);
 
-                if (!_queue.IsEmpty)
-                    Schedule();
+            protected override void CompleteProcessCycle(Exception exception, out bool @continue)
+            {
+                @continue = true;
+                Thread.Sleep(1);
             }
-        }
 
-        private static void DequeueOrWait()
-        {
-            do
+            protected override Task ProcessItem(Action action, bool flush)
             {
-                var loopCount = 0;
                 try
                 {
-                    while (_queue.TryDequeue(out Action action))
-                    {
-                        try
-                        {
-                            action();
-                        }
-                        catch (Exception)
-                        { }
-
-                        if (loopCount++ >= 100)
-                        {
-                            loopCount = 0;
-                            Thread.Sleep(1);
-                        }
-                    }
+                    action();
                 }
-                finally
-                {
-                    _resetEvent.Reset();
-                }
+                catch (Exception)
+                { }
+                return Completed;
             }
-            while (_resetEvent.Wait(WaitDuration));
         }
+
+        private static readonly ActionProcessor _processor = new ActionProcessor();
 
         public static void Run(Action action)
         {
             if (action != null)
-            {
-                _queue.Enqueue(action);
-                Schedule();
-            }
+                _processor.Run(action);
         }
     }
 }
