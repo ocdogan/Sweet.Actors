@@ -149,7 +149,7 @@ namespace Sweet.Actors.Rpc
             }
             finally
             {
-                AsyncEventPool.Run(dataStream.Dispose);
+                dataStream.Dispose();
             }
             return true;
         }
@@ -178,7 +178,7 @@ namespace Sweet.Actors.Rpc
                 }
                 finally
                 {
-                    AsyncEventPool.Run(outStream.Dispose);
+                    outStream.Dispose();
                 }
             }
             return false;

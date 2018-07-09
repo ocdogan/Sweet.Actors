@@ -38,10 +38,70 @@ namespace Sweet.Actors.SerializeTest
 
         static void Main(string[] args)
         {
-            SerializeTest1();
+            SerializeTest3();
         }
 
         static void SerializeTest1()
+        {
+            var sw = new Stopwatch();
+
+            Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+            while (ReadKey() != ConsoleKey.Escape)
+            {
+                Console.Clear();
+                Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+                sw.Restart();
+
+                for (var i = 0; i < loop; i++)
+                {
+                    var message = new WireMessage
+                    {
+                        Data = "hello (fire & forget) - " + i.ToString("000000"),
+                        MessageType = MessageType.Default
+                    };
+                }
+
+                sw.Stop();
+
+                Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+                Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
+            }
+        }
+
+        static void SerializeTest2()
+        {
+            var serializer = new DefaultRpcSerializer();
+
+            var sw = new Stopwatch();
+
+            Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+            while (ReadKey() != ConsoleKey.Escape)
+            {
+                Console.Clear();
+                Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+                var message = new WireMessage
+                {
+                    Data = "hello (fire & forget) - 000000",
+                    MessageType = MessageType.Default
+                };
+
+                sw.Restart();
+
+                for (var i = 0; i < loop; i++)
+                    serializer.Serialize(message);
+
+                sw.Stop();
+
+                Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+                Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
+            }
+        }
+
+        static void SerializeTest3()
         {
             var serializer = new DefaultRpcSerializer();
 
@@ -58,7 +118,8 @@ namespace Sweet.Actors.SerializeTest
 
                 for (var i = 0; i < loop; i++)
                 {
-                    var message = new WireMessage {
+                    var message = new WireMessage
+                    {
                         Data = "hello (fire & forget) - " + i.ToString("000000"),
                         MessageType = MessageType.Default
                     };

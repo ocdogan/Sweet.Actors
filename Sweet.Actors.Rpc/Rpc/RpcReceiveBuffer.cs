@@ -53,10 +53,7 @@ namespace Sweet.Actors.Rpc
                 var queue = Interlocked.Exchange(ref _messageQueue, null);
 
                 var stream = Interlocked.Exchange(ref _stream, null);
-                if (stream != null)
-                {
-                    AsyncEventPool.Run(stream.Dispose);
-                }
+                stream?.Dispose();
             }
         }
 
