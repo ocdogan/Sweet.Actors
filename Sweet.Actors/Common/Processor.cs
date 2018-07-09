@@ -31,15 +31,15 @@ namespace Sweet.Actors
 {
     public class Processor<T> : Disposable
     {
-        protected const int MinWaitDuration = 100;
-        protected const int MaxWaitDuration = 60000;
-        protected const int DefaultWaitDuration = 5000;
+        protected const int MinWaitDuration = 50;
+        protected const int MaxWaitDuration = 10000;
+        protected const int DefaultWaitDuration = 1000;
 
         protected static readonly Task Completed = Task.FromResult(0);
 
         private long _inProcess;
         private long _inWaitForSchedule;
-        private long _scheduleRequestCount;
+        private long _rescheduleRequest;
         private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
 
         private readonly ConcurrentQueue<T> _queue = new ConcurrentQueue<T>();
@@ -103,48 +103,53 @@ namespace Sweet.Actors
                     Task.Factory.StartNew(ProcessQueue);
                 else
                 {
-                    Interlocked.Increment(ref _scheduleRequestCount);
-                    if (Interlocked.Read(ref _inWaitForSchedule) == 0L && !_resetEvent.IsSet)
-                        _resetEvent.Set();
+                    Interlocked.Exchange(ref _rescheduleRequest, 1L);
+                    _resetEvent.Set();
                 }
             }
         }
 
-        protected bool WaitForScheduleRequest(CancellationToken cancellationToken)
+        protected bool WaitForScheduleRequest()
         {
             if (Interlocked.Read(ref _inProcess) != 0L)
             {
-                if (IsScheduleRequested())
-                {                    
-                    ResetScheduleRequest();
-                    return true;
+                if (Interlocked.CompareExchange(ref _inWaitForSchedule, 1L, 0L) != 0L)
+                {
+                    _resetEvent.Set();
+                    return Interlocked.Read(ref _rescheduleRequest) != 0;
                 }
 
-                if (Interlocked.CompareExchange(ref _inWaitForSchedule, 1L, 0L) == 0L)
+                var requested = false;
+                try
                 {
-                    try
-                    {
-                        return _resetEvent.Wait(_requestWaitDuration, cancellationToken);
-                    }
-                    finally
-                    {
-                        ResetScheduleRequest();
-                    }
-                }                
+                    requested = IsScheduleRequested() ||
+                        _resetEvent.Wait(_requestWaitDuration, new CancellationToken());
+                }
+                finally
+                {
+                    requested = requested || Interlocked.Read(ref _rescheduleRequest) != 0L;
+
+                    Interlocked.Exchange(ref _inWaitForSchedule, 0L);
+                    ResetScheduleRequest();
+                }
+                return requested;
             }
             return false;
         }
 
         protected bool IsScheduleRequested()
         {
-            return Interlocked.Read(ref _scheduleRequestCount) > 0L || _resetEvent.IsSet;
+            return Interlocked.Read(ref _rescheduleRequest) != 0L ||
+                Interlocked.Read(ref _inWaitForSchedule) != 0L ||
+                _resetEvent.IsSet;
         }
 
         protected void ResetScheduleRequest()
         {
-            Interlocked.Exchange(ref _scheduleRequestCount, 0L);
-            if (_resetEvent.IsSet)
-                _resetEvent.Reset();
+            Interlocked.Exchange(ref _rescheduleRequest, 0L);
+            if (Interlocked.Read(ref _inWaitForSchedule) != 0L)
+                _resetEvent.Set();
+            else _resetEvent.Reset();
         }
 
         private Task ProcessQueue()
@@ -153,7 +158,6 @@ namespace Sweet.Actors
             {
                 try
                 {
-                    var cancellationToken = new CancellationToken();
                     do
                     {
                         ResetScheduleRequest();
@@ -182,7 +186,7 @@ namespace Sweet.Actors
 
                         if (!@continue)
                             break;
-                    } while (WaitForScheduleRequest(cancellationToken));
+                    } while (WaitForScheduleRequest());
                 }
                 finally
                 {

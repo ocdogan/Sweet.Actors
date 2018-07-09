@@ -339,9 +339,30 @@ namespace Sweet.Actors.Rpc
                 var bytesReceived = asyncReceiveBuffer.Count;
                 if (bytesReceived > 0)
                 {
-                    connection.ProcessReceived(asyncReceiveBuffer.Buffer, bytesReceived);
+                    var buffer = asyncReceiveBuffer.Buffer;
+
+                    connection.ProcessReceived(buffer, bytesReceived);
                     if (connection.Disposed)
                         return;
+
+                    if (Common.IsWinPlatform)
+                    {
+                        int available;
+                        var socket = connection.Connection;
+                        var bufferLen = asyncReceiveBuffer.Length;
+
+                        while ((available = Math.Min(bufferLen, socket.Available)) > 0)
+                        {
+                            calledSynchronously = true;
+
+                            bytesReceived = socket.Receive(buffer, 0, available, SocketFlags.None);
+                            if (bytesReceived > 0)
+                                connection.ProcessReceived(buffer, bytesReceived);
+
+                            if (asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
+                                break;
+                        }
+                    }
 
                     if (calledSynchronously &&
                         asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
