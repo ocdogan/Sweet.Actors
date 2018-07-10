@@ -23,7 +23,8 @@
 #endregion License
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -37,7 +38,7 @@ namespace Sweet.Actors.Rpc
 
         private const object DefaultResponse = null;
 
-        private const int BulkSendLength = 10;
+        private const int DefaultBulkSendLength = 100;
         private const int SequentialSendLimit = 500;
         private const int ConnectionErrorTreshold = 5;
         private const int ConnectionRefuseTimeMSec = 10000;
@@ -49,6 +50,8 @@ namespace Sweet.Actors.Rpc
         private static readonly Exception ConnectionError = new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
         private static readonly Task ConnectionErrorTask = Task.FromException(ConnectionError);
 
+        private static readonly RemoteRequest[] EmptyRequests = new RemoteRequest[0];
+
         private NativeSocket _socket;
         private object _socketLock = new object();
 
@@ -59,6 +62,7 @@ namespace Sweet.Actors.Rpc
         private long _waitingToTransmit;
 
         private long _sequentialProcessCount;
+        private int _bulkSendLength = DefaultBulkSendLength;
 
         // States
         private int _closing;
@@ -89,6 +93,10 @@ namespace Sweet.Actors.Rpc
             _onResponse = onResponse;
             _options = options?.Clone() ?? RpcClientOptions.Default;
             _writer = new RpcMessageWriter(_options.Serializer);
+
+            _bulkSendLength = _options.BulkSendLength;
+            if (_bulkSendLength < 1)
+                _bulkSendLength = DefaultBulkSendLength;
         }
 
         public int Id => _id;
@@ -197,7 +205,7 @@ namespace Sweet.Actors.Rpc
                         var remoteEP = _options.EndPoint;
                         var addressFamily = remoteEP.AddressFamily;
 
-                        if (addressFamily == AddressFamily.Unknown || 
+                        if (addressFamily == AddressFamily.Unknown ||
                             addressFamily == AddressFamily.Unspecified)
                             addressFamily = IPAddress.Any.AddressFamily;
 
@@ -313,7 +321,7 @@ namespace Sweet.Actors.Rpc
         }
 
         protected override Task InitProcessCycle(out bool @continue)
-        { 
+        {
             @continue = true;
 
             bool success;
@@ -339,53 +347,122 @@ namespace Sweet.Actors.Rpc
             return prev.@result;
         }
 
-        protected override bool CanFlush()
+        protected override void ProcessItems()
         {
-            var count = Interlocked.Increment(ref _sequentialProcessCount);
+            for (var i = 0; i < SequentialInvokeLimit; i++)
+            {
+                if (!Processing() || IsEmpty())
+                    break;
 
-            var doFlush = (count == BulkSendLength) || IsEmpty();
-            if (doFlush)
-                Interlocked.Exchange(ref _sequentialProcessCount, 0L);
+                var requests = PrepareMessagesToProcess();
+                if ((requests?.Count ?? 0) == 0)
+                    break;
 
-            return doFlush;
+                if (!Transmit(requests, true))
+                {
+                    TryToFlush();
+                    CancelRequests(requests);
+                }
+            }
         }
 
-        protected override Task ProcessItem(RemoteRequest request, bool flush)
+        private IList PrepareMessagesToProcess()
         {
+            IList result = EmptyRequests;
+
+            var count = 0;
+            for (var i = 0; i < _bulkSendLength; i++)
+            {
+                if (!TryDequeue(out RemoteRequest item))
+                    break;
+
+                var task = PrepareItem(item, out bool canSend);
+                if (!canSend || task.IsFaulted || task.IsCanceled)
+                    continue;
+
+                switch (count++)
+                {
+                    case 0:
+                        result = new RemoteRequest[] { item };
+                        break;
+                    case 1:
+                        {
+                            var firstItem = result[0];
+
+                            result = new List<RemoteRequest>(Math.Min(Count(), _bulkSendLength));
+
+                            result.Add(firstItem);
+                            result.Add(item);
+                            break;
+                        }
+                    default:
+                        result.Add(item);
+                        break;
+                }
+            }
+            return result;
+        }
+
+        private void CancelRequests(IList requests)
+        {
+            foreach (var item in requests)
+            {
+                var request = (RemoteRequest)item;
+                var future = request.IsFuture ? (FutureMessage)request.Message : null;
+                try
+                {
+                    request.Completor.TrySetCanceled();
+                    future?.Cancel();
+                }
+                catch (Exception e)
+                {
+                    HandleError(request, e);
+
+                    try
+                    {
+                        future?.RespondToWithError(e, future.From);
+                    }
+                    catch (Exception)
+                    { }
+                }
+            }
+        }
+
+        protected virtual Task PrepareItem(RemoteRequest request, out bool canSend)
+        {
+            canSend = true;
+
             var message = request.Message;
             var future = request.IsFuture ? (FutureMessage)message : null;
             try
             {
                 if (future?.IsCanceled ?? false)
                 {
+                    canSend = false;
+
                     request.Completor.TrySetCanceled();
                     future?.Cancel();
 
-                    return Completed;
+                    return Canceled;
                 }
 
                 if (message.Expired)
                 {
+                    canSend = false;
+
                     var error = new Exception(Errors.MessageExpired);
 
                     request.Completor.TrySetException(error);
                     future?.RespondToWithError(error, future.From);
 
-                    return Completed;
-                }
-
-                if (!Transmit(request, flush))
-                {
-                    request.Completor.TrySetCanceled();
-                    future?.Cancel();
-
-                    TryToFlush();
+                    return Canceled;
                 }
 
                 return Completed;
             }
             catch (Exception e)
             {
+                canSend = false;
                 HandleError(request, e);
 
                 try
@@ -395,13 +472,7 @@ namespace Sweet.Actors.Rpc
                 catch (Exception)
                 { }
 
-                TryToFlush();
-
                 return Task.FromException(e);
-            }
-            finally
-            {
-                AsyncEventPool.Run(request.Completed);
             }
         }
 
@@ -430,27 +501,42 @@ namespace Sweet.Actors.Rpc
             { }
         }
 
-        private bool Transmit(RemoteRequest request, bool flush)
+        private bool Transmit(IList requests, bool flush)
         {
-            if (Processing() && !Disposed &&
-                WriteMessage(request.Message.ToWireMessage(request.To, request.MessageId), flush))
+            if (Processing() && !Disposed)
             {
-                BeginReceive();
-                return true;
+                var requestCnt = requests?.Count ?? 0;
+                if (requestCnt > 0)
+                {
+                    var messages = new WireMessage[requestCnt];
+                    for (var i = 0; i < requestCnt; i++)
+                    {
+                        var request = (RemoteRequest)requests[i];
+                        messages[i] = request.Message.ToWireMessage(request.To, request.MessageId);
+                    }
+
+                    if (WriteMessage(messages, flush))
+                    {
+                        BeginReceive();
+                        return true;
+                    }
+                }
             }
             return false;
         }
 
-        protected virtual bool WriteMessage(WireMessage message, bool flush = true)
+        protected virtual bool WriteMessage(WireMessage[] messages, bool flush = true)
         {
             var result = false;
-            if (message != null)
+
+            var messagesCount = messages?.Length ?? 0;
+            if (messagesCount > 0)
             {
                 var waitingCount = 0L;
                 try
                 {
-                    waitingCount = Interlocked.Increment(ref _waitingToTransmit);
-                    result = _writer.Write(_connection?.Out, message, flush);
+                    waitingCount = Interlocked.Add(ref _waitingToTransmit, messagesCount);
+                    result = _writer.Write(_connection?.Out, messages, flush);
                 }
                 finally
                 {

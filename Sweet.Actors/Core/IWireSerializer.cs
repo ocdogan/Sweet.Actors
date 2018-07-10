@@ -22,15 +22,16 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System.Collections.Generic;
 using System.IO;
 
 namespace Sweet.Actors
 {
     public interface IWireSerializer
     {
-        byte[] Serialize(WireMessage message);
-        long Serialize(WireMessage message, Stream stream);
-        RemoteMessage Deserialize(byte[] data);
-        RemoteMessage Deserialize(Stream stream);
+        byte[] Serialize(WireMessage[] message);
+        long Serialize(WireMessage[] message, Stream stream);
+        IEnumerable<RemoteMessage> Deserialize(byte[] data);
+        IEnumerable<RemoteMessage> Deserialize(Stream stream);
     }
 }

@@ -23,9 +23,8 @@
 #endregion License
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 
 using Sweet.Actors;
 using Sweet.Actors.Rpc;
@@ -38,7 +37,7 @@ namespace Sweet.Actors.SerializeTest
 
         static void Main(string[] args)
         {
-            SerializeTest3();
+            SerializeTest4();
         }
 
         static void SerializeTest1()
@@ -92,7 +91,7 @@ namespace Sweet.Actors.SerializeTest
                 sw.Restart();
 
                 for (var i = 0; i < loop; i++)
-                    serializer.Serialize(message);
+                    serializer.Serialize(new WireMessage[] { message });
 
                 sw.Stop();
 
@@ -124,7 +123,43 @@ namespace Sweet.Actors.SerializeTest
                         MessageType = MessageType.Default
                     };
 
-                    serializer.Serialize(message);
+                    serializer.Serialize(new WireMessage[] { message });
+                }
+
+                sw.Stop();
+
+                Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+                Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
+            }
+        }
+
+        static void SerializeTest4()
+        {
+            var serializer = new DefaultRpcSerializer();
+
+            var sw = new Stopwatch();
+
+            Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+            while (ReadKey() != ConsoleKey.Escape)
+            {
+                Console.Clear();
+                Console.WriteLine("Press ESC to exit, any key to continue ...");
+
+                sw.Restart();
+                const int BulkSize = 100;
+
+                for (var i = 0; i < loop; i++)
+                {
+                    var list = new List<WireMessage>(BulkSize / 2);
+
+                    list.Add(new WireMessage
+                    {
+                        Data = "hello (fire & forget) - " + i.ToString("000000"),
+                        MessageType = MessageType.Default
+                    });
+
+                    serializer.Serialize(list.ToArray());
                 }
 
                 sw.Stop();

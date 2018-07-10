@@ -86,7 +86,7 @@ namespace Sweet.Actors.Rpc
             outStream.Write(frameCntBytes, 0, frameCntBytes.Length);
         }
 
-        public virtual bool Write(Stream outStream, WireMessage message, bool flush = true)
+        public virtual bool Write(Stream outStream, WireMessage[] messages, bool flush = true)
         {
             ThrowIfDisposed();
 
@@ -96,7 +96,7 @@ namespace Sweet.Actors.Rpc
             var dataStream = new ChunkedStream();
             try
             {
-                var dataLen = _serializer.Serialize(message, dataStream);
+                var dataLen = _serializer.Serialize(messages, dataStream);
                 if (dataLen > RpcConstants.MaxDataSize)
                     throw new Exception(Errors.MaxAllowedDataSizeExceeded);
 
@@ -130,31 +130,30 @@ namespace Sweet.Actors.Rpc
 
                             // Frame length
                             var frameDataLen = (ushort)Math.Min(RpcConstants.FrameDataSize, dataLen - offset);
-                            dataStream.Read(slice, 0, frameDataLen);
+                            dataStream.Read(buffer, 0, frameDataLen);
 
                             var frameDataLenBytes = frameDataLen.ToBytes();
                             outStream.Write(frameDataLenBytes, 0, frameDataLenBytes.Length);
 
                             if (frameDataLen > 0)
                             {
-                                outStream.Write(buffer, offset, frameDataLen);
+                                outStream.Write(buffer, 0, frameDataLen);
                                 offset += frameDataLen;
                             }
                         }
                     }
                 }
-
-                if (flush)
-                    outStream.Flush();
             }
             finally
             {
+                if (flush)
+                    outStream.Flush();
                 dataStream.Dispose();
             }
             return true;
         }
 
-        public virtual bool Write(Socket socket, WireMessage message)
+        public virtual bool Write(Socket socket, WireMessage[] messages)
         {
             ThrowIfDisposed();
 
@@ -163,7 +162,7 @@ namespace Sweet.Actors.Rpc
                 var outStream = new ChunkedStream();
                 try
                 {
-                    if (Write(outStream, message))
+                    if (Write(outStream, messages))
                     {
                         using (var slice = SliceCache.Acquire())
                         {

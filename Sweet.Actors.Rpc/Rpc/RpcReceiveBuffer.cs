@@ -57,27 +57,51 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        public bool OnReceiveData(byte[] buffer, int offset, int bytesTransferred)
-		{
-            if ((buffer != null) && (bytesTransferred > 0))
-            {
-                _stream.Write(buffer, offset, bytesTransferred);
+        private static int _counter;
+        private static int _bytesReceived;
 
-                var parsed = false;
-                while (RpcMessageParser.TryParse(_stream, out RemoteMessage message))
+        public bool OnReceiveData(byte[] buffer, int offset, int bytesReceived)
+		{
+            var parsed = false;
+            if ((buffer != null) && (bytesReceived > 0))
+            {
+                _stream.Write(buffer, offset, bytesReceived);
+                _bytesReceived += bytesReceived;
+
+                while (RpcMessageParser.TryParse(_stream, out RemoteMessage[] messages))
                 {
+                    if ((_counter += messages.Length) % 100 == 0)
+                        Console.WriteLine("Received: " + _counter);
+
+                    if (Enqueue(messages))
+                        parsed = true;
+                }
+            }
+            return parsed;
+        }
+
+        private bool Enqueue(RemoteMessage[] messages)
+        {
+            var result = false;
+
+            var count = messages?.Length ?? 0;
+            if (count > 0)
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    var message = messages[i];
                     if (message != null)
                     {
                         _messageQueue.Enqueue(message);
-                        parsed = true;
+                        result = true;
                     }
                 }
-                return parsed;
             }
-            return false;
+
+            return result;
         }
 
-		public bool TryGetMessage(out RemoteMessage message)
+        public bool TryGetMessage(out RemoteMessage message)
 		{
 			message = null;
             if (!Disposed && _messageQueue.TryDequeue(out message))

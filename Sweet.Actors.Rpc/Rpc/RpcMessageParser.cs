@@ -25,6 +25,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -52,9 +53,9 @@ namespace Sweet.Actors.Rpc
         private static IWireSerializer _serializer;
         private static readonly ReaderWriterLockSlim _serializerLock = new ReaderWriterLockSlim();
 
-        public static bool TryParse(Stream input, out RemoteMessage message)
+        public static bool TryParse(Stream input, out RemoteMessage[] messages)
         {
-            message = null;
+            messages = null;
             if (!TryParsePartitioned(input, out RpcPartitionedMessage partitionedMsg))
                 return false;
 
@@ -89,12 +90,8 @@ namespace Sweet.Actors.Rpc
 
                         using (var stream = new ChunkedStream(frameDataList))
                         {
-                            message = serializer.Deserialize(stream);
-
-                            if (message.Message != null && 
-                                message.Message != Message.Empty &&
-                                message.To != Aid.Unknown)
-                                return true;
+                            messages = serializer.Deserialize(stream).ToArray();
+                            return ((messages?.Length ?? 0) > 0);
                         }
                     }
                 }

@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Wire;
 
@@ -32,44 +33,55 @@ namespace Sweet.Actors.Rpc
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public RemoteMessage Deserialize(byte[] data)
+        public IEnumerable<RemoteMessage> Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return null;
+                yield return null;
 
             using (var stream = new ChunkedStream(data))
             {
-                return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
+                var messages = _serializer.Deserialize<WireMessage[]>(stream);
+                if (messages == null)
+                    yield return null;
+
+                foreach (var message in messages)
+                    yield return message.ToRemoteMessage();
             }
         }
 
-        public RemoteMessage Deserialize(Stream stream)
+        public IEnumerable<RemoteMessage> Deserialize(Stream stream)
         {
             if (stream == null)
-                return null;
-            return (_serializer.Deserialize<WireMessage>(stream)).ToRemoteMessage();
+                yield return null;
+
+            var messages = _serializer.Deserialize<WireMessage[]>(stream);
+            if (messages == null)
+                yield return null;
+
+            foreach (var message in messages)
+                yield return message.ToRemoteMessage();
         }
 
-        public byte[] Serialize(WireMessage message)
+        public byte[] Serialize(WireMessage[] messages)
         {
-            if (message != null)
+            if (messages != null && messages.Length > 0)
             {
                 using (var stream = new ChunkedStream())
                 { 
-                    _serializer.Serialize(message, stream);
+                    _serializer.Serialize(messages, stream);
                     return stream.ToArray();
                 }
             }
             return null;
         }
 
-        public long Serialize(WireMessage message, Stream stream)
+        public long Serialize(WireMessage[] messages, Stream stream)
         {
-            if (message != null && 
+            if (messages != null && messages.Length > 0 &&
                 stream != null && stream.CanWrite)
             {
                 var previousPos = stream.Position;
-                 _serializer.Serialize(message, stream);
+                 _serializer.Serialize(messages, stream);
 
                 return Math.Max(-1L, stream.Position - previousPos);
             }

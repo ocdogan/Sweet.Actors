@@ -30,8 +30,12 @@ namespace Sweet.Actors.Rpc
     {
         public static readonly RpcClientOptions Default = new RpcClientOptions();
 
+        private const int MaxBulkSendLength = 1000;
+        private const int DefaultBulkSendLength = 100;
+
         private int _readBufferSize;
         private int _connectionTimeoutMSec = -1;
+        private int _bulkSendLength = DefaultBulkSendLength;
 
         public RpcClientOptions()
             : base()
@@ -58,6 +62,19 @@ namespace Sweet.Actors.Rpc
 
             return this;
         }
+
+        public RpcClientOptions UsingBulkSendLength(int bulkSendLength)
+        {
+            if (bulkSendLength < 0)
+                _bulkSendLength = -1;
+            else if (bulkSendLength == 0)
+                _bulkSendLength = DefaultBulkSendLength;
+            else _bulkSendLength = Math.Min(MaxBulkSendLength, Math.Max(1, bulkSendLength));
+
+            return this;
+        }
+
+        public int BulkSendLength => _bulkSendLength;
 
         public int ConnectionTimeoutMSec => _connectionTimeoutMSec;
 

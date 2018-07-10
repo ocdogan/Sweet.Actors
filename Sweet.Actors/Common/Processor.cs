@@ -36,12 +36,12 @@ namespace Sweet.Actors
         protected const int DefaultWaitDuration = 1000;
 
         protected static readonly Task Completed = Task.FromResult(0);
+        protected static readonly Task Canceled = Task.FromCanceled(new CancellationToken(true));
 
         private long _inProcess;
-        private long _inWaitForSchedule;
-        private long _rescheduleRequest;
-        private readonly ManualResetEventSlim _resetEvent = new ManualResetEventSlim(false);
+        private long _scheduleRequested;
 
+        private long _count;
         private readonly ConcurrentQueue<T> _queue = new ConcurrentQueue<T>();
 
         private int _requestWaitDuration = DefaultWaitDuration;
@@ -66,13 +66,18 @@ namespace Sweet.Actors
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _inProcess, 0L);
-            if (disposing)
-                _resetEvent.Reset();
         }
+
+        protected int SequentialInvokeLimit => _sequentialInvokeLimit;
 
         protected bool IsEmpty()
         {
             return _queue.IsEmpty;
+        }
+
+        protected int Count()
+        {
+            return Math.Max(0, (int)Interlocked.Read(ref _count));
         }
 
         protected bool Processing()
@@ -85,6 +90,8 @@ namespace Sweet.Actors
             try
             {
                 _queue.Enqueue(item);
+                Interlocked.Add(ref _count, 1);
+
                 Schedule();
 
                 return Completed;
@@ -102,54 +109,23 @@ namespace Sweet.Actors
                 if (Interlocked.CompareExchange(ref _inProcess, 1L, 0L) == 0L)
                     Task.Factory.StartNew(ProcessQueue);
                 else
-                {
-                    Interlocked.Exchange(ref _rescheduleRequest, 1L);
-                    _resetEvent.Set();
-                }
+                    Interlocked.Exchange(ref _scheduleRequested, 1L);
             }
         }
 
         protected bool WaitForScheduleRequest()
         {
-            if (Interlocked.Read(ref _inProcess) != 0L)
-            {
-                if (Interlocked.CompareExchange(ref _inWaitForSchedule, 1L, 0L) != 0L)
-                {
-                    _resetEvent.Set();
-                    return Interlocked.Read(ref _rescheduleRequest) != 0;
-                }
-
-                var requested = false;
-                try
-                {
-                    requested = IsScheduleRequested() ||
-                        _resetEvent.Wait(_requestWaitDuration, new CancellationToken());
-                }
-                finally
-                {
-                    requested = requested || Interlocked.Read(ref _rescheduleRequest) != 0L;
-
-                    Interlocked.Exchange(ref _inWaitForSchedule, 0L);
-                    ResetScheduleRequest();
-                }
-                return requested;
-            }
-            return false;
+            return Processing() && IsScheduleRequested();
         }
 
         protected bool IsScheduleRequested()
         {
-            return Interlocked.Read(ref _rescheduleRequest) != 0L ||
-                Interlocked.Read(ref _inWaitForSchedule) != 0L ||
-                _resetEvent.IsSet;
+            return Interlocked.Read(ref _scheduleRequested) != 0L;
         }
 
         protected void ResetScheduleRequest()
         {
-            Interlocked.Exchange(ref _rescheduleRequest, 0L);
-            if (Interlocked.Read(ref _inWaitForSchedule) != 0L)
-                _resetEvent.Set();
-            else _resetEvent.Reset();
+            Interlocked.Exchange(ref _scheduleRequested, 0L);
         }
 
         private Task ProcessQueue()
@@ -169,23 +145,20 @@ namespace Sweet.Actors
                         if (!@continue)
                             break;
 
-                        var exception = (Exception)null;
                         try
                         {
                             ProcessItems();
+
+                            CompleteProcessCycle(null, out @continue);
+                            if (!@continue)
+                                break;
                         }
                         catch (Exception e)
                         {
-                            exception = e;
-                            throw;
+                            CompleteProcessCycle(e, out @continue);
+                            if (!@continue)
+                                throw;
                         }
-                        finally
-                        {
-                            CompleteProcessCycle(exception, out @continue);
-                        }
-
-                        if (!@continue)
-                            break;
                     } while (WaitForScheduleRequest());
                 }
                 finally
@@ -214,12 +187,21 @@ namespace Sweet.Actors
             @continue = true;
         }
 
-        private void ProcessItems()
+        protected virtual bool TryDequeue(out T item)
         {
-            for (var i = 0; i < _sequentialInvokeLimit; i++)
+            if (_queue.TryDequeue(out item))
             {
-                if ((Interlocked.Read(ref _inProcess) != 1L) ||
-                    !_queue.TryDequeue(out T item))
+                Interlocked.Add(ref _count, -1);
+                return true;
+            }
+            return false;
+        }
+
+        protected virtual void ProcessItems()
+        {
+            for (var i = 0; i < SequentialInvokeLimit; i++)
+            {
+                if (!Processing() || !TryDequeue(out T item))
                     break;
 
                 var task = ProcessItem(item, CanFlush());
@@ -229,7 +211,7 @@ namespace Sweet.Actors
                 if (!task.IsCompleted)
                     task.ContinueWith((previousTask) =>
                     {
-                        if (!(Disposed || _queue.IsEmpty))
+                        if (!(Disposed || IsEmpty()))
                             Schedule();
                     });
             }

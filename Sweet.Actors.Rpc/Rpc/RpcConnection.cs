@@ -357,14 +357,18 @@ namespace Sweet.Actors.Rpc
 
                             bytesReceived = socket.Receive(buffer, 0, available, SocketFlags.None);
                             if (bytesReceived > 0)
+                            {
                                 connection.ProcessReceived(buffer, bytesReceived);
+                                if (connection.Disposed)
+                                    return;
+                            }
 
-                            if (asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
-                                break;
+                            /* if (asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
+                                break; */
                         }
                     }
 
-                    if (calledSynchronously &&
+                    /* if (calledSynchronously &&
                         asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
                     {
                         asyncReceiveBuffer.ResetSynchronousCompletion();
@@ -378,7 +382,7 @@ namespace Sweet.Actors.Rpc
                     }
 
                     if (!calledSynchronously)
-                        asyncReceiveBuffer.ResetSynchronousCompletion();
+                        asyncReceiveBuffer.ResetSynchronousCompletion(); */
 
                     Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
                     connection.BeginReceive(asyncReceiveBuffer);

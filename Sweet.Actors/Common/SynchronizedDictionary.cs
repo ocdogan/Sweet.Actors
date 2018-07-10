@@ -219,8 +219,7 @@ namespace Sweet.Actors
 
         public K GetValueOrUpdate(T key, Func<T, K> f)
         {
-            K result;
-            if (!TryGetValue(key, out result))
+            if (!TryGetValue(key, out K result))
             {
                 lock (_syncRoot)
                 {

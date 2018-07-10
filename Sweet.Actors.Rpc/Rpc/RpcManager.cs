@@ -312,8 +312,8 @@ namespace Sweet.Actors.Rpc
 
                 var outStream = rpcConnection.Out;
                 if (outStream != null)
-                    _writer.Write(outStream, wireMessage);
-                else _writer.Write(rpcConnection.Connection, wireMessage);
+                    _writer.Write(outStream, new WireMessage[] { wireMessage });
+                else _writer.Write(rpcConnection.Connection, new WireMessage[] { wireMessage });
 
                 return Completed;
             }

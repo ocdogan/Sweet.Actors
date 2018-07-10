@@ -44,15 +44,15 @@ namespace Sweet.Actors
 
         private static ConcurrentDictionary<Pid, Process> _processRegistery = new ConcurrentDictionary<Pid, Process>();
 
-        private Pid _pid;
-        private string _name;
-        private Context _ctx;
+        protected readonly Pid _pid;
+        protected readonly string _name;
+        protected readonly Context _ctx;
 
         private int _requestTimeoutMSec = -1;
 
-        private IActor _actor;
-        private ActorSystem _actorSystem;
-        private IErrorHandler _errorHandler;
+        protected IActor _actor;
+        protected readonly ActorSystem _actorSystem;
+        protected readonly IErrorHandler _errorHandler;
 
         public Process(string name, ActorSystem actorSystem, IActor actor, ActorOptions options)
             : base(-1, -1)
@@ -167,13 +167,13 @@ namespace Sweet.Actors
                 if (future?.IsCanceled ?? false)
                 {
                     future.Cancel();
-                    return Completed;
+                    return Canceled;
                 }
 
                 if (message.Expired)
                 {
                     future?.Cancel();
-                    return Completed;
+                    return Canceled;
                 }
 
                 var t = SendToActor(_ctx, message);
@@ -253,12 +253,12 @@ namespace Sweet.Actors
                        : base(name, actorSystem, null, options)
         { 
             _remoteAddress = remoteAddress;
-            Actor = this;
+            _actor = this;
         }
 
         public Task OnReceive(IContext ctx, IMessage message)
         {
-            return ActorSystem?.RemoteManager?.Send(message, _remoteAddress, RequestTimeoutMSec) ??
+            return _actorSystem?.RemoteManager?.Send(message, _remoteAddress, RequestTimeoutMSec) ??
                 Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
         }
     }

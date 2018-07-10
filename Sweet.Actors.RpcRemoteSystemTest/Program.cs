@@ -69,7 +69,7 @@ namespace Sweet.Actors.RpcRemoteSystemTest
                 else
                 {
                     if (count % 1000 == 0)
-                        Console.WriteLine(count);
+                        Console.WriteLine("Actor: " + count);
 
                     if (count == loop)
                     {
