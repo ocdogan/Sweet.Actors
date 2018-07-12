@@ -538,13 +538,13 @@ namespace Sweet.Actors
 
         public bool Closed => _isClosed;
 
-        protected int ChunkSize => _chunkSize;
+        public int ChunkSize => _chunkSize;
 
         protected bool OwnsCache => _ownsCache;
 
         protected ByteArrayCache Cache => _cache;
 
-        protected int Origin => _origin;
+        public int Origin => _origin;
 
         public override int ReadTimeout { get => _readTimeout; set => _readTimeout = value; }
 

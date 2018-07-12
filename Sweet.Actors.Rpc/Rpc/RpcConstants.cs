@@ -40,29 +40,7 @@ namespace Sweet.Actors.Rpc
 
         public const int WriteBufferSize = 64 * Constants.KB;
 
-        public const byte FrameSign = (byte)'~';
-        public const byte HeaderSign = (byte)'*';
-
-        public const int SerializerRegistryNameLength = 10;
-
-        public const int HeaderSize = 
-            1   /* Header sign (byte) */ 
-            + 4 /* Process id (int) */ 
-            + 4 /* Message id (int) */ 
-            + SerializerRegistryNameLength /* Serializer registry name length (byte[]) */ 
-            + 2 /* Frame count (ushort) */;
-
-        public const int FrameSize = 8 * Constants.KB; // 8 KByte
-
-        public const int FrameHeaderSize = 
-            1   /* Frame sign (byte) */ 
-            + 4 /* Process id (int) */ 
-            + 4 /* Message id (int) */ 
-            + 2 /* Frame id (ushort) */ 
-            + 2 /* Frame data size (ushort) */;
-        public const int FrameDataSize = FrameSize - FrameHeaderSize;
-
-        public const int MaxDataSize = 4 * Constants.MB; // 4 MByte
-        public const int MaxFrameCount = (MaxDataSize / FrameDataSize) + 1;
+        public const int MaxBulkSendLength = 10000;
+        public const int DefaultBulkSendLength = 500;
     }
 }

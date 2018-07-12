@@ -25,6 +25,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 
 namespace Sweet.Actors.Rpc
@@ -35,7 +36,7 @@ namespace Sweet.Actors.Rpc
         private const int LargeBufferMultiple = 1 << 20;
         private const int MaximumBufferSize = 8 * (1 << 20);
 
-        public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcConstants.FrameDataSize);
+        public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
 
         private ConcurrentQueue<RemoteMessage> _messageQueue = new ConcurrentQueue<RemoteMessage>();
 
@@ -57,22 +58,15 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private static int _counter;
-        private static int _bytesReceived;
-
         public bool OnReceiveData(byte[] buffer, int offset, int bytesReceived)
 		{
             var parsed = false;
             if ((buffer != null) && (bytesReceived > 0))
             {
                 _stream.Write(buffer, offset, bytesReceived);
-                _bytesReceived += bytesReceived;
 
                 while (RpcMessageParser.TryParse(_stream, out RemoteMessage[] messages))
                 {
-                    if ((_counter += messages.Length) % 100 == 0)
-                        Console.WriteLine("Received: " + _counter);
-
                     if (Enqueue(messages))
                         parsed = true;
                 }
