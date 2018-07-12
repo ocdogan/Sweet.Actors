@@ -23,9 +23,9 @@
 #endregion License
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 
 namespace Sweet.Actors.Rpc
@@ -38,6 +38,7 @@ namespace Sweet.Actors.Rpc
 
         public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
 
+        private long _count;
         private ConcurrentQueue<RemoteMessage> _messageQueue = new ConcurrentQueue<RemoteMessage>();
 
         private ChunkedStream _stream;
@@ -65,7 +66,7 @@ namespace Sweet.Actors.Rpc
             {
                 _stream.Write(buffer, offset, bytesReceived);
 
-                while (RpcMessageParser.TryParse(_stream, out RemoteMessage[] messages))
+                while (RpcMessageParser.TryParse(_stream, out IEnumerable<RemoteMessage> messages))
                 {
                     if (Enqueue(messages))
                         parsed = true;
@@ -74,32 +75,78 @@ namespace Sweet.Actors.Rpc
             return parsed;
         }
 
-        private bool Enqueue(RemoteMessage[] messages)
+        private bool Enqueue(IEnumerable<RemoteMessage> messages)
         {
-            var result = false;
-
-            var count = messages?.Length ?? 0;
-            if (count > 0)
+            if (messages != null)
             {
-                for (var i = 0; i < count; i++)
+                var result = false;
+                foreach (var message in messages)
                 {
-                    var message = messages[i];
                     if (message != null)
                     {
                         _messageQueue.Enqueue(message);
+
+                        Interlocked.Add(ref _count, 1L);
                         result = true;
                     }
                 }
+                return result;
             }
-
-            return result;
+            return false;
         }
 
         public bool TryGetMessage(out RemoteMessage message)
 		{
 			message = null;
             if (!Disposed && _messageQueue.TryDequeue(out message))
+            {
+                Interlocked.Add(ref _count, -1L);
                 return true;
+            }
+            return false;
+        }
+
+        public bool TryGetMessage(int bulkSize, out IList messages)
+        {
+            messages = null;
+            if (!Disposed)
+            {
+                var count = (int)Interlocked.Read(ref _count);
+                if (count > 0)
+                {
+                    RemoteMessage message;
+                    bulkSize = Math.Min(Math.Min(1000, Math.Max(1, bulkSize)), count);
+
+                    if (bulkSize == 1)
+                    {
+                        if (_messageQueue.TryDequeue(out message))
+                        {
+                            Interlocked.Add(ref _count, -1L);
+
+                            messages = new RemoteMessage[] { message };
+                            return true;
+                        }
+                        return false;
+                    }
+
+                    var list = new List<RemoteMessage>(bulkSize);
+
+                    for (var i = 0; i < bulkSize; i++)
+                    {
+                        if (!_messageQueue.TryDequeue(out message))
+                            break;
+
+                        Interlocked.Add(ref _count, -1L);
+                        list.Add(message);
+                    }
+
+                    if (list.Count > 0)
+                    {
+                        messages = list;
+                        return true;
+                    }
+                }
+            }
             return false;
         }
     }

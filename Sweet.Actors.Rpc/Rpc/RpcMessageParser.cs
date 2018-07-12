@@ -53,7 +53,7 @@ namespace Sweet.Actors.Rpc
         private static IWireSerializer _serializer;
         private static readonly ReaderWriterLockSlim _serializerLock = new ReaderWriterLockSlim();
 
-        public static bool TryParse(Stream input, out RemoteMessage[] messages)
+        public static bool TryParse(Stream input, out IEnumerable<RemoteMessage> messages)
         {
             messages = null;
             if (!TryParsePartitioned(input, out RpcPartitionedMessage partitionedMsg))
@@ -90,8 +90,10 @@ namespace Sweet.Actors.Rpc
 
                         using (var stream = new ChunkedStream(frameDataList))
                         {
-                            messages = serializer.Deserialize(stream).ToArray();
-                            return ((messages?.Length ?? 0) > 0);
+                            var list = serializer.Deserialize(stream).ToList();
+                            messages = list;
+
+                            return ((list?.Count ?? 0) > 0);
                         }
                     }
                 }

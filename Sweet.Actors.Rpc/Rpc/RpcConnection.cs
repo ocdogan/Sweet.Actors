@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -410,15 +411,22 @@ namespace Sweet.Actors.Rpc
 
         private void HandleReceivedMessages()
         {
-            while (_rpcReceiveBuffer.TryGetMessage(out RemoteMessage message))
+            while (_rpcReceiveBuffer.TryGetMessage(1000, out IList messages))
             {
-                try
+                var count = messages?.Count ?? 0;
+                if (count > 0)
                 {
-                    _messageHandler?.Invoke(message, this);
-                }
-                catch (Exception e)
-                {
-                    RespondWithError(message, e);
+                    for (var i = 0; i < count; i++)
+                    {
+                        try
+                        {
+                            _messageHandler?.Invoke((RemoteMessage)messages[i], this);
+                        }
+                        catch (Exception e)
+                        {
+                            RespondWithError((RemoteMessage)messages[i], e);
+                        }
+                    }
                 }
             }
         }
