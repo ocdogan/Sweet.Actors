@@ -52,7 +52,7 @@ namespace Sweet.Actors
             private List<byte[]> _chunks;
             private Task<int> _lastReadTask;
 
-            private byte[] _buffer = new byte[32];
+            private byte[] _buffer = new byte[16];
 
             public ChunkedStreamReader(ChunkedStream stream, List<byte[]> chunks)
             {
@@ -524,15 +524,11 @@ namespace Sweet.Actors
 
         public long ReadPosition
         {
-            get { return !_isClosed ? (GetDefaultReader()?.Position ?? 0) : 0L; }
+            get { return _isClosed ? 0L : GetDefaultReader().Position; }
             set
             {
                 if (!_isClosed)
-                {
-                    var reader = GetDefaultReader();
-                    if (reader != null)
-                        reader.Position = value;
-                }
+                    GetDefaultReader().Position = value;
             }
         }
 
@@ -677,19 +673,13 @@ namespace Sweet.Actors
         public override int Read(byte[] buffer, int offset, int count)
         {
             ThrowIfDisposed();
-
-            if (count > 0)
-                return GetDefaultReader()?.Read(buffer, offset, count) ?? 0;
-            return 0;
+            return _isClosed ? 0 : GetDefaultReader().Read(buffer, offset, count);
         }
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
-
-            if (count > 0)
-                return GetDefaultReader()?.ReadAsync(buffer, offset, count, cancellationToken) ?? ReadCompleted;
-            return ReadCompleted;
+            return _isClosed ? ReadCompleted : GetDefaultReader().ReadAsync(buffer, offset, count, cancellationToken);
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -724,6 +714,14 @@ namespace Sweet.Actors
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count));
 
+            if (buffer.Length - offset < count)
+                throw new ArgumentOutOfRangeException(nameof(count));
+
+            WriteInternal(buffer, offset, count);
+        }
+
+        private void WriteInternal(byte[] buffer, int offset, int count)
+        {
             if (count > 0)
             {
                 var initialLen = _length;
@@ -759,7 +757,7 @@ namespace Sweet.Actors
             }
         }
 
-        public override Task WriteAsync(Byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
 
@@ -780,7 +778,7 @@ namespace Sweet.Actors
 
             try
             {
-                Write(buffer, offset, count);
+                WriteInternal(buffer, offset, count);
                 return Task.CompletedTask;
             }
             catch (OperationCanceledException)
@@ -796,7 +794,7 @@ namespace Sweet.Actors
         public override int ReadByte()
         {
             ThrowIfDisposed();
-            return GetDefaultReader()?.ReadByte() ?? -1;
+            return _isClosed ? -1 : GetDefaultReader().ReadByte();
         }
 
         public override void WriteByte(byte value)
@@ -867,7 +865,7 @@ namespace Sweet.Actors
         public byte[] ToArray()
         {
             ThrowIfDisposed();
-            return GetDefaultReader()?.ToArray() ?? EmptyChunk;
+            return _isClosed ? EmptyChunk : GetDefaultReader().ToArray();
         }
 
         public void ReadFrom(Stream source, long length)

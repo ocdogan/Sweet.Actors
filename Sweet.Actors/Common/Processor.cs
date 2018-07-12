@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -100,6 +101,85 @@ namespace Sweet.Actors
             {
                 return Task.FromException(e);
             }
+        }
+
+        protected Task Enqueue(T[] items)
+        {
+            var count = items?.Length ?? 0;
+            if (count > 0)
+            {
+                try
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        _queue.Enqueue(items[i]);
+                        Interlocked.Add(ref _count, 1);
+                    }
+
+                    Schedule();
+
+                    return Completed;
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException(e);
+                }
+            }
+            return Completed;
+        }
+
+        protected Task Enqueue(IList<T> items)
+        {
+            var count = items?.Count ?? 0;
+            if (count > 0)
+            {
+                try
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        _queue.Enqueue(items[i]);
+                        Interlocked.Add(ref _count, 1);
+                    }
+
+                    Schedule();
+
+                    return Completed;
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException(e);
+                }
+            }
+            return Completed;
+        }
+
+        protected Task Enqueue(IEnumerable<T> items)
+        {
+            if (items != null)
+            {
+                try
+                {
+                    var enqueued = false;
+
+                    foreach (var item in items)
+                    {
+                        _queue.Enqueue(item);
+
+                        Interlocked.Add(ref _count, 1);
+                        enqueued = true;
+                    }
+
+                    if (enqueued)
+                        Schedule();
+
+                    return Completed;
+                }
+                catch (Exception e)
+                {
+                    return Task.FromException(e);
+                }
+            }
+            return Completed;
         }
 
         protected void Schedule()

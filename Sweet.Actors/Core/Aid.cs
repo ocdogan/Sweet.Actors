@@ -113,10 +113,33 @@ namespace Sweet.Actors
 
         public static Aid Parse(string str)
         {
-            str = str?.Trim();
             if (!String.IsNullOrEmpty(str))
             {
-                var parts = str.Split('/');
+                var slashPos1 = str.IndexOf('/', 0);
+                if (slashPos1 > -1)
+                {
+                    var actorSystem = str.Substring(0, slashPos1)?.Trim();
+                    if (!String.IsNullOrEmpty(actorSystem))
+                    {
+                        slashPos1++;
+                        if (slashPos1 < str.Length - 1)
+                        {
+                            var slashPos2 = str.IndexOf('/', slashPos1);
+                            if (slashPos2 == -1)
+                                slashPos2 = str.Length;
+
+                            var subLen = slashPos2 - slashPos1;
+                            if (subLen > 0)
+                            { 
+                                var actor = str.Substring(slashPos1, subLen)?.Trim();
+                                if (!String.IsNullOrEmpty(actor))
+                                    return new Aid(actorSystem, actor);
+                            }
+                        }
+                    }
+                }
+
+                /* var parts = str.Split('/');
                 if (parts.Length == 2)
                 {
                     var actorSystem = parts[0]?.Trim();
@@ -126,7 +149,7 @@ namespace Sweet.Actors
                         if (!String.IsNullOrEmpty(actor))
                             return new Aid(actorSystem, actor);
                     }
-                }
+                } */
             }
             return Unknown;
         }
