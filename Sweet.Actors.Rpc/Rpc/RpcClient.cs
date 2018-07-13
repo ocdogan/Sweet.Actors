@@ -38,7 +38,6 @@ namespace Sweet.Actors.Rpc
 
         private const object DefaultResponse = null;
 
-        private const int DefaultBulkSendLength = 100;
         private const int SequentialSendLimit = 500;
         private const int ConnectionErrorTreshold = 5;
         private const int ConnectionRefuseTimeMSec = 10000;
@@ -61,8 +60,7 @@ namespace Sweet.Actors.Rpc
         private int _id;
         private long _waitingToTransmit;
 
-        private long _sequentialProcessCount;
-        private int _bulkSendLength = DefaultBulkSendLength;
+        private int _bulkSendLength = RpcConstants.DefaultBulkSendLength;
 
         // States
         private int _closing;
@@ -96,7 +94,7 @@ namespace Sweet.Actors.Rpc
 
             _bulkSendLength = _options.BulkSendLength;
             if (_bulkSendLength < 1)
-                _bulkSendLength = DefaultBulkSendLength;
+                _bulkSendLength = RpcConstants.DefaultBulkSendLength;
         }
 
         public int Id => _id;
@@ -324,8 +322,7 @@ namespace Sweet.Actors.Rpc
         {
             @continue = true;
 
-            bool success;
-            var socket = _circuitForConnection.Execute(WaitToConnect, out success);
+            var socket = _circuitForConnection.Execute(WaitToConnect, out bool success);
             if (!success || !socket.IsConnected())
             {
                 @continue = false;
@@ -387,12 +384,9 @@ namespace Sweet.Actors.Rpc
                         break;
                     case 1:
                         {
-                            var firstItem = result[0];
+                            var firstItem = (RemoteRequest)result[0];
 
-                            result = new List<RemoteRequest>(Math.Min(Count(), _bulkSendLength));
-
-                            result.Add(firstItem);
-                            result.Add(item);
+                            result = new List<RemoteRequest>(Math.Min(Count(), _bulkSendLength)) { firstItem, item };
                             break;
                         }
                     default:

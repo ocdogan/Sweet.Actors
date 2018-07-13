@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -363,12 +364,12 @@ namespace Sweet.Actors.Rpc
                                     return;
                             }
 
-                            /* if (asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
-                                break; */
+                            if (asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
+                                break;
                         }
                     }
 
-                    /* if (calledSynchronously &&
+                    if (calledSynchronously &&
                         asyncReceiveBuffer.SynchronousCompletion() > SynchronousCompletionTreshold)
                     {
                         asyncReceiveBuffer.ResetSynchronousCompletion();
@@ -382,7 +383,7 @@ namespace Sweet.Actors.Rpc
                     }
 
                     if (!calledSynchronously)
-                        asyncReceiveBuffer.ResetSynchronousCompletion(); */
+                        asyncReceiveBuffer.ResetSynchronousCompletion();
 
                     Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
                     connection.BeginReceive(asyncReceiveBuffer);
@@ -399,24 +400,34 @@ namespace Sweet.Actors.Rpc
             try
             {
                 if (_rpcReceiveBuffer.OnReceiveData(buffer, 0, bytesReceived))
-                {
-                    while (_rpcReceiveBuffer.TryGetMessage(out RemoteMessage message))
-                    {
-                        try
-                        {
-                            _messageHandler?.Invoke(message, this);
-                        }
-                        catch (Exception e)
-                        {
-                            RespondWithError(message, e);
-                        }
-                    }
-                }
+                    HandleReceivedMessages();
             }
             catch (Exception)
             {
                 _rpcReceiveBuffer.Dispose();
                 throw;
+            }
+        }
+
+        private void HandleReceivedMessages()
+        {
+            while (_rpcReceiveBuffer.TryGetMessage(1000, out IList messages))
+            {
+                var count = messages?.Count ?? 0;
+                if (count > 0)
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        try
+                        {
+                            _messageHandler?.Invoke((RemoteMessage)messages[i], this);
+                        }
+                        catch (Exception e)
+                        {
+                            RespondWithError((RemoteMessage)messages[i], e);
+                        }
+                    }
+                }
             }
         }
 

@@ -200,7 +200,7 @@ namespace Sweet.Actors
 
         protected virtual Task SendToActor(IContext ctx, IMessage message)
         {
-            return Actor.OnReceive(ctx, message);
+            return _actor.OnReceive(ctx, message);
         }
 
         protected virtual void HandleError(Exception e)

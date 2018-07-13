@@ -44,16 +44,16 @@ namespace Sweet.Actors.Rpc
         }
 
         private static readonly ByteArrayCache FrameCache = 
-            new ByteArrayCache(10, -1, RpcConstants.FrameDataSize);
+            new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
 
         private static readonly ByteArrayCache HeaderCache = 
-            new ByteArrayCache(5, -1, Math.Max(RpcConstants.HeaderSize, RpcConstants.FrameHeaderSize));
+            new ByteArrayCache(5, -1, Math.Max(RpcMessageSizeOf.Header, RpcMessageSizeOf.FrameHeader));
 
         private static string _serializerKey;
         private static IWireSerializer _serializer;
         private static readonly ReaderWriterLockSlim _serializerLock = new ReaderWriterLockSlim();
 
-        public static bool TryParse(Stream input, out RemoteMessage[] messages)
+        public static bool TryParse(Stream input, out IEnumerable<RemoteMessage> messages)
         {
             messages = null;
             if (!TryParsePartitioned(input, out RpcPartitionedMessage partitionedMsg))
@@ -90,8 +90,10 @@ namespace Sweet.Actors.Rpc
 
                         using (var stream = new ChunkedStream(frameDataList))
                         {
-                            messages = serializer.Deserialize(stream).ToArray();
-                            return ((messages?.Length ?? 0) > 0);
+                            var list = serializer.Deserialize(stream).ToList();
+                            messages = list;
+
+                            return ((list?.Count ?? 0) > 0);
                         }
                     }
                 }
@@ -145,7 +147,7 @@ namespace Sweet.Actors.Rpc
                 InputLength = input?.Length ?? 0
             };
 
-            if (context.InputLength < RpcConstants.HeaderSize)
+            if (context.InputLength < RpcMessageSizeOf.Header)
                 return false;
 
             context.HeaderBuffer = HeaderCache.Acquire();
@@ -196,31 +198,22 @@ namespace Sweet.Actors.Rpc
 
         private static bool ParseHeader(ParserContext context)
         {
-            if (context.InputLength >= RpcConstants.HeaderSize)
+            if (context.InputLength >= RpcMessageSizeOf.Header)
             {
-                context.StreamReader.Read(context.HeaderBuffer, 0, RpcConstants.HeaderSize);
+                context.StreamReader.Read(context.HeaderBuffer, 0, RpcMessageSizeOf.Header);
 
-                if (context.HeaderBuffer[0] != RpcConstants.HeaderSign)
+                if (context.HeaderBuffer[0] != RpcMessageSign.Header)
                     throw new Exception(Errors.InvalidMessageType);
 
-                var offset = sizeof(byte);
                 var header = context.Message.Header;
 
-                header = context.Message.Header;
-                header.ProcessId = context.HeaderBuffer.ToInt(offset);
-                offset += sizeof(int);
+                header.ProcessId = context.HeaderBuffer.ToInt(RpcHeaderOffsetOf.ProcessId);
+                header.MessageId = context.HeaderBuffer.ToInt(RpcHeaderOffsetOf.MessageId);
+                header.SerializerKey = GetSerializerKey(context.HeaderBuffer, RpcHeaderOffsetOf.SerializerKey);
+                header.FrameCount = context.HeaderBuffer.ToUShort(RpcHeaderOffsetOf.FrameCount);
 
-                header.MessageId = context.HeaderBuffer.ToInt(offset);
-                offset += sizeof(int);
-
-                header.SerializerKey = GetSerializerKey(context.HeaderBuffer, offset);
-                offset += RpcConstants.SerializerRegistryNameLength;
-
-                header.FrameCount = context.HeaderBuffer.ToUShort(offset);
-                offset += sizeof(ushort);
-
-                context.InputLength -= offset;
-                context.StreamOffset += offset;
+                context.InputLength -= RpcMessageSizeOf.Header;
+                context.StreamOffset += RpcMessageSizeOf.Header;
 
                 if (header.FrameCount == 0)
                     context.Completed = true;
@@ -229,8 +222,8 @@ namespace Sweet.Actors.Rpc
                     if (context.InputLength <= 0)
                         return false;
 
-                    var maxFramesDataSize = RpcConstants.FrameHeaderSize + 
-                        ((context.Message.Header.FrameCount - 1) * RpcConstants.FrameSize);
+                    var maxFramesDataSize = RpcMessageSizeOf.FrameHeader + 
+                        ((header.FrameCount - 1) * RpcMessageSizeOf.EachFrame);
 
                     if (context.InputLength < maxFramesDataSize)
                         return false;
@@ -246,63 +239,65 @@ namespace Sweet.Actors.Rpc
             if (!ParseFrameHeader(context, out RpcPartitionedFrame frame))
                 return false;
 
-            var frameDataLen = frame.DataLength;
-            if (frameDataLen > 0)
-            {
-                if (context.InputLength < frameDataLen)
-                    return false;
-
-                context.InputLength -= frameDataLen;
-                var dataBuffer = FrameCache.Acquire();
-
-                var readLen = context.StreamReader.Read(dataBuffer, 0, frameDataLen);
-                if (readLen < frameDataLen)
-                    return false;
-
-                frame.Data = dataBuffer;
-                frame.DataLength = frameDataLen;
-
-                context.InputLength -= frameDataLen;
-                context.StreamOffset += frameDataLen;
-            }
-
             if (frame != null)
-                context.Message.Frames.Add(frame);
+            {
+                var frameDataLen = frame.DataLength;
+                if (frameDataLen > 0)
+                {
+                    if (context.InputLength < frameDataLen)
+                        return false;
 
+                    var dataBuffer = FrameCache.Acquire();
+
+                    var readLen = context.StreamReader.Read(dataBuffer, 0, frameDataLen);
+                    if (readLen < frameDataLen)
+                        return false;
+
+                    frame.Data = dataBuffer;
+                    frame.DataLength = frameDataLen;
+
+                    context.InputLength -= frameDataLen;
+                    context.StreamOffset += frameDataLen;
+                }
+
+                context.Message.Frames.Add(frame);
+            }
             return true;
         }
 
         private static bool ParseFrameHeader(ParserContext context, out RpcPartitionedFrame frame)
         {
             frame = null;
-            if (context.InputLength < RpcConstants.FrameHeaderSize)
+            if (context.InputLength < RpcMessageSizeOf.FrameHeader)
                 return false;
 
-            context.StreamReader.Read(context.HeaderBuffer, 0, RpcConstants.FrameHeaderSize);
+            context.StreamReader.Read(context.HeaderBuffer, 0, RpcMessageSizeOf.FrameHeader);
 
-            if (context.HeaderBuffer[0] != RpcConstants.FrameSign)
+            if (context.HeaderBuffer[0] != RpcMessageSign.Frame)
                 throw new Exception(Errors.InvalidMessageType);
 
             frame = new RpcPartitionedFrame();
 
             var offset = sizeof(byte);
 
-            frame.ProcessId = context.HeaderBuffer.ToInt(offset);
+            frame.ProcessId = context.HeaderBuffer.ToInt(RpcFrameHeaderOffsetOf.ProcessId);
             offset += sizeof(int);
 
-            if (frame.ProcessId != context.Message.Header.ProcessId)
+            var header = context.Message.Header;
+
+            if (frame.ProcessId != header.ProcessId)
                 throw new Exception(RpcErrors.InvalidMessage);
 
-            frame.MessageId = context.HeaderBuffer.ToInt(offset);
+            frame.MessageId = context.HeaderBuffer.ToInt(RpcFrameHeaderOffsetOf.MessageId);
             offset += sizeof(int);
 
-            if (frame.MessageId != context.Message.Header.MessageId)
+            if (frame.MessageId != header.MessageId)
                 throw new Exception(RpcErrors.InvalidMessage);
 
-            frame.FrameId = context.HeaderBuffer.ToUShort(offset);
+            frame.FrameId = context.HeaderBuffer.ToUShort(RpcFrameHeaderOffsetOf.FrameId);
             offset += sizeof(ushort);
 
-            frame.DataLength = context.HeaderBuffer.ToUShort(offset);
+            frame.DataLength = context.HeaderBuffer.ToUShort(RpcFrameHeaderOffsetOf.FrameData);
             offset += sizeof(ushort);
 
             context.InputLength -= offset;
@@ -313,7 +308,7 @@ namespace Sweet.Actors.Rpc
 
         private static string GetSerializerKey(byte[] buffer, int offset)
         {
-            var result = Encoding.UTF8.GetString(buffer, offset, RpcConstants.SerializerRegistryNameLength)?.TrimEnd();
+            var result = Encoding.UTF8.GetString(buffer, offset, RpcHeaderSizeOf.SerializerKey)?.TrimEnd();
 
             var nullTerminationPos = result?.IndexOf('\0') ?? -1;
             if (nullTerminationPos < 1)

@@ -46,7 +46,7 @@ namespace Sweet.Actors.Rpc
                 throw new ArgumentNullException(nameof(registryName));
 
             len = Encoding.UTF8.GetByteCount(registryName);
-            if (len > RpcConstants.SerializerRegistryNameLength)
+            if (len > RpcHeaderSizeOf.SerializerKey)
                 throw new ArgumentOutOfRangeException(nameof(registryName));
         }
 
