@@ -70,8 +70,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
             var sw = new Stopwatch();
             sw.Restart();
 
-            /* for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000")); */
+            for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
 
             /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
@@ -85,7 +85,7 @@ namespace Sweet.Actors.RpcLocalSystemTest
             /* sw.Stop();
             Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
 
-            for (var i = 0; i < loop; i++)
+            /* for (var i = 0; i < loop; i++)
             {
                 remotePid.Request("hello (fire & forget) - " + i.ToString("000000")).ContinueWith(
                     (previousTask) => {
@@ -108,7 +108,7 @@ namespace Sweet.Actors.RpcLocalSystemTest
                         }
                     }
                 });
-            }
+            } */
         }
 
         static void Main(string[] args)
