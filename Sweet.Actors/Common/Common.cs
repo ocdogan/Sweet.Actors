@@ -508,8 +508,7 @@ namespace Sweet.Actors
                         break;
                 }
 
-                if (!WireMessageId.TryParse(message.Id, out messageId))
-                    messageId = WireMessageId.Empty;
+                WireMessageId.TryParse(message.Id, out messageId);
             }
 
             return new RemoteMessage(msg ?? Message.Empty, 

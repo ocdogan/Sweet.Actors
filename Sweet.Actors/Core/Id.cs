@@ -34,14 +34,16 @@ namespace Sweet.Actors
             private long _id = 0L;
             private long _initial = 0L;
 
+            private bool _isTail;
             private IdPart _next;
             private int _position;
 
             private object _lock = new object();
 
-            public IdPart(IdPart next, int position, long initialId = 0L)
+            public IdPart(IdPart next, int position, long initialId = 0L, bool isTail = false)
             {
                 _id = initialId;
+                _isTail = isTail;
                 _initial = initialId;
                 _next = next;
                 _position = position;
@@ -62,18 +64,21 @@ namespace Sweet.Actors
                 var id = Interlocked.Add(ref _id, 1L);
 
                 Interlocked.MemoryBarrier();
-                if (id < 0 && _next != null)
+                if (id < 0)
                 {
                     lock (_lock)
                     {
                         var original = Interlocked.CompareExchange(ref _id, _initial, id);
-                        if (original < 0)
-                        {
-                            id = 0L;
-                            _next.Generate(buffer);
-                        }
+                        if (original != id)
+                            Interlocked.Exchange(ref _id, _initial);
+
+                        if (_isTail)
+                            id = Interlocked.Add(ref _id, 1L);
+
+                        _next?.Generate(buffer);
                     }
                 }
+
                 buffer[_position] = id;
             }
         }
@@ -88,15 +93,14 @@ namespace Sweet.Actors
         private long _majorRevision;
         private long _minor;
         private long _minorRevision;
+        private string _toString;
 
         static Id()
         {
-            s_MajorGen = new IdPart(null, 3);
-            s_MajorRevisionGen = new IdPart(s_MajorGen, 2);
-            s_MinorGen = new IdPart(s_MajorRevisionGen, 1);
-            s_MinorRevisionGen = new IdPart(s_MinorGen, 0, -1);
-
-            s_MajorGen.SetNext(s_MinorRevisionGen);
+            s_MajorGen = new IdPart(null, 0);
+            s_MajorRevisionGen = new IdPart(s_MajorGen, 1);
+            s_MinorGen = new IdPart(s_MajorRevisionGen, 2);
+            s_MinorRevisionGen = new IdPart(s_MinorGen, 3, 0, true);
         }
 
         protected Id(long major, long majorRevision, long minor, long minorRevision, int processId = -1)
@@ -121,28 +125,31 @@ namespace Sweet.Actors
         public override string ToString()
         {
             // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
-            var sb = new StringBuilder(24);
+            if (_toString == null)
+            {
+                var sb = new StringBuilder(24);
 
-            sb.Append('[');
+                sb.Append('[');
 
-            sb.Append(_processId.ToString());
-            sb.Append('-');
+                sb.Append(_processId.ToString());
+                sb.Append('-');
 
-            sb.Append(_major.ToString());
-            sb.Append('.');
+                sb.Append(_major.ToString());
+                sb.Append('.');
 
-            sb.Append(_majorRevision.ToString());
-            sb.Append('.');
+                sb.Append(_majorRevision.ToString());
+                sb.Append('.');
 
-            sb.Append(_minor.ToString());
-            sb.Append('.');
+                sb.Append(_minor.ToString());
+                sb.Append('.');
 
-            sb.Append(_minorRevision.ToString());
-            sb.Append('.');
+                sb.Append(_minorRevision.ToString());
 
-            sb.Append(']');
+                sb.Append(']');
 
-            return sb.ToString();
+                return (_toString = sb.ToString());
+            }
+            return _toString;
         }
 
         public override int GetHashCode()

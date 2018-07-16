@@ -28,7 +28,9 @@ namespace Sweet.Actors
 {
     public sealed class WireMessageId : Id<WireMessage>
     {
-        public static readonly WireMessageId Empty = new WireMessageId(-1L, -1L, -1L, -1L, 0);
+        public static readonly WireMessageId Empty = new WireMessageId(0, 0, 0, 0, 0);
+
+        private static readonly int EmptyLength = Empty.ToString().Length;
 
         private WireMessageId(long major, long majorRevision, long minor, long minorRevision, int processId = -1)
             : base(major, majorRevision, minor, minorRevision, processId)
@@ -51,7 +53,7 @@ namespace Sweet.Actors
             id = Empty;
 
             sid = sid?.Trim();
-            if (!String.IsNullOrEmpty(sid) && sid.Length >= "[0-0.0.0.0]".Length &&
+            if (!String.IsNullOrEmpty(sid) && sid.Length >= EmptyLength &&
                 sid[0] == '[' && sid[sid.Length - 1] == ']')
             {
                 sid = sid.Substring(1, sid.Length - 2);

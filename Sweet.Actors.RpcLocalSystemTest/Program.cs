@@ -24,6 +24,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 
 using Sweet.Actors.Rpc;
 
@@ -31,6 +32,7 @@ namespace Sweet.Actors.RpcLocalSystemTest
 {
     class Program
     {
+        private static int counter;
         private const int loop = 20000;
 
         private static void InitSystem(int port)
@@ -68,11 +70,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
             var sw = new Stopwatch();
             sw.Restart();
 
-            for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
-
-            sw.Stop();
-            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+            /* for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000")); */
 
             /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
@@ -82,6 +81,34 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
                 Console.WriteLine(response?.Data ?? "(null response)");
             }); */
+
+            /* sw.Stop();
+            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
+
+            for (var i = 0; i < loop; i++)
+            {
+                remotePid.Request("hello (fire & forget) - " + i.ToString("000000")).ContinueWith(
+                    (previousTask) => {
+                    var count = Interlocked.Increment(ref counter);
+
+                    if (count == 1)
+                        sw.Restart();
+                    else
+                    {
+                        if (count % 1000 == 0)
+                            Console.WriteLine("Actor: " + count);
+
+                        if (count == loop)
+                        {
+                            Interlocked.Exchange(ref counter, 0);
+
+                            sw.Stop();
+                            Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
+                            Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
+                        }
+                    }
+                });
+            }
         }
 
         static void Main(string[] args)
