@@ -157,7 +157,7 @@ namespace Sweet.Actors.ConsoleTest
                 }
 
                 if (message.MessageType == MessageType.FutureMessage)
-                    ctx.RespondTo(message, "world " + count.ToString("000"));
+                    ctx.RespondTo(message, "world " + count.ToString("000000"));
 
                 return Completed;
             },

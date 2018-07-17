@@ -22,70 +22,8 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using Wire;
-
 namespace Sweet.Actors.Rpc
 {
-    public class DefaultRpcSerializer : IWireSerializer
-    {
-        private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
-
-        public IEnumerable<RemoteMessage> Deserialize(byte[] data)
-        {
-            if (data == null || data.Length == 0)
-                yield return null;
-
-            using (var stream = new ChunkedStream(data))
-            {
-                var messages = _serializer.Deserialize<WireMessage[]>(stream);
-                if (messages == null)
-                    yield return null;
-
-                foreach (var message in messages)
-                    yield return message.ToRemoteMessage();
-            }
-        }
-
-        public IEnumerable<RemoteMessage> Deserialize(Stream stream)
-        {
-            if (stream == null)
-                yield return null;
-
-            var messages = _serializer.Deserialize<WireMessage[]>(stream);
-            if (messages == null)
-                yield return null;
-
-            foreach (var message in messages)
-                yield return message.ToRemoteMessage();
-        }
-
-        public byte[] Serialize(WireMessage[] messages)
-        {
-            if (messages != null && messages.Length > 0)
-            {
-                using (var stream = new ChunkedStream())
-                { 
-                    _serializer.Serialize(messages, stream);
-                    return stream.ToArray();
-                }
-            }
-            return null;
-        }
-
-        public long Serialize(WireMessage[] messages, Stream stream)
-        {
-            if (messages != null && messages.Length > 0 &&
-                stream != null && stream.CanWrite)
-            {
-                var previousPos = stream.Position;
-                 _serializer.Serialize(messages, stream);
-
-                return Math.Max(-1L, stream.Position - previousPos);
-            }
-            return -1L;
-        }
-    }
+    public class DefaultRpcSerializer : WireSerializer
+    { }
 }

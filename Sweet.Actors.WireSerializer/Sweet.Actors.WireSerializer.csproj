@@ -2,11 +2,14 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Sweet.Actors</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Sweet.Actors.WireSerializer\Sweet.Actors.WireSerializer.csproj" />
-    <ProjectReference Include="..\Sweet.Actors.ZeroSerializer\Sweet.Actors.BinarySerializer.csproj" />
+    <PackageReference Include="Wire" Version="0.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Sweet.Actors\Sweet.Actors.csproj" />
   </ItemGroup>
 

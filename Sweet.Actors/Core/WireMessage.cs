@@ -36,6 +36,7 @@ namespace Sweet.Actors
         Faulted = 8
     }
 
+    [Serializable]
     public class WireMessage
     {
         public string Id { get; set; }
