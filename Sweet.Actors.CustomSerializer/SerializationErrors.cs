@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,8 +22,10 @@
 //      THE SOFTWARE.
 #endregion License
 
-namespace Sweet.Actors.Rpc
+namespace Sweet.Actors
 {
-    public class DefaultRpcSerializer : CustomSerializer
-    { }
+    public static class SerializationErrors
+    {
+        public const string StreamNotContainingValidWireMessage = "Stream is not containing valid wire message.";
+    }
 }

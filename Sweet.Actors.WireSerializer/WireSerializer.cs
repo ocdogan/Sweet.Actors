@@ -27,7 +27,7 @@ using System.Collections.Generic;
 using System.IO;
 using Wire;
 
-namespace Sweet.Actors.Rpc
+namespace Sweet.Actors
 {
     public class WireSerializer : IWireSerializer
     {

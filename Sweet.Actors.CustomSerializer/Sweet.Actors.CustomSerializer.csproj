@@ -5,8 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Sweet.Actors.CustomSerializer\Sweet.Actors.CustomSerializer.csproj" />
-    <ProjectReference Include="..\Sweet.Actors.WireSerializer\Sweet.Actors.WireSerializer.csproj" />
+    <PackageReference Include="Wire" Version="0.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Sweet.Actors\Sweet.Actors.csproj" />
   </ItemGroup>
 
