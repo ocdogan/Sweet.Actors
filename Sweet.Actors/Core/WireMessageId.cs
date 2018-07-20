@@ -52,30 +52,150 @@ namespace Sweet.Actors
         {
             id = Empty;
 
-            sid = sid?.Trim();
-            if (!String.IsNullOrEmpty(sid) && sid.Length >= EmptyLength &&
-                sid[0] == '[' && sid[sid.Length - 1] == ']')
+            if (sid != null)
             {
-                sid = sid.Substring(1, sid.Length - 2);
-
-                var pidPos = sid.IndexOf('-');
-                if (pidPos > 0 &&
-                    int.TryParse(sid.Substring(0, pidPos), out int pid))
+                var length = sid.Length;
+                if (length >= EmptyLength)
                 {
-                    var parts = sid.Substring(pidPos + 1).Split('.');
-
-                    if (parts != null && parts.Length == 4 &&
-                        int.TryParse(parts[0], out int major) &&
-                        int.TryParse(parts[1], out int majorRevision) &&
-                        int.TryParse(parts[2], out int minor) &&
-                        int.TryParse(parts[3], out int minorRevision))
+                    var startPos = GetStartPos(sid, length);
+                    if (startPos > -1)
                     {
-                        id = new WireMessageId(major, majorRevision, minor, minorRevision, pid);
-                        return true;
+                        startPos++;
+
+                        var endPos = GetEndPos(sid, length, startPos);
+                        if (endPos > -1)
+                        {
+                            int dashPos = GetPositionOf('-', sid, startPos, Math.Min(startPos + 11, endPos));
+
+                            if (dashPos > -1 &&
+                                TryParseInt(sid, ref startPos, dashPos - startPos, out int pid))
+                            {
+                                startPos++;
+                                var dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+
+                                if (dotPos > -1 &&
+                                    TryParseInt(sid, ref startPos, dotPos - startPos, out int major))
+                                {
+                                    startPos++;
+                                    dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+
+                                    if (dotPos > -1 &&
+                                        TryParseInt(sid, ref startPos, dotPos - startPos, out int majorRevision))
+                                    {
+                                        startPos++;
+                                        dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+
+                                        if (dotPos > -1 &&
+                                            TryParseInt(sid, ref startPos, dotPos - startPos, out int minor))
+                                        {
+                                            startPos++;
+                                            if (TryParseInt(sid, ref startPos, endPos - startPos, out int minorRevision))
+                                            {
+                                                id = new WireMessageId(major, majorRevision, minor, minorRevision, pid);
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             return false;
+        }
+
+        private static bool TryParseInt(string sid, ref int startPos, int length, out int value)
+        {
+            value = 0;
+            if (length > 0)
+            {
+                var minus = (sid[startPos] == '-');
+                if (minus)
+                    startPos++;
+
+                var digit = 1;
+                for (var i = startPos + length - 1; i >= startPos; i--)
+                {
+                    if (!char.IsNumber(sid[i]))
+                        return false;
+
+                    value += (sid[i] - '0') * digit;
+                    digit *= 10;
+                }
+
+                startPos += length;
+                if (minus)
+                {
+                    value = -value;
+                    startPos--;
+                }
+
+                return true;
+            }
+            return false;
+        }
+
+        private static int GetPositionOf(char charToFind, string sid, int startPos, int endPos)
+        {
+            var dotPos = -1;
+            for (var i = startPos; i < endPos; i++)
+            {
+                if (sid[i] == charToFind)
+                {
+                    dotPos = i;
+                    break;
+                }
+            }
+
+            return dotPos;
+        }
+
+        private static int GetEndPos(string sid, int length, int startPos)
+        {
+            const int maxLength = 56;
+            var searchRange = Math.Min(length, maxLength + startPos);
+
+            var endPos = -1;
+            for (var i = searchRange - 1; i >= startPos; i--)
+            {
+                if (sid[i] == ']')
+                {
+                    endPos = i;
+                    break;
+                }
+            }
+
+            if (endPos > -1)
+            {
+                if (endPos < length - 1)
+                {
+                    for (var i = endPos + 1; i < length; i++)
+                    {
+                        if (!char.IsWhiteSpace(sid[i]))
+                        {
+                            endPos = -1;
+                            break;
+                        }
+                    }
+                }
+            }
+            return endPos;
+        }
+
+        private static int GetStartPos(string sid, int length)
+        {
+            var startPos = -1;
+            for (var i = 0; i < length; i++)
+            {
+                if (!char.IsWhiteSpace(sid[i]))
+                {
+                    startPos = i;
+                    break;
+                }
+            }
+
+            return (startPos > -1 && sid[startPos] == '[') ? startPos : -1;
         }
     }
 }

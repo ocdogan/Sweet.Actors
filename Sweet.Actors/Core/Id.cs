@@ -152,7 +152,7 @@ namespace Sweet.Actors
 
         protected static char[] AsChars(int processId, int major, int majorRevision, int minor, int minorRevision)
         {
-            const int bufferSize = 60;
+            const int bufferSize = 56;
 
             var offset = 0;
             var buffer = new char[bufferSize];
@@ -185,8 +185,8 @@ namespace Sweet.Actors
 
         private static void WriteIdPart(int value, char[] buffer, char separator, ref int offset)
         {
-            if (value == 0)
-                buffer[offset++] = Zero;
+            if (value > -1 && value < 10)
+                buffer[offset++] = (char)(Zero + value);
             else
             {
                 if (value < 0) // negative value
@@ -201,14 +201,18 @@ namespace Sweet.Actors
                     buffer[--rightOffset] = (char)(Zero + (value % 10));
                 } while ((value /= 10) > 0);
 
-                var length = IntToStringMaxLength - (rightOffset - offset);
-
-                if (length == 1)
-                    buffer[offset++] = buffer[rightOffset];
-                else if (length < IntToStringMaxLength)
+                if (rightOffset == offset)
+                    offset += IntToStringMaxLength;
+                else
                 {
-                    Array.Copy(buffer, rightOffset, buffer, offset, length);
-                    offset += length;
+                    var length = IntToStringMaxLength - (rightOffset - offset);
+                    if (length == 1)
+                        buffer[offset++] = buffer[rightOffset];
+                    else
+                    {
+                        Array.Copy(buffer, rightOffset, buffer, offset, length);
+                        offset += length;
+                    }
                 }
             }
 
