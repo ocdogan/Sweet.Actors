@@ -64,16 +64,6 @@ namespace Sweet.Actors
             return _process.Request(message, header);
         }
 
-        public override string ToString()
-        {
-            return base.ToString();
-        }
-
-        public override int GetHashCode()
-        {
-            return base.GetHashCode();
-        }
-
         public override bool Equals(object obj)
         {
             if (obj == null)
@@ -82,6 +72,11 @@ namespace Sweet.Actors
             if (obj is Pid pid)
                 return pid.Equals(obj);
             return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
         }
     }
 }

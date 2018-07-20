@@ -401,6 +401,7 @@ namespace Sweet.Actors
         protected int _readTimeout = Timeout.Infinite;
         protected int _writeTimeout = Timeout.Infinite;
 
+        private int _chunkCount;
         private List<byte[]> _chunks = new List<byte[]>();
 
         private int _chunkSize = ByteArrayCache.Default.ArraySize;
@@ -569,12 +570,12 @@ namespace Sweet.Actors
 
         private int GetChunkIndexOf(long position)
         {
-            return position < 0 ? -1 : ((int)(position + _origin) / _chunkSize);
+            return position > -1 ? ((int)(position + _origin) / _chunkSize) : -1;
         }
 
         protected long GetChunkOffsetOf(long position)
         {
-            return position < 0 ? -1 : ((position + _origin) % _chunkSize);
+            return position > -1 ? ((position + _origin) % _chunkSize) : -1L;
         }
 
         private byte[] GetChunkOf(long position)
@@ -582,24 +583,25 @@ namespace Sweet.Actors
             if (!_isClosed)
             {
                 var index = GetChunkIndexOf(position);
-                if (index > -1)
-                {
-                    ValidateIndexedChunk(index);
-                    if (index < _chunks.Count)
-                        return _chunks[index];
-                }
+
+                ValidateIndexedChunk(index);
+                return _chunks[index];
             }
             return EmptyChunk;
         }
 
         protected void ValidateIndexedChunk(int index)
         {
-            var requiredCnt = (index - _chunks.Count) + 1;
+            var requiredCnt = (index - _chunkCount) + 1;
+            if (requiredCnt > 0)
+            {
+                if (requiredCnt == 1)
+                    _chunks.Add(_cache.Acquire());
+                else 
+                    _chunks.AddRange(_cache.Acquire(requiredCnt));
 
-            if (requiredCnt == 1)
-                _chunks.Add(_cache.Acquire());
-            else if (requiredCnt > 0)
-                _chunks.AddRange(_cache.Acquire(requiredCnt));
+                _chunkCount = _chunks.Count;
+            }
         }
 
         public override void Flush()
@@ -637,7 +639,7 @@ namespace Sweet.Actors
 
                         var requiredCnt = ((_length + _origin) / _chunkSize) + 1;
 
-                        var releaseCnt = _chunks.Count - requiredCnt;
+                        var releaseCnt = _chunkCount - requiredCnt;
                         if (releaseCnt > 0)
                         {
                             for (var i = _chunks.Count - 1; i < 0; i++)
@@ -646,6 +648,8 @@ namespace Sweet.Actors
                                 var chunk = _chunks[index];
 
                                 _chunks.RemoveAt(index);
+                                _chunkCount--;
+
                                 _cache.Release(chunk);
                             }
                         }
@@ -833,6 +837,7 @@ namespace Sweet.Actors
                 _origin = 0;
                 _length = 0L;
                 _position = 0L;
+                _chunkCount = 0;
 
                 if ((chunks?.Count ?? 0) > 0)
                 {
@@ -904,7 +909,7 @@ namespace Sweet.Actors
                 return;
 
             var newOrigin = _origin + trimLength;
-            var chunksCount = _chunks.Count;
+            var chunksCount = _chunkCount;
 
             var releaseCnt = Math.Min(chunksCount, (int)(newOrigin  / _chunkSize));
             if (releaseCnt > 0 && releaseCnt >= chunksCount)
@@ -921,6 +926,7 @@ namespace Sweet.Actors
                 {
                     var chunk = _chunks[0];
                     _chunks.RemoveAt(0);
+                    _chunkCount--;
 
                     chunksCount--;                    
                     newOrigin -= _chunkSize;

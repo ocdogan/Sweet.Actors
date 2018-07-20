@@ -43,6 +43,8 @@ namespace Sweet.Actors
         private static readonly Action<Task> IgnoreTaskContinuation = (task) => { var ignored = task.Exception; };
 
 		public static readonly int ProcessId = Environment.TickCount;
+        public static readonly byte[] ProcessIdBytes = Encoding.ASCII.GetBytes(ProcessId.ToString());
+        public static readonly int ProcessIdBytesLength = ProcessIdBytes.Length;
 
         private static readonly byte[] ShortMinValue = UTF8.GetBytes("-32768");
         private static readonly byte[] ShortMaxValue = UTF8.GetBytes("32767");

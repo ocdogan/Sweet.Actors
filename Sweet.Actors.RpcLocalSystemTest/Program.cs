@@ -32,8 +32,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
 {
     class Program
     {
-        private static int counter;
-        private const int loop = 20000;
+        // private static int counter;
+        private const int loop = 200000;
 
         private static void InitSystem(int port)
         {

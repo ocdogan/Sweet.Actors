@@ -32,7 +32,7 @@ namespace Sweet.Actors
 
         private static readonly int EmptyLength = Empty.ToString().Length;
 
-        private WireMessageId(long major, long majorRevision, long minor, long minorRevision, int processId = -1)
+        private WireMessageId(int major, int majorRevision, int minor, int minorRevision, int processId = -1)
             : base(major, majorRevision, minor, minorRevision, processId)
         { }
 
@@ -45,7 +45,7 @@ namespace Sweet.Actors
         public static string NextAsString()
         {
             var buffer = Generate();
-            return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";
+            return new String(AsChars(Common.ProcessId, buffer[0], buffer[1], buffer[2], buffer[3]));
         }
 
         public static bool TryParse(string sid, out WireMessageId id)
@@ -65,10 +65,10 @@ namespace Sweet.Actors
                     var parts = sid.Substring(pidPos + 1).Split('.');
 
                     if (parts != null && parts.Length == 4 &&
-                        long.TryParse(parts[0], out long major) &&
-                        long.TryParse(parts[1], out long majorRevision) &&
-                        long.TryParse(parts[2], out long minor) &&
-                        long.TryParse(parts[3], out long minorRevision))
+                        int.TryParse(parts[0], out int major) &&
+                        int.TryParse(parts[1], out int majorRevision) &&
+                        int.TryParse(parts[2], out int minor) &&
+                        int.TryParse(parts[3], out int minorRevision))
                     {
                         id = new WireMessageId(major, majorRevision, minor, minorRevision, pid);
                         return true;

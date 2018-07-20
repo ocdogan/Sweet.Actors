@@ -22,6 +22,7 @@
 //      THE SOFTWARE.
 #endregion License
 
+using System;
 using System.Text;
 using System.Threading;
 
@@ -31,8 +32,8 @@ namespace Sweet.Actors
     {
         protected sealed class IdPart
         {
-            private long _id = 0L;
-            private long _initial = 0L;
+            private int _id = 0;
+            private int _initial = 0;
 
             private bool _isTail;
             private IdPart _next;
@@ -40,7 +41,7 @@ namespace Sweet.Actors
 
             private object _lock = new object();
 
-            public IdPart(IdPart next, int position, long initialId = 0L, bool isTail = false)
+            public IdPart(IdPart next, int position, int initialId = 0, bool isTail = false)
             {
                 _id = initialId;
                 _isTail = isTail;
@@ -54,14 +55,14 @@ namespace Sweet.Actors
                 _next = next;
             }
 
-            public void SetSeed(long id)
+            public void SetSeed(int id)
             {
                 _id = id;
             }
 
-            public void Generate(long[] buffer)
+            public void Generate(int[] buffer)
             {
-                var id = Interlocked.Add(ref _id, 1L);
+                var id = Interlocked.Add(ref _id, 1);
 
                 Interlocked.MemoryBarrier();
                 if (id < 0)
@@ -73,7 +74,7 @@ namespace Sweet.Actors
                             Interlocked.Exchange(ref _id, _initial);
 
                         if (_isTail)
-                            id = Interlocked.Add(ref _id, 1L);
+                            id = Interlocked.Add(ref _id, 1);
 
                         _next?.Generate(buffer);
                     }
@@ -88,11 +89,22 @@ namespace Sweet.Actors
         private static readonly IdPart s_MinorGen;
         private static readonly IdPart s_MinorRevisionGen;
 
+        private const int IntToStringMaxLength = 10;
+
+        private const char Dot = '.';
+        private const char Dash = '-';
+        private const char Minus = '-';
+        private const char Zero = '0';
+        private const char ParenthesesOpen = '[';
+        private const char ParenthesesClose = ']';
+
         private int _processId;
-        private long _major;
-        private long _majorRevision;
-        private long _minor;
-        private long _minorRevision;
+        private int _major;
+        private int _majorRevision;
+        private int _minor;
+        private int _minorRevision;
+
+        private char[] _toChars;
         private string _toString;
 
         static Id()
@@ -103,7 +115,7 @@ namespace Sweet.Actors
             s_MinorRevisionGen = new IdPart(s_MinorGen, 3, 0, true);
         }
 
-        protected Id(long major, long majorRevision, long minor, long minorRevision, int processId = -1)
+        protected Id(int major, int majorRevision, int minor, int minorRevision, int processId = -1)
         {
             _major = major;
             _majorRevision = majorRevision;
@@ -122,34 +134,85 @@ namespace Sweet.Actors
 
         public int ProcessId => _processId;
 
+        public char[] ToChars()
+        {
+            // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
+            if (_toChars == null)
+                _toChars = AsChars(_processId, _major, _majorRevision, _minor, _minorRevision);
+            return _toChars;
+        }
+
         public override string ToString()
         {
             // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
             if (_toString == null)
-            {
-                var sb = new StringBuilder(24);
-
-                sb.Append('[');
-
-                sb.Append(_processId.ToString());
-                sb.Append('-');
-
-                sb.Append(_major.ToString());
-                sb.Append('.');
-
-                sb.Append(_majorRevision.ToString());
-                sb.Append('.');
-
-                sb.Append(_minor.ToString());
-                sb.Append('.');
-
-                sb.Append(_minorRevision.ToString());
-
-                sb.Append(']');
-
-                return (_toString = sb.ToString());
-            }
+                _toString = new String(AsChars(_processId, _major, _majorRevision, _minor, _minorRevision));
             return _toString;
+        }
+
+        protected static char[] AsChars(int processId, int major, int majorRevision, int minor, int minorRevision)
+        {
+            const int bufferSize = 60;
+
+            var offset = 0;
+            var buffer = new char[bufferSize];
+
+            buffer[offset++] = ParenthesesOpen;
+
+            if (processId != Common.ProcessId || processId == 0)
+                WriteIdPart(processId, buffer, Dash, ref offset);
+            else
+            {
+                Array.Copy(Common.ProcessIdBytes, 0, buffer, offset, Common.ProcessIdBytesLength);
+
+                offset += Common.ProcessIdBytesLength;
+                buffer[offset++] = Dash;
+            }
+
+            WriteIdPart(major, buffer, Dot, ref offset);
+            WriteIdPart(majorRevision, buffer, Dot, ref offset);
+            WriteIdPart(minor, buffer, Dot, ref offset);
+            WriteIdPart(minorRevision, buffer, ParenthesesClose, ref offset);
+
+            if (offset >= bufferSize)
+                return buffer;
+
+            var result = new char[offset];
+            Array.Copy(buffer, result, offset);
+
+            return result;
+        }
+
+        private static void WriteIdPart(int value, char[] buffer, char separator, ref int offset)
+        {
+            if (value == 0)
+                buffer[offset++] = Zero;
+            else
+            {
+                if (value < 0) // negative value
+                {
+                    buffer[offset++] = Minus;
+                    value = -value;
+                }
+
+                var rightOffset = offset + IntToStringMaxLength;
+                do
+                {
+                    buffer[--rightOffset] = (char)(Zero + (value % 10));
+                } while ((value /= 10) > 0);
+
+                var length = IntToStringMaxLength - (rightOffset - offset);
+
+                if (length == 1)
+                    buffer[offset++] = buffer[rightOffset];
+                else if (length < IntToStringMaxLength)
+                {
+                    Array.Copy(buffer, rightOffset, buffer, offset, length);
+                    offset += length;
+                }
+            }
+
+            buffer[offset++] = separator;
         }
 
         public override int GetHashCode()
@@ -165,7 +228,7 @@ namespace Sweet.Actors
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(obj, null))
+            if (obj is null)
                 return false;
 
             var other = obj as Id<T>;
@@ -180,9 +243,9 @@ namespace Sweet.Actors
                 other.Major == Major;
         }
 
-        protected static long[] Generate()
+        protected static int[] Generate()
         {
-            var buffer = new long[4];
+            var buffer = new int[4];
             s_MinorRevisionGen.Generate(buffer);
 
             return buffer;

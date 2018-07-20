@@ -52,14 +52,14 @@ namespace Sweet.Actors
 
         private class AnonymousNameGenerator : Id<ActorSystem>
         {
-            public AnonymousNameGenerator(long major, long majorRevision, long minor, long minorRevision)
+            public AnonymousNameGenerator(int major, int majorRevision, int minor, int minorRevision)
                 : base(major, majorRevision, minor, minorRevision)
             { }
 
             public static string Next()
             {
                 var buffer = Generate();
-                return $"[{Common.ProcessId}-{buffer[0]}.{buffer[1]}.{buffer[2]}.{buffer[3]}]";
+                return new String(AsChars(Common.ProcessId, buffer[0], buffer[1], buffer[2], buffer[3]));
             }
         }
 

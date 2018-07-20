@@ -34,6 +34,7 @@ namespace Sweet.Actors
         private int _hashCode;
         private string _actor;
         private string _actorSystem;
+        private string _toString;
 
         protected Aid()
         {
@@ -63,6 +64,7 @@ namespace Sweet.Actors
             {
                 _actor = actor;
                 _hashCode = 0;
+                _toString = null;
             }
         }
 
@@ -73,6 +75,7 @@ namespace Sweet.Actors
             {
                 _actorSystem = actorSystem;
                 _hashCode = 0;
+                _toString = null;
             }
         }
 
@@ -80,13 +83,9 @@ namespace Sweet.Actors
         {
             //$"{_actorSystem}/{_actor}";
 
-            var sb = new StringBuilder(24);
-
-            sb.Append(_actorSystem ?? String.Empty);
-            sb.Append('/');
-            sb.Append(_actor ?? String.Empty);
-
-            return sb.ToString();
+            if (_toString == null)
+                _toString = _actorSystem + "/" + _actor;
+            return _toString;
         } 
 
         public override int GetHashCode()
@@ -138,18 +137,6 @@ namespace Sweet.Actors
                         }
                     }
                 }
-
-                /* var parts = str.Split('/');
-                if (parts.Length == 2)
-                {
-                    var actorSystem = parts[0]?.Trim();
-                    if (!String.IsNullOrEmpty(actorSystem))
-                    {
-                        var actor = parts[1]?.Trim();
-                        if (!String.IsNullOrEmpty(actor))
-                            return new Aid(actorSystem, actor);
-                    }
-                } */
             }
             return Unknown;
         }
