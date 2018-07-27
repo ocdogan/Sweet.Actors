@@ -89,14 +89,14 @@ namespace Sweet.Actors
         private static readonly IdPart s_MinorGen;
         private static readonly IdPart s_MinorRevisionGen;
 
-        private const int IntToStringMaxLength = 10;
+        protected const int IntToStringMaxLength = 10;
 
-        private const char Dot = '.';
-        private const char Dash = '-';
-        private const char Minus = '-';
-        private const char Zero = '0';
-        private const char ParenthesesOpen = '[';
-        private const char ParenthesesClose = ']';
+        protected const char Dot = '.';
+        protected const char Colon = ':';
+        protected const char Minus = '-';
+        protected const char Zero = '0';
+        protected const char ParenthesesOpen = '[';
+        protected const char ParenthesesClose = ']';
 
         private int _processId;
         private int _major;
@@ -136,7 +136,7 @@ namespace Sweet.Actors
 
         public char[] ToChars()
         {
-            // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
+            // $"[{ProcessId}:{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
             if (_toChars == null)
                 _toChars = AsChars(_processId, _major, _majorRevision, _minor, _minorRevision);
             return _toChars;
@@ -144,7 +144,7 @@ namespace Sweet.Actors
 
         public override string ToString()
         {
-            // $"[{ProcessId}-{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
+            // $"[{ProcessId}:{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
             if (_toString == null)
                 _toString = new String(AsChars(_processId, _major, _majorRevision, _minor, _minorRevision));
             return _toString;
@@ -160,13 +160,13 @@ namespace Sweet.Actors
             buffer[offset++] = ParenthesesOpen;
 
             if (processId != Common.ProcessId || processId == 0)
-                WriteIdPart(processId, buffer, Dash, ref offset);
+                WriteIdPart(processId, buffer, Colon, ref offset);
             else
             {
                 Array.Copy(Common.ProcessIdBytes, 0, buffer, offset, Common.ProcessIdBytesLength);
 
                 offset += Common.ProcessIdBytesLength;
-                buffer[offset++] = Dash;
+                buffer[offset++] = Colon;
             }
 
             WriteIdPart(major, buffer, Dot, ref offset);

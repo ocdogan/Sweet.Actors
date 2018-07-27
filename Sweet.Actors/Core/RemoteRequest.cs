@@ -29,39 +29,29 @@ namespace Sweet.Actors
 {
     public class RemoteRequest : RemoteMessage
     {
-        private TaskCompletor<object> _taskCompletor;
+        private TaskCompletor<IFutureResponse> _taskCompletor;
 
         internal event TimeoutEventHandler OnTimeout;
 
-        internal RemoteRequest(IMessage message, Aid to, int timeoutMSec = 0)
+        internal RemoteRequest(IFutureMessage message, Aid to)
             : base(message, to, WireMessageId.Next())
         {
-            _taskCompletor = new TaskCompletor<object>(timeoutMSec);
-            _taskCompletor.OnTimeout += DoTimedOut;
+            _taskCompletor = message.Completor;
+            if (message.TimeoutMSec.HasValue)
+                _taskCompletor.OnTimeout += DoTimedOut;
         }
 
-        public TaskCompletor<object> Completor => _taskCompletor;
+        public TaskCompletor<IFutureResponse> Completor => _taskCompletor;
 
         public override void Dispose()
         {
             var taskCompletor = Interlocked.Exchange(ref _taskCompletor, null);
             if (taskCompletor != null)
             {
-                taskCompletor.OnTimeout -= DoTimedOut;
-                taskCompletor.Dispose();
-            }
-        }
-
-        public void Completed()
-        {
-            var taskCompletor = _taskCompletor;
-            if (taskCompletor != null)
-            {
-                taskCompletor.OnTimeout -= DoTimedOut;
-                taskCompletor.Unregister();
-
-                taskCompletor.TrySetResult(0);
-                taskCompletor.Dispose();
+                using (taskCompletor)
+                {
+                    taskCompletor.OnTimeout -= DoTimedOut;
+                }
             }
         }
 
@@ -73,8 +63,7 @@ namespace Sweet.Actors
                 if (taskCompletor != null)
                     taskCompletor.OnTimeout -= DoTimedOut;
 
-                if (IsFuture)
-                    ((IFutureMessage)Message).Cancel();
+                ((IFutureMessage)Message).Cancel();
             }
             finally
             {

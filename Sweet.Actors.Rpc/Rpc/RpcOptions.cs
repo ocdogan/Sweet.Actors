@@ -33,8 +33,8 @@ namespace Sweet.Actors.Rpc
     {
         private IPEndPoint _endPoint;
 
-        private int _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
-        private int _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
+        private int? _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
+        private int? _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
 
         private string _serializer = Constants.DefaultSerializerKey;
 
@@ -53,9 +53,9 @@ namespace Sweet.Actors.Rpc
 
         public string Serializer => _serializer;
 
-        public int SendTimeoutMSec => _sendTimeoutMSec;
+        public int? SendTimeoutMSec => _sendTimeoutMSec;
 
-        public int ReceiveTimeoutMSec => _receiveTimeoutMSec;
+        public int? ReceiveTimeoutMSec => _receiveTimeoutMSec;
 
         public T UsingEndPoint(IPEndPoint ipEndPoint)
         {
@@ -112,24 +112,28 @@ namespace Sweet.Actors.Rpc
             return (T)this;
         }
 
-        public T UsingReceiveTimeoutMSec(int receiveTimeoutMSec)
+        public T UsingReceiveTimeoutMSec(int? receiveTimeoutMSec)
         {
-            if (receiveTimeoutMSec < 0)
+            if (receiveTimeoutMSec == null)
+                _receiveTimeoutMSec = null;
+            else if (receiveTimeoutMSec < 0)
                 _receiveTimeoutMSec = -1;
             else if (receiveTimeoutMSec == 0)
                 _receiveTimeoutMSec = RpcConstants.DefaultReceiveTimeout;
-            else _receiveTimeoutMSec = Math.Min(RpcConstants.MaxReceiveTimeout, Math.Max(RpcConstants.MinReceiveTimeout, receiveTimeoutMSec));
+            else _receiveTimeoutMSec = Math.Min(RpcConstants.MaxReceiveTimeout, Math.Max(RpcConstants.MinReceiveTimeout, receiveTimeoutMSec.Value));
 
             return (T)this;
         }
 
-        public T UsingSendTimeoutMSec(int sendTimeoutMSec)
+        public T UsingSendTimeoutMSec(int? sendTimeoutMSec)
         {
-            if (sendTimeoutMSec < 0)
+            if (sendTimeoutMSec == null)
+                _sendTimeoutMSec = null;
+            else if (sendTimeoutMSec < 0)
                 _sendTimeoutMSec = -1;
             else if (sendTimeoutMSec == 0)
                 _sendTimeoutMSec = RpcConstants.DefaultSendTimeout;
-            else _sendTimeoutMSec = Math.Min(RpcConstants.MaxSendTimeout, Math.Max(RpcConstants.MinSendTimeout, sendTimeoutMSec));
+            else _sendTimeoutMSec = Math.Min(RpcConstants.MaxSendTimeout, Math.Max(RpcConstants.MinSendTimeout, sendTimeoutMSec.Value));
 
             return (T)this;
         }
@@ -141,6 +145,8 @@ namespace Sweet.Actors.Rpc
             var result = New();
 
             result._endPoint = new IPEndPoint(_endPoint.Address, _endPoint.Port);
+            result._receiveTimeoutMSec = _receiveTimeoutMSec;
+            result._sendTimeoutMSec = _sendTimeoutMSec;
             result._serializer = _serializer;
 
             return result;

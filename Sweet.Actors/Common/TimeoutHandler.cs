@@ -381,11 +381,7 @@ namespace Sweet.Actors
                                 headState++;
                                 break;
                             case 1:
-                                timedOuts = new List<TimedOutPair>();
-
-                                timedOuts.Add(head);
-                                timedOuts.Add(pair);
-
+                                timedOuts = new List<TimedOutPair> { head, pair };
                                 headState++;
                                 break;
                             default:

@@ -35,8 +35,8 @@ namespace Sweet.Actors
 
         public RemoteMessage(IMessage message, Aid to, WireMessageId messageId)
         {
-            _message = message ?? Actors.Message.Empty;
             _to = to ?? Aid.Unknown;
+            _message = message ?? Actors.Message.Empty;
             _messageId = messageId ?? WireMessageId.Next();
             _isFuture = _message is IFutureMessage;
         }

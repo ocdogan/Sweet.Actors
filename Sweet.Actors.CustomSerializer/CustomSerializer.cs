@@ -128,7 +128,9 @@ namespace Sweet.Actors.Rpc
 
                 message.MessageType = (MessageType)reader.ReadByte();
                 message.State = (WireMessageState)reader.ReadByte();
-                message.TimeoutMSec = reader.ReadInt32();
+
+                var timeoutMSec = reader.ReadInt32();
+                message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
 
                 message.Id = ReadString(reader);
                 message.From = ReadString(reader);
@@ -295,7 +297,7 @@ namespace Sweet.Actors.Rpc
             writer.Write((byte)message.MessageType);
             writer.Write((byte)message.State);
 
-            writer.Write(message.TimeoutMSec);
+            writer.Write(message.TimeoutMSec ?? int.MinValue);
 
             WriteString(writer, message.Id);
             WriteString(writer, message.From);

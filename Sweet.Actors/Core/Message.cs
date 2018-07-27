@@ -47,7 +47,9 @@ namespace Sweet.Actors
         MessageType MessageType { get; }
         bool IsEmpty { get; }
         bool Expired { get; }
-        int TimeoutMSec { get; }
+        int? TimeoutMSec { get; }
+
+        void Expire();
     }
 
     internal class Message : IMessage
@@ -60,11 +62,13 @@ namespace Sweet.Actors
         private Aid _from;
         private object _data;
         private bool _isEmpty;
+        private bool _expired;
         private int _creationTime;
-		private int _timeoutMSec = 0;
+		private int? _timeoutMSec = 0;
         private IReadOnlyDictionary<string, string> _header = _defaultHeader;
 
-		public Message(object data, Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
+		public Message(object data, Aid from = null, 
+            IDictionary<string, string> header = null, int? timeoutMSec = null)
         {
             _data = data;
             _from = from ?? Aid.Unknown;
@@ -91,16 +95,31 @@ namespace Sweet.Actors
 
         public virtual MessageType MessageType => MessageType.Default;
 
-        public int TimeoutMSec => _timeoutMSec;
+        public int? TimeoutMSec => _timeoutMSec;
 
         public bool IsEmpty => _isEmpty;
 
-        public bool Expired => _timeoutMSec > 0 && 
-		        (Environment.TickCount - _creationTime) >= _timeoutMSec;
+        public bool Expired
+        {
+            get
+            {
+                if (!_expired)
+                {
+                    _expired = _timeoutMSec.HasValue &&
+                       _timeoutMSec > 0 && (Environment.TickCount - _creationTime) >= _timeoutMSec;
+                }
+                return _expired;
+            }
+        }
+        public void Expire()
+        {
+            _expired = true;
+        }
     }
 
     public interface IFutureMessage : IMessage
     {
+        TaskCompletor<IFutureResponse> Completor { get; }
         bool IsCanceled { get; }
         bool IsCompleted { get; }
         bool IsFaulted { get; }
@@ -112,13 +131,25 @@ namespace Sweet.Actors
     {
         protected readonly TaskCompletor<IFutureResponse> _taskCompletor;
 
-        public FutureMessage(object data, 
-                               TaskCompletor<IFutureResponse> taskCompletor,
-                               Aid from, IDictionary<string, string> header = null)
-			: base(data, from, header, taskCompletor.TimeoutMSec)
+        public FutureMessage(object data, Aid from, 
+            IDictionary<string, string> header = null, int? timeoutMSec = null)
+			: base(data, from, header, timeoutMSec)
         {
-            _taskCompletor = taskCompletor ?? new TaskCompletor<IFutureResponse>();
+            if (!timeoutMSec.HasValue)
+                _taskCompletor = new TaskCompletor<IFutureResponse>();
+            else
+            {
+                _taskCompletor = new TaskCompletor<IFutureResponse>(timeoutMSec.Value);
+                _taskCompletor.OnTimeout += DoTimedOut;
+            }
         }
+
+        private void DoTimedOut(object sender, TaskCompletionStatus status)
+        {
+            Expire();
+        }
+
+        public TaskCompletor<IFutureResponse> Completor => _taskCompletor;
 
         public override MessageType MessageType => MessageType.FutureMessage;
 
@@ -158,6 +189,8 @@ namespace Sweet.Actors
 
     internal class FutureResponse : Message, IFutureResponse
     {
+        public static readonly FutureResponse Unknown = new FutureResponse(new object(), Aid.Unknown);
+
         public FutureResponse(Aid from = null, IDictionary<string, string> header = null, int timeoutMSec = 0)
 			: base(null, from, header, timeoutMSec)
         { }
@@ -178,6 +211,8 @@ namespace Sweet.Actors
 
     internal class FutureError : FutureResponse, IFutureError
     {
+        public static readonly FutureError MessageExpired = new FutureError(new Exception(Errors.MessageExpired), Aid.Unknown);
+
         public FutureError(Exception e, Aid from = null, IDictionary<string, string> header = null)
             : base(e, from, header)
         { }

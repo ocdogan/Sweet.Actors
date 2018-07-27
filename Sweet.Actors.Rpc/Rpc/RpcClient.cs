@@ -32,7 +32,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors.Rpc
 {
-    internal class RpcClient : Processor<RemoteRequest>, IRemoteClient
+    internal class RpcClient : Processor<RemoteMessage>, IRemoteClient
     {
         #region Constants
 
@@ -49,7 +49,7 @@ namespace Sweet.Actors.Rpc
         private static readonly Exception ConnectionError = new Exception(RpcErrors.CannotConnectToRemoteEndPoint);
         private static readonly Task ConnectionErrorTask = Task.FromException(ConnectionError);
 
-        private static readonly RemoteRequest[] EmptyRequests = new RemoteRequest[0];
+        private static readonly RemoteMessage[] EmptyMessageList = new RemoteMessage[0];
 
         private NativeSocket _socket;
         private object _socketLock = new object();
@@ -207,7 +207,8 @@ namespace Sweet.Actors.Rpc
                             addressFamily == AddressFamily.Unspecified)
                             addressFamily = IPAddress.Any.AddressFamily;
 
-                        Configure(result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp));
+                        result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
+                        result.Configure(_options.SendTimeoutMSec, _options.ReceiveTimeoutMSec, true, true);
 
                         using (Interlocked.Exchange(ref _connection, new RpcConnection(this, result, HandleResponse, null)))
                         { }
@@ -270,37 +271,19 @@ namespace Sweet.Actors.Rpc
             return Completed;
         }
 
-        private void Configure(Socket socket)
-        {
-            socket.SetIOLoopbackFastPath();
-
-            if (_options.SendTimeoutMSec > 0)
-            {
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
-                                        _options.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.SendTimeoutMSec);
-            }
-
-            if (_options.ReceiveTimeoutMSec > 0)
-            {
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
-                                        _options.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.ReceiveTimeoutMSec);
-            }
-
-            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-
-            socket.NoDelay = true;
-        }
-
-        public Task Send(RemoteRequest request)
+        public Task Send(RemoteMessage message)
         {
             ThrowIfDisposed();
 
-            if (request == null)
-                return Task.FromException(new ArgumentNullException(nameof(request)));
+            if (message == null)
+                return Task.FromException(new ArgumentNullException(nameof(message)));
 
-            Enqueue(request);
+            Enqueue(message);
 
-            return request.Completor.Task;
+            if (message is RemoteRequest request)
+                return request.Completor.Task;
+
+            return Completed;
         }
 
         private Socket WaitToConnect()
@@ -365,51 +348,102 @@ namespace Sweet.Actors.Rpc
 
         private IList PrepareMessagesToProcess()
         {
-            IList result = EmptyRequests;
+            IList result = EmptyMessageList;
 
             var count = 0;
             for (var i = 0; i < _bulkSendLength; i++)
             {
-                if (!TryDequeue(out RemoteRequest item))
+                if (!TryDequeue(out RemoteMessage message))
                     break;
 
-                var task = PrepareItem(item, out bool canSend);
+                var task = PrepareItem(message, out bool canSend);
                 if (!canSend || task.IsFaulted || task.IsCanceled)
                     continue;
 
                 switch (count++)
                 {
                     case 0:
-                        result = new RemoteRequest[] { item };
+                        result = new RemoteMessage[] { message };
                         break;
                     case 1:
                         {
-                            var firstItem = (RemoteRequest)result[0];
+                            var firstMessage = (RemoteMessage)result[0];
 
-                            result = new List<RemoteRequest>(Math.Min(Count(), _bulkSendLength)) { firstItem, item };
+                            result = new List<RemoteMessage>(Math.Min(Count(), _bulkSendLength)) { firstMessage, message };
                             break;
                         }
                     default:
-                        result.Add(item);
+                        result.Add(message);
                         break;
                 }
             }
             return result;
         }
 
-        private void CancelRequests(IList requests)
+        private void CancelRequests(IList messages)
         {
-            foreach (var item in requests)
+            foreach (var item in messages)
             {
-                var request = (RemoteRequest)item;
-                var future = request.IsFuture ? (FutureMessage)request.Message : null;
+                if (item is RemoteRequest request)
+                {
+                    var future = request.IsFuture ? (FutureMessage)request.Message : null;
+                    try
+                    {
+                        request.Completor.TrySetCanceled();
+                        future?.Cancel();
+                    }
+                    catch (Exception e)
+                    {
+                        HandleError(request, e);
+
+                        try
+                        {
+                            future?.RespondToWithError(e, future.From);
+                        }
+                        catch (Exception)
+                        { }
+                    }
+                }
+            }
+        }
+
+        protected virtual Task PrepareItem(RemoteMessage message, out bool canSend)
+        {
+            canSend = true;
+
+            if (message is RemoteRequest request)
+            {
+                var realMessage = message.Message;
+                var future = message.IsFuture ? (FutureMessage)realMessage : null;
                 try
                 {
-                    request.Completor.TrySetCanceled();
-                    future?.Cancel();
+                    if (future?.IsCanceled ?? false)
+                    {
+                        canSend = false;
+
+                        request.Completor.TrySetCanceled();
+                        future?.Cancel();
+
+                        return Canceled;
+                    }
+
+                    if (realMessage.Expired)
+                    {
+                        canSend = false;
+
+                        var error = new Exception(Errors.MessageExpired);
+
+                        request.Completor.TrySetException(error);
+                        future?.RespondToWithError(error, future.From);
+
+                        return Canceled;
+                    }
+
+                    return Completed;
                 }
                 catch (Exception e)
                 {
+                    canSend = false;
                     HandleError(request, e);
 
                     try
@@ -418,56 +452,11 @@ namespace Sweet.Actors.Rpc
                     }
                     catch (Exception)
                     { }
+
+                    return Task.FromException(e);
                 }
             }
-        }
-
-        protected virtual Task PrepareItem(RemoteRequest request, out bool canSend)
-        {
-            canSend = true;
-
-            var message = request.Message;
-            var future = request.IsFuture ? (FutureMessage)message : null;
-            try
-            {
-                if (future?.IsCanceled ?? false)
-                {
-                    canSend = false;
-
-                    request.Completor.TrySetCanceled();
-                    future?.Cancel();
-
-                    return Canceled;
-                }
-
-                if (message.Expired)
-                {
-                    canSend = false;
-
-                    var error = new Exception(Errors.MessageExpired);
-
-                    request.Completor.TrySetException(error);
-                    future?.RespondToWithError(error, future.From);
-
-                    return Canceled;
-                }
-
-                return Completed;
-            }
-            catch (Exception e)
-            {
-                canSend = false;
-                HandleError(request, e);
-
-                try
-                {
-                    future?.RespondToWithError(e, future.From);
-                }
-                catch (Exception)
-                { }
-
-                return Task.FromException(e);
-            }
+            return Completed;
         }
 
         private void TryToFlush()
@@ -485,31 +474,32 @@ namespace Sweet.Actors.Rpc
             { }
         }
 
-        private void HandleError(RemoteRequest request, Exception e)
+        private void HandleError(RemoteMessage message, Exception e)
         {
             try
             {
-                request?.Completor.TrySetException(e);
+                if (message is RemoteRequest request)
+                    request?.Completor.TrySetException(e);
             }
             catch (Exception)
             { }
         }
 
-        private bool Transmit(IList requests, bool flush)
+        private bool Transmit(IList messages, bool flush)
         {
             if (Processing() && !Disposed)
             {
-                var requestCnt = requests?.Count ?? 0;
+                var requestCnt = messages?.Count ?? 0;
                 if (requestCnt > 0)
                 {
-                    var messages = new WireMessage[requestCnt];
+                    var wireMessages = new WireMessage[requestCnt];
                     for (var i = 0; i < requestCnt; i++)
                     {
-                        var request = (RemoteRequest)requests[i];
-                        messages[i] = request.Message.ToWireMessage(request.To, request.MessageId);
+                        var message = (RemoteMessage)messages[i];
+                        wireMessages[i] = message.Message.ToWireMessage(message.To, message.MessageId);
                     }
 
-                    if (WriteMessage(messages, flush))
+                    if (WriteMessage(wireMessages, flush))
                     {
                         BeginReceive();
                         return true;

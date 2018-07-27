@@ -55,6 +55,6 @@ namespace Sweet.Actors
 
         public Exception Exception { get; set; }
 
-        public int TimeoutMSec { get; set; }
+        public int? TimeoutMSec { get; set; }
     }
 }

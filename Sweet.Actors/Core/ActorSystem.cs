@@ -273,10 +273,10 @@ namespace Sweet.Actors
             return registry.Process.Pid;
         }
 
-        private int GetRequestTimeoutMSec(ActorOptions options)
+        private int? GetRequestTimeoutMSec(ActorOptions options)
         {
             var result = options.RequestTimeoutMSec;
-            if (result == -1)
+            if (!result.HasValue || result == -1)
                 result = Options.RequestTimeoutMSec;
 
             return result;

@@ -65,25 +65,25 @@ namespace Sweet.Actors
                         var endPos = GetEndPos(sid, length, startPos);
                         if (endPos > -1)
                         {
-                            int dashPos = GetPositionOf('-', sid, startPos, Math.Min(startPos + 11, endPos));
+                            int dashPos = GetPositionOf(Colon, sid, startPos, Math.Min(startPos + 11, endPos));
 
                             if (dashPos > -1 &&
                                 TryParseInt(sid, ref startPos, dashPos - startPos, out int pid))
                             {
                                 startPos++;
-                                var dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+                                var dotPos = GetPositionOf(Dot, sid, startPos, Math.Min(startPos + 11, endPos));
 
                                 if (dotPos > -1 &&
                                     TryParseInt(sid, ref startPos, dotPos - startPos, out int major))
                                 {
                                     startPos++;
-                                    dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+                                    dotPos = GetPositionOf(Dot, sid, startPos, Math.Min(startPos + 11, endPos));
 
                                     if (dotPos > -1 &&
                                         TryParseInt(sid, ref startPos, dotPos - startPos, out int majorRevision))
                                     {
                                         startPos++;
-                                        dotPos = GetPositionOf('.', sid, startPos, Math.Min(startPos + 11, endPos));
+                                        dotPos = GetPositionOf(Dot, sid, startPos, Math.Min(startPos + 11, endPos));
 
                                         if (dotPos > -1 &&
                                             TryParseInt(sid, ref startPos, dotPos - startPos, out int minor))
@@ -110,7 +110,7 @@ namespace Sweet.Actors
             value = 0;
             if (length > 0)
             {
-                var minus = (sid[startPos] == '-');
+                var minus = (sid[startPos] == Minus);
                 if (minus)
                     startPos++;
 
@@ -120,7 +120,7 @@ namespace Sweet.Actors
                     if (!char.IsNumber(sid[i]))
                         return false;
 
-                    value += (sid[i] - '0') * digit;
+                    value += (sid[i] - Zero) * digit;
                     digit *= 10;
                 }
 
@@ -159,7 +159,7 @@ namespace Sweet.Actors
             var endPos = -1;
             for (var i = searchRange - 1; i >= startPos; i--)
             {
-                if (sid[i] == ']')
+                if (sid[i] == ParenthesesClose)
                 {
                     endPos = i;
                     break;
@@ -195,7 +195,7 @@ namespace Sweet.Actors
                 }
             }
 
-            return (startPos > -1 && sid[startPos] == '[') ? startPos : -1;
+            return (startPos > -1 && sid[startPos] == ParenthesesOpen) ? startPos : -1;
         }
     }
 }

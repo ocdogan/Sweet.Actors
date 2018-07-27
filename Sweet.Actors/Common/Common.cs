@@ -42,7 +42,7 @@ namespace Sweet.Actors
 
         private static readonly Action<Task> IgnoreTaskContinuation = (task) => { var ignored = task.Exception; };
 
-		public static readonly int ProcessId = Environment.TickCount;
+		public static readonly int ProcessId = Math.Abs(Environment.TickCount);
         public static readonly byte[] ProcessIdBytes = Encoding.ASCII.GetBytes(ProcessId.ToString());
         public static readonly int ProcessIdBytesLength = ProcessIdBytes.Length;
 
@@ -124,15 +124,19 @@ namespace Sweet.Actors
                         Math.Max(Constants.MinSequentialInvokeLimit, sequentialInvokeLimit));
         }
 
-        public static int CheckMessageTimeout(int timeoutMSec)
+        public static int? CheckMessageTimeout(int? timeoutMSec)
         {
-            if (timeoutMSec < 0)
-                return Constants.MaxRequestTimeoutMSec;
+            if (timeoutMSec.HasValue)
+            {
+                if (timeoutMSec < 0)
+                    return Constants.MaxRequestTimeoutMSec;
 
-            if (timeoutMSec == 0)
-                return Constants.DefaultRequestTimeoutMSec;
+                if (timeoutMSec == 0)
+                    return Constants.DefaultRequestTimeoutMSec;
 
-            return Math.Min(Constants.MaxRequestTimeoutMSec, timeoutMSec);
+                return Math.Min(Constants.MaxRequestTimeoutMSec, timeoutMSec.Value);
+            }
+            return timeoutMSec;
         }
 
         #region Atomic

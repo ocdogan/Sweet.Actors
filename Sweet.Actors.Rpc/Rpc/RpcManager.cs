@@ -150,7 +150,7 @@ namespace Sweet.Actors.Rpc
         protected void CancelWaitingResponses()
         {
             var responses = Interlocked.Exchange(ref _responseList, new ConcurrentDictionary<WireMessageId, RemoteRequest>());
-            if (!responses.IsEmpty)
+            if (!(responses?.IsEmpty ?? true))
             {
                 foreach (var kv in responses)
                 {
@@ -168,7 +168,7 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        public Task Send(IMessage message, RemoteAddress to, int timeoutMSec = 0)
+        public Task Send(IMessage message, RemoteAddress to)
         {
             try
             {
@@ -184,22 +184,33 @@ namespace Sweet.Actors.Rpc
                 if (client == null)
                     throw new Exception(RpcErrors.CannotResolveEndPoint);
 
-                var request = new RemoteRequest(message, to.Actor, timeoutMSec);
+                if (!(message is IFutureMessage future))
+                {
+                    try
+                    {
+                        client.Send(new RemoteMessage(message, to.Actor, WireMessageId.Next()));
+                    }
+                    catch (Exception e)
+                    {
+                        return Task.FromException(e);
+                    }
 
-                var completor = request.Completor;
-                var result = completor.Task;
+                    return Completed;
+                }
+
+                var request = new RemoteRequest(future, to.Actor);
+
+                var result = request.Completor.Task;
                 try
                 {
                     request.OnTimeout += RequestTimedOut;
-
-                    if (message is IFutureMessage)
-                        _responseList[request.MessageId] = request;
+                    _responseList[request.MessageId] = request;
 
                     client.Send(request);
                 }
                 catch (Exception e)
                 {
-                    completor?.TrySetException(e);
+                    request.Completor.TrySetException(e);
                     AsyncEventPool.Run(request.Dispose);
                 }
                 return result;
@@ -323,21 +334,21 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private Task OnResponse(RemoteMessage response)
+        private Task OnResponse(RemoteMessage message)
         {
             try
             {
                 ThrowIfDisposed();
 
-                if (response != null)
+                if (message != null)
                 {
-                    var messageId = response.MessageId;
+                    var messageId = message.MessageId;
 
                     if (messageId != null &&
                         _responseList.TryRemove(messageId, out RemoteRequest request) &&
                         request?.Message is FutureMessage futureRequest)
                     {
-                        var responseMessage = response.Message;
+                        var responseMessage = message.Message;
 
                         if (responseMessage == null)
                             futureRequest.Cancel();

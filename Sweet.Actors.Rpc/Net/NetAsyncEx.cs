@@ -107,7 +107,8 @@ namespace Sweet.Actors.Rpc
                 }
                 finally
                 {
-                    TimeoutHandler.Unregister(tcs);
+                    if (timeoutMSec > 0)
+                        TimeoutHandler.Unregister(tcs);
                 }
             }, tcs);
 
@@ -162,7 +163,8 @@ namespace Sweet.Actors.Rpc
                 }
                 finally
                 {
-                    TimeoutHandler.Unregister(tcs);
+                    if (timeoutMSec > 0)
+                        TimeoutHandler.Unregister(tcs);
                 }
             }, tcs);
 
@@ -197,7 +199,8 @@ namespace Sweet.Actors.Rpc
                 }
                 finally
                 {
-                    TimeoutHandler.Unregister(tcs);
+                    if (timeoutMSec > 0)
+                        TimeoutHandler.Unregister(tcs);
                 }
             }, tcs);
 
@@ -227,7 +230,8 @@ namespace Sweet.Actors.Rpc
                 }
                 finally
                 {
-                    TimeoutHandler.Unregister(tcs);
+                    if (timeoutMSec > 0)
+                        TimeoutHandler.Unregister(tcs);
                 }
             }, tcs);
 

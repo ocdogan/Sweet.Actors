@@ -48,7 +48,7 @@ namespace Sweet.Actors
         protected readonly string _name;
         protected readonly Context _ctx;
 
-        private int _requestTimeoutMSec = -1;
+        private int? _requestTimeoutMSec;
 
         protected IActor _actor;
         protected readonly ActorSystem _actorSystem;
@@ -66,8 +66,10 @@ namespace Sweet.Actors
             _ctx = new Context(this);
 
             _errorHandler = (options.ErrorHandler ?? actorSystem.Options.ErrorHandler) ?? DefaultErrorHandler.Instance;
-            
-            _requestTimeoutMSec = Math.Min(Math.Max(-1, GetRequestTimeoutMSec(actorSystem, options)), Constants.MaxRequestTimeoutMSec); 
+
+            var requestTimeoutMSec = GetRequestTimeoutMSec(actorSystem, options);
+            _requestTimeoutMSec = !requestTimeoutMSec.HasValue ? (int?)null :
+                Math.Min(Math.Max(-1, requestTimeoutMSec.Value), Constants.MaxRequestTimeoutMSec); 
 
             SetSequentialInvokeLimit(GetSequentialInvokeLimit(actorSystem, options));
 
@@ -88,12 +90,12 @@ namespace Sweet.Actors
 
         public string Name => _name;
 
-        public int RequestTimeoutMSec => _requestTimeoutMSec;
+        public int? RequestTimeoutMSec => _requestTimeoutMSec;
 
-        private int GetRequestTimeoutMSec(ActorSystem actorSystem, ActorOptions actorOptions)
+        private int? GetRequestTimeoutMSec(ActorSystem actorSystem, ActorOptions actorOptions)
         {
             var result = actorOptions.RequestTimeoutMSec;
-            if (result == -1)
+            if (!result.HasValue || result == -1)
                 result = actorSystem.Options.RequestTimeoutMSec;
 
             return result;
@@ -128,7 +130,7 @@ namespace Sweet.Actors
         public Task Send(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return Enqueue(new Message(message, _ctx.Pid, header));
+            return Enqueue(new Message(message, _ctx.Pid, header, _requestTimeoutMSec));
         }
 
         public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null)
@@ -147,11 +149,11 @@ namespace Sweet.Actors
         {
             try
             {
-                var taskCompletor = new TaskCompletor<IFutureResponse>(_requestTimeoutMSec);
+                var request = new FutureMessage(message, _ctx.Pid, header, _requestTimeoutMSec);
 
-                Enqueue(new FutureMessage(message, taskCompletor, _ctx.Pid, header));
+                Enqueue(request);
 
-                return taskCompletor.Task;
+                return request.Completor.Task;
             }
             catch (Exception e)
             {
@@ -200,7 +202,12 @@ namespace Sweet.Actors
 
         protected virtual Task SendToActor(IContext ctx, IMessage message)
         {
-            return _actor.OnReceive(ctx, message);
+            var t = _actor.OnReceive(ctx, message);
+            if (message is IFutureMessage future)
+            {
+                return future.Completor.Task;
+            }
+            return t;
         }
 
         protected virtual void HandleError(Exception e)
@@ -258,7 +265,7 @@ namespace Sweet.Actors
 
         public Task OnReceive(IContext ctx, IMessage message)
         {
-            return _actorSystem?.RemoteManager?.Send(message, _remoteAddress, RequestTimeoutMSec) ??
+            return _actorSystem?.RemoteManager?.Send(message, _remoteAddress) ??
                 Task.FromException(new Exception(Errors.SystemIsNotConfiguredForToCallRemoteActors));
         }
     }

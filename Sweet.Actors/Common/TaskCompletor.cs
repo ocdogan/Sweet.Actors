@@ -33,21 +33,30 @@ namespace Sweet.Actors
 
     public class TaskCompletor<T> : Disposable
     {
-        private int _timeoutMSec;
-        private int _unregistered;
+        private int _registered;
+        private int? _timeoutMSec;
         private CancellationTokenSource _cts;
         private TaskCompletionSource<T> _tcs;
 
         internal event TimeoutEventHandler OnTimeout;
 
-        internal TaskCompletor(int timeoutMSec = 0)
+        internal TaskCompletor()
+        {
+            _cts = new CancellationTokenSource();
+            _tcs = new TaskCompletionSource<T>(_cts);
+        }
+
+        internal TaskCompletor(int? timeoutMSec)
         {
             _cts = new CancellationTokenSource();
             _tcs = new TaskCompletionSource<T>(_cts);
 
             _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
-
-            TimeoutHandler.TryRegister(this, DoTimedOut, _timeoutMSec);
+            if (_timeoutMSec.HasValue)
+            {
+                _registered = 1;
+                TimeoutHandler.TryRegister(this, DoTimedOut, _timeoutMSec.Value);
+            }
         }
 
         protected override void OnDispose(bool disposing)
@@ -62,7 +71,7 @@ namespace Sweet.Actors
 
         public virtual bool IsFaulted => _tcs.Task.IsFaulted;
 
-        public int TimeoutMSec => _timeoutMSec;
+        public int? TimeoutMSec => _timeoutMSec;
 
         public Task<T> Task => _tcs.Task;
 
@@ -106,7 +115,7 @@ namespace Sweet.Actors
             var status = TaskStatus.RanToCompletion;
             try
             {
-                Interlocked.Exchange(ref _unregistered, 1);
+                Interlocked.Exchange(ref _registered, 1);
 
                 status = _tcs?.Task?.Status ?? TaskStatus.RanToCompletion;
                 if (!(status == TaskStatus.RanToCompletion ||
@@ -146,7 +155,7 @@ namespace Sweet.Actors
 
         public void Unregister()
         {
-            if (Interlocked.CompareExchange(ref _unregistered, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _registered, 0, 1) == 1)
                 TimeoutHandler.Unregister(this);
         }
     }

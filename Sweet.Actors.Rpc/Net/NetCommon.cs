@@ -24,6 +24,7 @@
 
 using System;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace Sweet.Actors.Rpc
 {
@@ -38,6 +39,34 @@ namespace Sweet.Actors.Rpc
         #endregion General
 
         #region Sockets
+
+        internal static void Configure(this Socket socket, int? sendTimeoutMSec, int? receiveTimeoutMSec, bool noDelay, bool keepAlive)
+        {
+            if (socket != null)
+            {
+                var nativeSocket = socket as NativeSocket;
+                if (nativeSocket == null || !nativeSocket.Disposed)
+                {
+                    socket.SetIOLoopbackFastPath();
+
+                    if (sendTimeoutMSec.HasValue && sendTimeoutMSec > 0)
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
+                                                sendTimeoutMSec == int.MaxValue ? Timeout.Infinite : sendTimeoutMSec.Value);
+                    }
+
+                    if (receiveTimeoutMSec.HasValue && receiveTimeoutMSec > 0)
+                    {
+                        socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
+                                                receiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : receiveTimeoutMSec.Value);
+                    }
+
+                    socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, keepAlive);
+
+                    socket.NoDelay = noDelay;
+                }
+            }
+        }
 
         internal static bool IsSocketError(this SocketError errorCode)
         {

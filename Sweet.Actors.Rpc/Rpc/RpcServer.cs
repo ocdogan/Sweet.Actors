@@ -179,7 +179,7 @@ namespace Sweet.Actors.Rpc
                         addressFamily = IPAddress.Any.AddressFamily;
 
                     listener = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp) { Blocking = false };
-                    Configure(listener);
+                    listener.Configure(_options.SendTimeoutMSec, _options.ReceiveTimeoutMSec, true, true);
                 }
                 catch (Exception)
                 {
@@ -212,27 +212,6 @@ namespace Sweet.Actors.Rpc
 
                 StartAccepting(NewAcceptEventArgs(), true);
             }
-        }
-
-        private void Configure(Socket socket)
-        {
-            socket.SetIOLoopbackFastPath();
-
-            if (_options.SendTimeoutMSec > 0)
-            {
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout,
-                                        _options.SendTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.SendTimeoutMSec);
-            }
-
-            if (_options.ReceiveTimeoutMSec > 0)
-            {
-                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout,
-                                        _options.ReceiveTimeoutMSec == int.MaxValue ? Timeout.Infinite : _options.ReceiveTimeoutMSec);
-            }
-
-            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-
-            socket.NoDelay = true;
         }
 
         private SocketAsyncEventArgs NewAcceptEventArgs()

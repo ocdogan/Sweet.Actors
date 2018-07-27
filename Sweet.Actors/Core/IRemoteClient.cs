@@ -29,6 +29,6 @@ namespace Sweet.Actors
     public interface IRemoteClient
     {
         Task Connect();
-        Task Send(RemoteRequest request);
+        Task Send(RemoteMessage message);
     }
 }

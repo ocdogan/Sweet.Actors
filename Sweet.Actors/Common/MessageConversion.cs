@@ -41,12 +41,10 @@ namespace Sweet.Actors
                 switch (message.MessageType)
                 {
                     case MessageType.Default:
-                        msg = new Message(message.Data, Aid.Parse(message.From), message.Header);
+                        msg = new Message(message.Data, Aid.Parse(message.From), message.Header, message.TimeoutMSec);
                         break;
                     case MessageType.FutureMessage:
-                        msg = new FutureMessage(message.Data,
-                            new TaskCompletor<IFutureResponse>(message.TimeoutMSec),
-                            Aid.Parse(message.From), message.Header);
+                        msg = new FutureMessage(message.Data, Aid.Parse(message.From), message.Header, message.TimeoutMSec);
                         break;
                     case MessageType.FutureResponse:
                         msg = new FutureResponse(message.Data, Aid.Parse(message.From), message.Header);

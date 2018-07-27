@@ -21,7 +21,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.WireSerializer
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.BinarySerializer", "Sweet.Actors.BinarySerializer\Sweet.Actors.BinarySerializer.csproj", "{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sweet.Actors.CustomSerializer", "Sweet.Actors.CustomSerializer\Sweet.Actors.CustomSerializer.csproj", "{A81FB365-5306-4F4B-8B23-4B0CE75329B5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.CustomSerializer", "Sweet.Actors.CustomSerializer\Sweet.Actors.CustomSerializer.csproj", "{A81FB365-5306-4F4B-8B23-4B0CE75329B5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
