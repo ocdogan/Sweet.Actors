@@ -195,7 +195,7 @@ namespace Sweet.Actors
 
         protected bool WaitForScheduleRequest()
         {
-            return Processing() && IsScheduleRequested();
+            return Processing() && IsScheduleRequested() && !Disposed;
         }
 
         protected bool IsScheduleRequested()
@@ -243,17 +243,18 @@ namespace Sweet.Actors
                 }
                 finally
                 {
-                    if (!Disposed)
-                    {
-                        ResetScheduleRequest();
-                        Interlocked.Exchange(ref _inProcess, 0L);
-
-                        if (!_queue.IsEmpty)
-                            Schedule();
-                    }
+                    StopProcessing();
+                    if (!(Disposed || IsEmpty()))
+                        Schedule();
                 }
             }
             return Completed;
+        }
+
+        protected virtual void StopProcessing()
+        {
+            ResetScheduleRequest();
+            Interlocked.Exchange(ref _inProcess, 0L);
         }
 
         protected virtual Task InitProcessCycle(out bool @continue)
@@ -288,7 +289,9 @@ namespace Sweet.Actors
                 if (task.IsFaulted || task.IsCanceled)
                     continue;
 
-                if (!task.IsCompleted)
+                var status = task.Status;
+                if (!(status == TaskStatus.RanToCompletion || 
+                    status == TaskStatus.Canceled || status == TaskStatus.Faulted))
                     task.ContinueWith((previousTask) =>
                     {
                         if (!(Disposed || IsEmpty()))

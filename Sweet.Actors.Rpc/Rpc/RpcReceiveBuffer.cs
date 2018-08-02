@@ -39,7 +39,7 @@ namespace Sweet.Actors.Rpc
         public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
 
         private long _count;
-        private ConcurrentQueue<RemoteMessage> _messageQueue = new ConcurrentQueue<RemoteMessage>();
+        private ConcurrentQueue<WireMessage> _messageQueue = new ConcurrentQueue<WireMessage>();
 
         private ChunkedStream _stream;
 
@@ -66,7 +66,7 @@ namespace Sweet.Actors.Rpc
             {
                 _stream.Write(buffer, offset, bytesReceived);
 
-                while (RpcMessageParser.TryParse(_stream, out IEnumerable<RemoteMessage> messages))
+                while (RpcMessageParser.TryParse(_stream, out IEnumerable<WireMessage> messages))
                 {
                     if (Enqueue(messages))
                         parsed = true;
@@ -75,7 +75,7 @@ namespace Sweet.Actors.Rpc
             return parsed;
         }
 
-        private bool Enqueue(IEnumerable<RemoteMessage> messages)
+        private bool Enqueue(IEnumerable<WireMessage> messages)
         {
             if (messages != null)
             {
@@ -95,7 +95,7 @@ namespace Sweet.Actors.Rpc
             return false;
         }
 
-        public bool TryGetMessage(out RemoteMessage message)
+        public bool TryGetMessage(out WireMessage message)
 		{
 			message = null;
             if (!Disposed && _messageQueue.TryDequeue(out message))
@@ -114,7 +114,7 @@ namespace Sweet.Actors.Rpc
                 var count = (int)Interlocked.Read(ref _count);
                 if (count > 0)
                 {
-                    RemoteMessage message;
+                    WireMessage message;
                     bulkSize = Math.Min(Math.Min(1000, Math.Max(1, bulkSize)), count);
 
                     if (bulkSize == 1)
@@ -123,13 +123,13 @@ namespace Sweet.Actors.Rpc
                         {
                             Interlocked.Add(ref _count, -1L);
 
-                            messages = new RemoteMessage[] { message };
+                            messages = new WireMessage[] { message };
                             return true;
                         }
                         return false;
                     }
 
-                    var list = new List<RemoteMessage>(bulkSize);
+                    var list = new List<WireMessage>(bulkSize);
 
                     for (var i = 0; i < bulkSize; i++)
                     {

@@ -39,7 +39,7 @@ namespace Sweet.Actors
     [Serializable]
     public class WireMessage
     {
-        public string Id { get; set; }
+        public WireMessageId Id { get; set; }
 
         public WireMessageState State { get; set; }
 
@@ -49,9 +49,9 @@ namespace Sweet.Actors
 
         public Dictionary<string, string> Header { get; set; }
 
-        public string From { get; set; }
+        public Aid From { get; set; }
 
-        public string To { get; set; }
+        public Aid To { get; set; }
 
         public Exception Exception { get; set; }
 

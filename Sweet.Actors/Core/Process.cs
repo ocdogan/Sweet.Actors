@@ -130,30 +130,39 @@ namespace Sweet.Actors
         public Task Send(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return Enqueue(new Message(message, _ctx.Pid, header, _requestTimeoutMSec));
+            return Enqueue((message as IMessage) ?? new Message(message, _ctx.Pid, header, _requestTimeoutMSec));
+        }
+
+        public Task<IFutureResponse> Request(IFutureMessage request)
+        {
+            ThrowIfDisposed();
+
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            return RequestInternal(request);
         }
 
         public Task<IFutureResponse> Request(object message, IDictionary<string, string> header = null)
         {
             ThrowIfDisposed();
-            return RequestInternal<object>(message, header);
+            return RequestInternal((message as IFutureMessage) ??
+                    new FutureMessage(message, _ctx.Pid, header, _requestTimeoutMSec));
         }
 
-        public Task<IFutureResponse> Request<T>(object message, IDictionary<string, string> header = null)
+        protected virtual IFutureMessage NewFutureMessage(object message, Aid from,
+            IDictionary<string, string> header = null, int? timeoutMSec = null)
         {
-            ThrowIfDisposed();
-            return RequestInternal<T>(message, header);
+            return new FutureMessage(message, from, header, timeoutMSec);
         }
 
-        private Task<IFutureResponse> RequestInternal<T>(object message, IDictionary<string, string> header)
+        private Task<IFutureResponse> RequestInternal(IFutureMessage request)
         {
             try
             {
-                var request = new FutureMessage(message, _ctx.Pid, header, _requestTimeoutMSec);
-
                 Enqueue(request);
 
-                return request.Completor.Task;
+                return request.Task;
             }
             catch (Exception e)
             {
@@ -191,7 +200,7 @@ namespace Sweet.Actors
 
                 try
                 {
-                    future?.RespondToWithError(e, _ctx.Pid);
+                    future?.RespondWithError(e, _ctx.Pid);
                 }
                 catch (Exception)
                 { }
@@ -205,7 +214,7 @@ namespace Sweet.Actors
             var t = _actor.OnReceive(ctx, message);
             if (message is IFutureMessage future)
             {
-                return future.Completor.Task;
+                return future.Task;
             }
             return t;
         }
@@ -261,6 +270,12 @@ namespace Sweet.Actors
         { 
             _remoteAddress = remoteAddress;
             _actor = this;
+        }
+
+        protected override IFutureMessage NewFutureMessage(object message, Aid from,
+            IDictionary<string, string> header = null, int? timeoutMSec = null)
+        {
+            return new FutureMessage(message, from, header, timeoutMSec);
         }
 
         public Task OnReceive(IContext ctx, IMessage message)

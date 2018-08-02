@@ -33,7 +33,7 @@ namespace Sweet.Actors
     {
         private Serializer _serializer = new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true));
 
-        public IEnumerable<RemoteMessage> Deserialize(byte[] data)
+        public IEnumerable<WireMessage> Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
                 yield return null;
@@ -45,11 +45,11 @@ namespace Sweet.Actors
                     yield return null;
 
                 foreach (var message in messages)
-                    yield return message.ToRemoteMessage();
+                    yield return message;
             }
         }
 
-        public IEnumerable<RemoteMessage> Deserialize(Stream stream)
+        public IEnumerable<WireMessage> Deserialize(Stream stream)
         {
             if (stream == null)
                 yield return null;
@@ -59,7 +59,7 @@ namespace Sweet.Actors
                 yield return null;
 
             foreach (var message in messages)
-                yield return message.ToRemoteMessage();
+                yield return message;
         }
 
         public byte[] Serialize(WireMessage[] messages)

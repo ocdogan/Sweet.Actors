@@ -23,32 +23,12 @@
 #endregion License
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public interface IChunkedStreamWriter : IDisposable
+    public interface IChunkedStreamWriter : IStreamWriter, IDisposable
     {
         int ChunkSize { get; }
-        bool Closed { get; }
         int Origin { get; }
-        long Position { get; }
-
-        void Write(byte[] buffer, int offset, int count);
-        Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-        void Write(byte value);
-        void Write(bool value);
-        void Write(sbyte value);
-        void Write(char value);
-        void Write(short value);
-        void Write(ushort value);
-        void Write(int value);
-        void Write(uint value);
-        void Write(long value);
-        void Write(ulong value);
-        void Write(float value);
-        void Write(double value);
-        void Write(decimal value);
     }
 }

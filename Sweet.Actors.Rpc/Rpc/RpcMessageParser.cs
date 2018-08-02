@@ -53,7 +53,7 @@ namespace Sweet.Actors.Rpc
         private static IWireSerializer _serializer;
         private static readonly ReaderWriterLockSlim _serializerLock = new ReaderWriterLockSlim();
 
-        public static bool TryParse(Stream input, out IEnumerable<RemoteMessage> messages)
+        public static bool TryParse(Stream input, out IEnumerable<WireMessage> messages)
         {
             messages = null;
             if (!TryParsePartitioned(input, out RpcPartitionedMessage partitionedMsg))

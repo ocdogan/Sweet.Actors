@@ -156,10 +156,7 @@ namespace Sweet.Actors.Rpc
                 {
                     try
                     {
-                        var request = kv.Value;
-
-                        request.Completor.TrySetCanceled();
-                        if (request.Message is IFutureMessage future)
+                        if (kv.Value.Message is IFutureMessage future)
                             future.Cancel();
                     }
                     catch (Exception)
@@ -198,22 +195,21 @@ namespace Sweet.Actors.Rpc
                     return Completed;
                 }
 
-                var request = new RemoteRequest(future, to.Actor);
-
-                var result = request.Completor.Task;
+                var request = (RemoteRequest)null;
                 try
                 {
-                    request.OnTimeout += RequestTimedOut;
+                    request = new RemoteRequest(future, to.Actor, RequestTimedOut);
                     _responseList[request.MessageId] = request;
 
                     client.Send(request);
                 }
                 catch (Exception e)
                 {
-                    request.Completor.TrySetException(e);
-                    AsyncEventPool.Run(request.Dispose);
+                    future.RespondWithError(e);
+                    if (request != null)
+                        AsyncEventPool.Run(request.Dispose);
                 }
-                return result;
+                return future.Task;
             }
             catch (Exception e)
             {
@@ -227,10 +223,7 @@ namespace Sweet.Actors.Rpc
         private void RequestTimedOut(object sender, TaskCompletionStatus status)
         {
             if (sender is RemoteRequest request)
-            {
-                request.OnTimeout -= RequestTimedOut;
                 _responseList.TryRemove(request.MessageId, out request);
-            }
         }
 
         public override bool Bind(ActorSystem actorSystem)
@@ -270,18 +263,11 @@ namespace Sweet.Actors.Rpc
                     TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem) &&
                     bindedSystem.TryGetInternal(to.Actor, out Pid pid) && pid != null && pid != Aid.Unknown)
                 {
-                    if (!(message is FutureMessage))
+                    var request = message as FutureMessage;
+                    if (request is null)
                         return pid.Tell(message);
 
-                    var header = message.Header as IDictionary<string, string>;
-                    if (header == null && message.Header != null)
-                    {
-                        header = new Dictionary<string, string>();
-                        foreach (var kv in message.Header)
-                            header.Add(kv);
-                    }
-
-                    var response = pid.Request(message.Data, header);
+                    var response = pid.Request(request);
                     if (response == null)
                         throw new Exception(RpcErrors.InvalidMessageResponse);
 
@@ -295,11 +281,11 @@ namespace Sweet.Actors.Rpc
 
                             var wireMessage = new WireMessage
                             {
-                                From = to.ToString(),
-                                To = message.From?.ToString(),
+                                From = to,
+                                To = message.From,
                                 Exception = faulted ? previousTask.Exception : null,
                                 MessageType = faulted ? MessageType.FutureError : MessageType.FutureResponse,
-                                Id = remoteMessage.MessageId?.ToString() ?? WireMessageId.NextAsString(),
+                                Id = remoteMessage.MessageId ?? WireMessageId.Next(),
                                 State = state
                             };
 
@@ -315,16 +301,16 @@ namespace Sweet.Actors.Rpc
             throw new Exception(RpcErrors.InvalidMessageReceiver);
         }
 
-        protected override Task SendMessage(WireMessage wireMessage, IRpcConnection rpcConnection)
+        protected override Task SendMessage(WireMessage wireMessage, IRpcConnection conn)
         {
             try
             {
                 ThrowIfDisposed();
 
-                var outStream = rpcConnection.Out;
+                var outStream = conn.Out;
                 if (outStream != null)
                     _writer.Write(outStream, new WireMessage[] { wireMessage });
-                else _writer.Write(rpcConnection.Connection, new WireMessage[] { wireMessage });
+                else _writer.Write(conn.Connection, new WireMessage[] { wireMessage });
 
                 return Completed;
             }
@@ -355,14 +341,14 @@ namespace Sweet.Actors.Rpc
                         else if (responseMessage is FutureResponse futureResponse)
                         {
                             if (futureResponse.Data is Exception e)
-                                futureRequest.RespondToWithError(e);
+                                futureRequest.RespondWithError(e);
                             else futureRequest.Respond(futureResponse.Data);
                         }
                         else if (responseMessage is FutureError futureError)
                         {
                             var e = futureError.Exception;
                             if (e != null)
-                                futureRequest.RespondToWithError(e);
+                                futureRequest.RespondWithError(e);
                             else futureRequest.Cancel();
                         }
                     }

@@ -367,6 +367,11 @@ namespace Sweet.Actors
                 return _stream.WriteAsync(buffer, offset, count);
             }
 
+            public Task WriteAsync(byte[] buffer, CancellationToken cancellationToken)
+            {
+                ThrowIfDisposed();
+                return _stream.WriteAsync(buffer, 0, buffer?.Length ?? 0);
+            }
         }
 
         internal enum ValueKind

@@ -23,12 +23,16 @@
 #endregion License
 
 using System;
+using System.IO;
 
 namespace Sweet.Actors
 {
     public sealed class WireMessageId : Id<WireMessage>
     {
         public static readonly WireMessageId Empty = new WireMessageId(0, 0, 0, 0, 0);
+
+        private const int BufferSize = 5 * sizeof(int);
+        private static readonly int[] BufferOffsets = { 0, sizeof(int), 2 * sizeof(int), 3 * sizeof(int), 4 * sizeof(int) };
 
         private static readonly int EmptyLength = Empty.ToString().Length;
 
@@ -46,6 +50,86 @@ namespace Sweet.Actors
         {
             var buffer = Generate();
             return new String(AsChars(Common.ProcessId, buffer[0], buffer[1], buffer[2], buffer[3]));
+        }
+
+        internal static WireMessageId Convert(int major, int majorRevision, int minor, int minorRevision, int processId)
+        {
+            if (major < 0)
+                throw new ArgumentOutOfRangeException(nameof(major));
+
+            if (majorRevision < 0)
+                throw new ArgumentOutOfRangeException(nameof(majorRevision));
+
+            if (minor < 0)
+                throw new ArgumentOutOfRangeException(nameof(minor));
+
+            if (minorRevision < 0)
+                throw new ArgumentOutOfRangeException(nameof(minorRevision));
+
+            if (processId < 0)
+                throw new ArgumentOutOfRangeException(nameof(processId));
+
+            if (major == 0 && majorRevision == 0 && 
+                minor == 0 && minorRevision == 0 && processId == 0)
+                return Empty;
+
+            return new WireMessageId(major, majorRevision, minor, minorRevision, processId);
+        }
+
+        public static WireMessageId Read(IStreamReader reader)
+        {
+            if (reader == null)
+                throw new ArgumentNullException(nameof(reader));
+
+            var buffer = new byte[BufferSize];
+            if (reader.Read(buffer, 0, BufferSize) != BufferSize)
+                throw new ArgumentOutOfRangeException(nameof(buffer));
+
+            return Convert(buffer.ToInt(BufferOffsets[0]),
+                buffer.ToInt(BufferOffsets[1]),
+                buffer.ToInt(BufferOffsets[2]),
+                buffer.ToInt(BufferOffsets[3]),
+                buffer.ToInt(BufferOffsets[4]));
+        }
+
+        public static WireMessageId Read(BinaryReader reader)
+        {
+            if (reader == null)
+                throw new ArgumentNullException(nameof(reader));
+
+            var buffer = new byte[BufferSize];
+            if (reader.Read(buffer, 0, BufferSize) != BufferSize)
+                throw new ArgumentOutOfRangeException(nameof(buffer));
+
+            return Convert(buffer.ToInt(BufferOffsets[0]), 
+                buffer.ToInt(BufferOffsets[1]), 
+                buffer.ToInt(BufferOffsets[2]), 
+                buffer.ToInt(BufferOffsets[3]), 
+                buffer.ToInt(BufferOffsets[4]));
+        }
+
+        public void Write(IStreamWriter writer)
+        {
+            if (writer == null)
+                throw new ArgumentNullException(nameof(writer));
+
+            writer.Write(Major.ToBytes());
+            writer.Write(MajorRevision.ToBytes());
+            writer.Write(Minor.ToBytes());
+            writer.Write(MinorRevision.ToBytes());
+            writer.Write(ProcessId.ToBytes());
+        }
+
+        public void Write(BinaryWriter writer)
+        {
+            if (writer == null)
+                throw new ArgumentNullException(nameof(writer));
+
+            writer.Write(Major.ToBytes());
+            writer.Write(MajorRevision.ToBytes());
+            writer.Write(Minor.ToBytes());
+            writer.Write(MinorRevision.ToBytes());
+            writer.Write(ProcessId.ToBytes());
         }
 
         public static bool TryParse(string sid, out WireMessageId id)

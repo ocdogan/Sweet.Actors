@@ -418,13 +418,18 @@ namespace Sweet.Actors.Rpc
                 {
                     for (var i = 0; i < count; i++)
                     {
-                        try
+                        var message = (WireMessage)messages[i];
+                        if (message != null)
                         {
-                            _messageHandler?.Invoke((RemoteMessage)messages[i], this);
-                        }
-                        catch (Exception e)
-                        {
-                            RespondWithError((RemoteMessage)messages[i], e);
+                            var remoteMsg = message.ToRemoteMessage();
+                            try
+                            {
+                                _messageHandler?.Invoke(remoteMsg, this);
+                            }
+                            catch (Exception e)
+                            {
+                                RespondWithError(remoteMsg, e);
+                            }
                         }
                     }
                 }

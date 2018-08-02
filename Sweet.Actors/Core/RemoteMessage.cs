@@ -28,6 +28,9 @@ namespace Sweet.Actors
 {
     public class RemoteMessage : IDisposable
     {
+        public static readonly RemoteMessage Empty = 
+            new RemoteMessage(Actors.Message.Empty, Aid.Unknown, WireMessageId.Empty);
+
         private Aid _to;
         private bool _isFuture;
         private IMessage _message;

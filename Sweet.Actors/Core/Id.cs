@@ -104,9 +104,6 @@ namespace Sweet.Actors
         private int _minor;
         private int _minorRevision;
 
-        private char[] _toChars;
-        private string _toString;
-
         static Id()
         {
             s_MajorGen = new IdPart(null, 0);
@@ -124,30 +121,26 @@ namespace Sweet.Actors
             _processId = processId < 0 ? Common.ProcessId : processId;
         }
 
-        public long Major => _major;
+        public int Major => _major;
 
-        public long MajorRevision => _majorRevision;
+        public int MajorRevision => _majorRevision;
 
-        public long Minor => _minor;
+        public int Minor => _minor;
 
-        public long MinorRevision => _minorRevision;
+        public int MinorRevision => _minorRevision;
 
         public int ProcessId => _processId;
 
         public char[] ToChars()
         {
             // $"[{ProcessId}:{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
-            if (_toChars == null)
-                _toChars = AsChars(_processId, _major, _majorRevision, _minor, _minorRevision);
-            return _toChars;
+            return AsChars(_processId, _major, _majorRevision, _minor, _minorRevision);
         }
 
         public override string ToString()
         {
             // $"[{ProcessId}:{Major}.{MajorRevision}.{Minor}.{MinorRevision}]"
-            if (_toString == null)
-                _toString = new String(AsChars(_processId, _major, _majorRevision, _minor, _minorRevision));
-            return _toString;
+            return new string(AsChars(_processId, _major, _majorRevision, _minor, _minorRevision));
         }
 
         protected static char[] AsChars(int processId, int major, int majorRevision, int minor, int minorRevision)

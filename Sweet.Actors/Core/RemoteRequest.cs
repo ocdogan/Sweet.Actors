@@ -27,7 +27,7 @@ using System.Threading;
 
 namespace Sweet.Actors
 {
-    public class RemoteRequest : RemoteMessage
+    /*public class RemoteRequest : RemoteMessage
     {
         private TaskCompletor<IFutureResponse> _taskCompletor;
 
@@ -69,6 +69,23 @@ namespace Sweet.Actors
             {
                 OnTimeout?.Invoke(this, status);
             }
+        }
+    } */
+
+    public class RemoteRequest : RemoteMessage
+    {
+        private Action<object, TaskCompletionStatus> _onTimeout;
+
+        internal RemoteRequest(IFutureMessage message, Aid to,
+            Action<object, TaskCompletionStatus> onTimeout)
+            : base(message, to, WireMessageId.Next())
+        {
+            _onTimeout += onTimeout;
+        }
+
+        protected virtual void DoTimedOut(object sender, TaskCompletionStatus status)
+        {
+            _onTimeout?.Invoke(this, status);
         }
     }
 }

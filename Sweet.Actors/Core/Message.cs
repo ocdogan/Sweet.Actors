@@ -117,70 +117,128 @@ namespace Sweet.Actors
         }
     }
 
+    public delegate void TimeoutEventHandler(object sender, TaskCompletionStatus status);
+
     public interface IFutureMessage : IMessage
     {
-        TaskCompletor<IFutureResponse> Completor { get; }
+        event TimeoutEventHandler OnTimeout;
+
         bool IsCanceled { get; }
         bool IsCompleted { get; }
         bool IsFaulted { get; }
 
+        Task<IFutureResponse> Task { get; }
+
         void Cancel();
+        void Respond(object response, Aid from = null, IDictionary<string, string> header = null);
+        void RespondWithError(Exception e, Aid from = null, IDictionary<string, string> header = null);
     }
 
     internal class FutureMessage : Message, IFutureMessage
     {
-        protected readonly TaskCompletor<IFutureResponse> _taskCompletor;
+        private int _registered;
+        private int? _timeoutMSec;
+
+        protected readonly TaskCompletionSource<IFutureResponse> _tcs;
+
+        public event TimeoutEventHandler OnTimeout;
 
         public FutureMessage(object data, Aid from, 
             IDictionary<string, string> header = null, int? timeoutMSec = null)
 			: base(data, from, header, timeoutMSec)
         {
-            if (!timeoutMSec.HasValue)
-                _taskCompletor = new TaskCompletor<IFutureResponse>();
-            else
+            _tcs = new TaskCompletionSource<IFutureResponse>();
+
+            _timeoutMSec = Common.CheckMessageTimeout(timeoutMSec);
+            if (_timeoutMSec.HasValue)
             {
-                _taskCompletor = new TaskCompletor<IFutureResponse>(timeoutMSec.Value);
-                _taskCompletor.OnTimeout += DoTimedOut;
+                _registered = 1;
+                TimeoutHandler.TryRegister(this, DoTimedOut, _timeoutMSec.Value);
             }
         }
 
-        private void DoTimedOut(object sender, TaskCompletionStatus status)
-        {
-            Expire();
-        }
-
-        public TaskCompletor<IFutureResponse> Completor => _taskCompletor;
-
         public override MessageType MessageType => MessageType.FutureMessage;
 
-        public virtual bool IsCanceled => _taskCompletor.IsCanceled;
+        public virtual bool IsCanceled => _tcs.Task.IsCanceled;
 
-        public virtual bool IsCompleted => _taskCompletor.IsCompleted;
+        public virtual bool IsCompleted => _tcs.Task.IsCompleted;
 
-        public virtual bool IsFaulted => _taskCompletor.IsFaulted;
+        public virtual bool IsFaulted => _tcs.Task.IsFaulted;
+
+        public Task<IFutureResponse> Task => _tcs.Task;
 
         public virtual void Respond(object response, Aid from = null, IDictionary<string, string> header = null)
         {
             try
             {
-                _taskCompletor.TrySetResult(response == null ?
+                Unregister();
+                _tcs.TrySetResult(response == null ?
                         new FutureResponse(from, header) :
                         new FutureResponse(response, from, header));
             }
             catch (Exception e)
             {
-                _taskCompletor.TrySetResult(new FutureError(e, from, header));
+                _tcs.TrySetResult(new FutureError(e, from, header));
             }
         }
 
-        public virtual void RespondToWithError(Exception e, Aid from = null, IDictionary<string, string> header = null)
+        public virtual void RespondWithError(Exception e, Aid from = null, IDictionary<string, string> header = null)
         {
-            _taskCompletor.TrySetResult(new FutureError(e, from, header));
+            Unregister();
+            _tcs.TrySetResult(new FutureError(e, from, header));
         }
 
-        public virtual void Cancel()
+        public void Cancel()
         {
-            _taskCompletor.TrySetCanceled();
+            Unregister();
+
+            var task = _tcs?.Task;
+            if (!(task?.IsCompleted ?? true))
+                _tcs.TrySetCanceled();
+        }
+
+        private void DoTimedOut()
+        {
+            var status = TaskStatus.RanToCompletion;
+            try
+            {
+                Interlocked.Exchange(ref _registered, 0);
+
+                Expire();
+
+                status = _tcs?.Task.Status ?? TaskStatus.RanToCompletion;
+                if (!(status == TaskStatus.RanToCompletion ||
+                    status == TaskStatus.Canceled || status == TaskStatus.Faulted))
+                {
+                    Cancel();
+                    status = _tcs?.Task.Status ?? TaskStatus.RanToCompletion;
+                }
+            }
+            finally
+            {
+                OnTimeout?.Invoke(this, ToTaskCompletionStatus(status));
+            }
+        }
+
+        private static TaskCompletionStatus ToTaskCompletionStatus(TaskStatus status)
+        {
+            switch (status)
+            {
+                case TaskStatus.Canceled:
+                    return TaskCompletionStatus.Canceled;
+                case TaskStatus.Created:
+                    return TaskCompletionStatus.Created;
+                case TaskStatus.Faulted:
+                    return TaskCompletionStatus.Failed;
+                default:
+                    return TaskCompletionStatus.Running;
+            }
+        }
+
+        public void Unregister()
+        {
+            if (Interlocked.CompareExchange(ref _registered, 0, 1) == 1)
+                TimeoutHandler.Unregister(this);
         }
     }
 

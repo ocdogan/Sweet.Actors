@@ -37,28 +37,28 @@ namespace Sweet.Actors.Rpc
 
         private const int NullLengthFlag = -1;
 
-        private static readonly RemoteMessage[] EmptyRemoteMessages = new RemoteMessage[] { };
+        private static readonly WireMessage[] EmptyWireMessages = new WireMessage[] { };
 
         private Lazy<Serializer> _wireSerializer = 
             new Lazy<Serializer>(() => new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true)));
 
-        public IEnumerable<RemoteMessage> Deserialize(byte[] data)
+        public IEnumerable<WireMessage> Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                return EmptyRemoteMessages;
+                return EmptyWireMessages;
 
             using (var stream = new ChunkedStream(data))
                 return DeserializeInternal(stream);
         }
 
-        public IEnumerable<RemoteMessage> Deserialize(Stream stream)
+        public IEnumerable<WireMessage> Deserialize(Stream stream)
         {
             if (stream != null && stream.CanRead)
                 return DeserializeInternal(stream);
-            return EmptyRemoteMessages;
+            return EmptyWireMessages;
         }
 
-        private IEnumerable<RemoteMessage> DeserializeInternal(Stream stream)
+        private IEnumerable<WireMessage> DeserializeInternal(Stream stream)
         {
             using (var reader = new BinaryReader(stream, Encoding.UTF8, true))
             {
@@ -111,7 +111,7 @@ namespace Sweet.Actors.Rpc
                 {
                     for (var i = 0; i < length; i++)
                     {
-                        Write(messages[i], writer);
+                        Write(writer, messages[i]);
                     }
                 }
             }
@@ -119,7 +119,7 @@ namespace Sweet.Actors.Rpc
             return Math.Max(-1L, stream.Position - previousPos);
         }
 
-        private RemoteMessage Read(BinaryReader reader)
+        private WireMessage Read(BinaryReader reader)
         {
             var dataTypeCd = reader.ReadByte() - 1;
             if (dataTypeCd > 0)
@@ -132,9 +132,10 @@ namespace Sweet.Actors.Rpc
                 var timeoutMSec = reader.ReadInt32();
                 message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
 
-                message.Id = ReadString(reader);
-                message.From = ReadString(reader);
-                message.To = ReadString(reader);
+                message.Id = WireMessageId.Read(reader);
+
+                message.From = Aid.Parse(ReadString(reader));
+                message.To = Aid.Parse(ReadString(reader));
 
                 var h = reader.ReadByte();
                 if (h != NullFlag)
@@ -177,89 +178,95 @@ namespace Sweet.Actors.Rpc
                     }
                 }
 
-                switch ((TypeCode)dataTypeCd)
-                {
-                    case TypeCode.Boolean:
-                        message.Data = reader.ReadBoolean();
-                        break;
-                    case TypeCode.Byte:
-                        message.Data = reader.ReadByte();
-                        break;
-                    case TypeCode.Char:
-                        message.Data = reader.ReadChar();
-                        break;
-                    case TypeCode.DateTime:
-                        message.Data = new DateTime(reader.ReadInt64());
-                        break;
-                    case TypeCode.DBNull:
-                        reader.ReadByte();
-                        message.Data = DBNull.Value;
-                        break;
-                    case TypeCode.Decimal:
-                        message.Data = reader.ReadDecimal();
-                        break;
-                    case TypeCode.Double:
-                        message.Data = reader.ReadDouble();
-                        break;
-                    case TypeCode.Empty:
-                        reader.ReadByte();
-                        break;
-                    case TypeCode.Int16:
-                        message.Data = reader.ReadInt16();
-                        break;
-                    case TypeCode.Int32:
-                        message.Data = reader.ReadInt32();
-                        break;
-                    case TypeCode.Int64:
-                        message.Data = reader.ReadInt64();
-                        break;
-                    case TypeCode.SByte:
-                        message.Data = reader.ReadSByte();
-                        break;
-                    case TypeCode.Single:
-                        message.Data = reader.ReadSingle();
-                        break;
-                    case TypeCode.String:
-                        message.Data = ReadString(reader); 
-                        break;
-                    case TypeCode.UInt16:
-                        message.Data = reader.ReadUInt16();
-                        break;
-                    case TypeCode.UInt32:
-                        message.Data = reader.ReadUInt32();
-                        break;
-                    case TypeCode.UInt64:
-                        message.Data = reader.ReadUInt64();
-                        break;
-                    default:
-                        {
-                            len = reader.ReadInt32();
-                            if (len > 0)
-                            {
-                                using (var tempStream = new ChunkedStream())
-                                {
-                                    var chunkSize = tempStream.ChunkSize;
-                                    while (len > 0)
-                                    {
-                                        var bytes = reader.ReadBytes(chunkSize);
+                ReadData(dataTypeCd, message, reader);
 
-                                        var readLen = bytes?.Length ?? 0;
-                                        if (readLen == 0)
-                                            throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
-
-                                        len -= readLen;
-                                        tempStream.Write(bytes, 0, readLen);
-                                    }
-
-                                    message.Data = _wireSerializer.Value.Deserialize(tempStream);
-                                }
-                            }
-                        }
-                        break;
-                }
-                return message.ToRemoteMessage();
+                return message;
             }
             return null;
+        }
+
+        private void ReadData(int dataTypeCd, WireMessage message, BinaryReader reader)
+        {
+            switch ((TypeCode)dataTypeCd)
+            {
+                case TypeCode.Boolean:
+                    message.Data = reader.ReadBoolean();
+                    break;
+                case TypeCode.Byte:
+                    message.Data = reader.ReadByte();
+                    break;
+                case TypeCode.Char:
+                    message.Data = reader.ReadChar();
+                    break;
+                case TypeCode.DateTime:
+                    message.Data = new DateTime(reader.ReadInt64());
+                    break;
+                case TypeCode.DBNull:
+                    reader.ReadByte();
+                    message.Data = DBNull.Value;
+                    break;
+                case TypeCode.Decimal:
+                    message.Data = reader.ReadDecimal();
+                    break;
+                case TypeCode.Double:
+                    message.Data = reader.ReadDouble();
+                    break;
+                case TypeCode.Empty:
+                    reader.ReadByte();
+                    break;
+                case TypeCode.Int16:
+                    message.Data = reader.ReadInt16();
+                    break;
+                case TypeCode.Int32:
+                    message.Data = reader.ReadInt32();
+                    break;
+                case TypeCode.Int64:
+                    message.Data = reader.ReadInt64();
+                    break;
+                case TypeCode.SByte:
+                    message.Data = reader.ReadSByte();
+                    break;
+                case TypeCode.Single:
+                    message.Data = reader.ReadSingle();
+                    break;
+                case TypeCode.String:
+                    message.Data = ReadString(reader);
+                    break;
+                case TypeCode.UInt16:
+                    message.Data = reader.ReadUInt16();
+                    break;
+                case TypeCode.UInt32:
+                    message.Data = reader.ReadUInt32();
+                    break;
+                case TypeCode.UInt64:
+                    message.Data = reader.ReadUInt64();
+                    break;
+                default:
+                    {
+                        var len = reader.ReadInt32();
+                        if (len > 0)
+                        {
+                            using (var tempStream = new ChunkedStream())
+                            {
+                                var chunkSize = tempStream.ChunkSize;
+                                while (len > 0)
+                                {
+                                    var bytes = reader.ReadBytes(chunkSize);
+
+                                    var readLen = bytes?.Length ?? 0;
+                                    if (readLen == 0)
+                                        throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
+
+                                    len -= readLen;
+                                    tempStream.Write(bytes, 0, readLen);
+                                }
+
+                                message.Data = _wireSerializer.Value.Deserialize(tempStream);
+                            }
+                        }
+                    }
+                    break;
+            }
         }
 
         private string ReadString(BinaryReader reader)
@@ -283,7 +290,7 @@ namespace Sweet.Actors.Rpc
                 writer.Write(data);
         }
 
-        private void Write(WireMessage message, BinaryWriter writer)
+        private void Write(BinaryWriter writer, WireMessage message)
         {
             if (message is null)
             {
@@ -299,9 +306,10 @@ namespace Sweet.Actors.Rpc
 
             writer.Write(message.TimeoutMSec ?? int.MinValue);
 
-            WriteString(writer, message.Id);
-            WriteString(writer, message.From);
-            WriteString(writer, message.To);
+            (message.Id ?? WireMessageId.Empty).Write(writer);
+
+            WriteString(writer, message.From?.ToString());
+            WriteString(writer, message.To?.ToString());
 
             var header = message.Header;
             if (header == null)
@@ -333,7 +341,11 @@ namespace Sweet.Actors.Rpc
                 }
             }
 
-            var data = message.Data;
+            WriteData(writer, dataTypeCd, message.Data);
+        }
+
+        private void WriteData(BinaryWriter writer, TypeCode dataTypeCd, object data)
+        {
             switch (dataTypeCd)
             {
                 case TypeCode.Boolean:

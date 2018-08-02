@@ -57,7 +57,7 @@ namespace Sweet.Actors
 
             public void Reset(Action action, int timeoutMSec)
             {
-                _action = action;
+                Interlocked.Exchange(ref _action, action);
                 _timeoutAt = timeoutMSec < 1 ? int.MaxValue : Environment.TickCount + timeoutMSec;
             }
 
@@ -81,9 +81,17 @@ namespace Sweet.Actors
 
             protected override void OnDispose(bool disposing)
             {
-                var state = Interlocked.Exchange(ref _state, null);
+                var state = Clear();
                 if (disposing && !(state is null))
                     TimeoutHandler.Unregister(state);
+            }
+
+            public object Clear()
+            {
+                Prev = null;
+                Next = null;
+                Interlocked.Exchange(ref _action, null);
+                return Interlocked.Exchange(ref _state, null);
             }
 
             public void Invoke(bool @async)
@@ -92,9 +100,13 @@ namespace Sweet.Actors
                 {
                     try
                     {
-                        if (@async)
-                            _action.InvokeAsync();
-                        else _action?.Invoke();
+                        var action = _action;
+                        if (action != null)
+                        {
+                            if (@async)
+                                action.InvokeAsync();
+                            else action?.Invoke();
+                        }
                     }
                     catch (Exception)
                     { }
@@ -165,42 +177,90 @@ namespace Sweet.Actors
             private TimeoutEvent _tail;
 
             private ReaderWriterLockSlim _syncRoot = new ReaderWriterLockSlim();
-            private readonly Dictionary<object, TimeoutEvent> _registerations = new Dictionary<object, TimeoutEvent>();
+            private readonly Dictionary<object, TimeoutEvent> _events = new Dictionary<object, TimeoutEvent>();
 
             public int Count => _count;
 
-            public bool TryRemove(object state, out TimeoutEvent registry)
+            public bool Add(object state, Action action, int timeoutMSec)
             {
-                registry = null;
+                if ((state != null) && (timeoutMSec > 0) && (action != null))
+                {
+                    _syncRoot.EnterUpgradeableReadLock();
+                    try
+                    {
+                        if (_events.TryGetValue(state, out TimeoutEvent @event))
+                        {
+                            @event.Reset(action, timeoutMSec);
+                            return true;
+                        }
+
+                        _syncRoot.EnterWriteLock();
+                        try
+                        {
+                            @event = new TimeoutEvent(state, action, timeoutMSec);
+                            if (_head == null)
+                            {
+                                _head = @event;
+                                _tail = @event;
+                            }
+                            else
+                            {
+                                _tail.Next = @event;
+                                @event.Prev = _tail;
+
+                                _tail = @event;
+                            }
+
+                            _events[state] = @event;
+                            Interlocked.Add(ref _count, 1);
+
+                            return true;
+                        }
+                        finally
+                        {
+                            _syncRoot.ExitWriteLock();
+                        }
+                    }
+                    finally
+                    {
+                        _syncRoot.ExitUpgradeableReadLock();
+                    }
+                }
+                return false;
+            }
+
+            public bool TryRemove(object state, out TimeoutEvent @event)
+            {
+                @event = null;
                 if (state != null)
                 {
                     _syncRoot.EnterUpgradeableReadLock();
                     try
                     {
-                        if (_registerations.TryGetValue(state, out TimeoutEvent tmpRegistry))
+                        if (_events.TryGetValue(state, out TimeoutEvent tmpEvent))
                         {
                             _syncRoot.EnterWriteLock();
                             try
                             {
-                                if (_registerations.Remove(state))
+                                if (_events.Remove(state))
                                 {
                                     Interlocked.Add(ref _count, -1);
 
-                                    registry = tmpRegistry;
+                                    @event = tmpEvent;
 
-                                    var prev = registry.Prev;
-                                    var next = registry.Next;
+                                    var prev = @event.Prev;
+                                    var next = @event.Next;
 
-                                    if (registry == _head)
+                                    if (@event == _head)
                                     {
                                         _head = next;
-                                        if (registry == _tail)
+                                        if (@event == _tail)
                                             _tail = prev;
 
                                         if (next != null)
                                             next.Prev = null;
                                     }
-                                    else if (registry == _tail)
+                                    else if (@event == _tail)
                                     {
                                         _tail = prev;
                                         if (prev != null)
@@ -215,8 +275,7 @@ namespace Sweet.Actors
                                             next.Prev = prev;
                                     }
 
-                                    registry.Prev = null;
-                                    registry.Next = null;
+                                    @event.Clear();
 
                                     return true;
                                 }
@@ -225,54 +284,6 @@ namespace Sweet.Actors
                             {
                                 _syncRoot.ExitWriteLock();
                             }
-                        }
-                    }
-                    finally
-                    {
-                        _syncRoot.ExitUpgradeableReadLock();
-                    }
-                }
-                return false;
-            }
-
-            public bool Add(object state, Action action, int timeoutMSec)
-            {
-                if ((state != null) && (timeoutMSec > 0) && (action != null))
-                {
-                    _syncRoot.EnterUpgradeableReadLock();
-                    try
-                    {
-                        if (_registerations.TryGetValue(state, out TimeoutEvent registry))
-                        {
-                            registry.Reset(action, timeoutMSec);
-                            return true;
-                        }
-
-                        _syncRoot.EnterWriteLock();
-                        try
-                        {
-                            registry = new TimeoutEvent(state, action, timeoutMSec);
-                            if (_head == null)
-                            {
-                                _head = registry;
-                                _tail = registry;
-                            }
-                            else
-                            {
-                                _tail.Next = registry;
-                                registry.Prev = _tail;
-
-                                _tail = registry;
-                            }
-
-                            _registerations[state] = registry;
-                            Interlocked.Add(ref _count, 1);
-
-                            return true;
-                        }
-                        finally
-                        {
-                            _syncRoot.ExitWriteLock();
                         }
                     }
                     finally
@@ -294,35 +305,28 @@ namespace Sweet.Actors
             }
         }
 
-        private struct TimedOutPair
-        {
-            public object State;
-            public TimeoutEvent Registry;
-        }
-
         private const int _1K = 1000;
         private const int _10K = 10 * _1K;
-        private const int WaitDuration = 1000;
 
         private static Timer _timer;
         private static int _scheduled;
         private static long _inProcess;
 
-        private static readonly TimeoutRegistry _registerations = new TimeoutRegistry();
+        private static readonly TimeoutRegistry _registry = new TimeoutRegistry();
 
         private static void Callback(object state, bool @async)
         {
             if (!(state is null) &&
-                _registerations.TryRemove(state, out TimeoutEvent registry))
+                _registry.TryRemove(state, out TimeoutEvent @event))
             {
-                using (registry)
-                    registry.Invoke(@async);
+                using (@event)
+                    @event.Invoke(@async);
             }
         }
 
         public static bool TryRegister(object state, Action action, int timeoutMSec)
         {
-            if (_registerations.Add(state, action, timeoutMSec))
+            if (_registry.Add(state, action, timeoutMSec))
             {
                 Schedule();
                 return true;
@@ -333,70 +337,78 @@ namespace Sweet.Actors
         public static bool Unregister(object state)
         {
             if (!(state is null))
-                return _registerations.TryRemove(state, out TimeoutEvent registry);
+                return _registry.TryRemove(state, out TimeoutEvent @event);
             return false;
         }
 
         private static void Schedule()
         {
             if (Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
-                _timer = new Timer(CheckTimeouts, null, 0, _1K);
+                _timer = new Timer((state) => { Cycle(); }, null, 0, _1K);
         }
 
-        private static void CheckTimeouts(object state)
-        {
-            Cycle(false);
-        }
-
-        private static void Cycle(bool circular)
+        private static void Cycle()
         {
             if (Interlocked.Add(ref _inProcess, 1) != 1L)
                 return;
 
             try
             {
-                if (_registerations.Count == 0)
+                if (_registry.Count == 0)
                     return;
 
-                var headState = 0;
-                var head = new TimedOutPair();
+                var head = (object)null;
+                var timedOuts = (List<object>)null;
 
-                var timedOuts = (List<TimedOutPair>)null;
+                var cyclingState = 0;
 
-                var loop = 0;
+                var loopIndex = 0;
                 var now = Environment.TickCount;
 
-                foreach (var registry in _registerations)
+                foreach (var @event in _registry)
                 {
-                    if (++loop % _10K == 0)
-                        Thread.Sleep(1);
-
-                    if (now >= registry.TimeoutAt)
+                    if (++loopIndex % _1K == 0)
                     {
-                        var pair = new TimedOutPair { State = registry.State, Registry = registry };
-                        switch (headState)
+                        Thread.Sleep(1);
+                        now = Environment.TickCount;
+                    }
+
+                    if (now >= @event.TimeoutAt)
+                    {
+                        switch (cyclingState)
                         {
                             case 0:
-                                head = pair;
-                                headState++;
+                                head = @event.State;
+                                if (!(head is null))
+                                    cyclingState++;
                                 break;
                             case 1:
-                                timedOuts = new List<TimedOutPair> { head, pair };
-                                headState++;
+                                {
+                                    var state = @event.State;
+                                    if (!(state is null))
+                                    {
+                                        timedOuts = new List<object> { head, state };
+                                        cyclingState++;
+                                    }
+                                }
                                 break;
                             default:
-                                timedOuts.Add(pair);
+                                {
+                                    var state = @event.State;
+                                    if (!(state is null))
+                                        timedOuts.Add(state);
+                                }
                                 break;
                         }
                     }
                 }
 
-                switch (headState)
+                switch (cyclingState)
                 {
                     case 1:
                         {
-                            if (_registerations.TryRemove(head.State, out TimeoutEvent registry))
-                                registry.Invoke(false);
+                            if (_registry.TryRemove(head, out TimeoutEvent @event))
+                                @event.Invoke(false);
                         }
                         break;
                     case 2:
@@ -405,10 +417,9 @@ namespace Sweet.Actors
                         {
                             for (var i = 0; i < count; i++)
                             {
-                                var pair = timedOuts[i];
-                                if (_registerations.TryRemove(pair.State, out TimeoutEvent registry))
+                                if (_registry.TryRemove(timedOuts[i], out TimeoutEvent @event))
                                 {
-                                    registry.Invoke(false);
+                                    @event.Invoke(false);
                                     if (i % 100 == 0)
                                         Thread.Sleep(1);
                                 }
@@ -419,8 +430,8 @@ namespace Sweet.Actors
                         Parallel.ForEach(timedOuts,
                             (pair) =>
                             {
-                                if (_registerations.TryRemove(pair.State, out TimeoutEvent registry))
-                                    registry.Invoke(false);
+                                if (_registry.TryRemove(pair, out TimeoutEvent @event))
+                                    @event.Invoke(false);
                             });
                         break;
                     default:
@@ -433,8 +444,9 @@ namespace Sweet.Actors
             {
                 if (Interlocked.Exchange(ref _inProcess, 0L) > 1L)
                 {
-                    Thread.Sleep(10);
-                    Cycle(true);
+                    Thread.Sleep(1);
+                    if (_registry.Count > 0)
+                        Cycle();
                 }
             }
         }

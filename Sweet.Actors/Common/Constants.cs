@@ -31,6 +31,9 @@ namespace Sweet.Actors
 		public const int True = 1;
         public const int False = 0;
 
+        public const long LTrue = 1L;
+        public const long LFalse = 0L;
+
         public const int KB = 1024;
         public const int MB = KB * KB;
         public const int GB = KB * MB;

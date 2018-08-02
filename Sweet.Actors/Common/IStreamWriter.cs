@@ -1,4 +1,4 @@
-#region License
+﻿#region License
 //  The MIT License (MIT)
 //
 //  Copyright (c) 2017, Cagatay Dogan
@@ -22,16 +22,33 @@
 //      THE SOFTWARE.
 #endregion License
 
-using System.Collections.Generic;
-using System.IO;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public interface IWireSerializer
+    public interface IStreamWriter : IDisposable
     {
-        byte[] Serialize(WireMessage[] message);
-        long Serialize(WireMessage[] message, Stream stream);
-        IEnumerable<WireMessage> Deserialize(byte[] data);
-        IEnumerable<WireMessage> Deserialize(Stream stream);
+        bool Closed { get; }
+        long Position { get; }
+
+        void Write(byte[] buffer);
+        void Write(byte[] buffer, int offset, int count);
+        Task WriteAsync(byte[] buffer, CancellationToken cancellationToken);
+        Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
+        void Write(byte value);
+        void Write(bool value);
+        void Write(sbyte value);
+        void Write(char value);
+        void Write(short value);
+        void Write(ushort value);
+        void Write(int value);
+        void Write(uint value);
+        void Write(long value);
+        void Write(ulong value);
+        void Write(float value);
+        void Write(double value);
+        void Write(decimal value);
     }
 }

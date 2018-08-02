@@ -34,7 +34,6 @@ namespace Sweet.Actors
         private int _hashCode;
         private string _actor;
         private string _actorSystem;
-        private string _toString;
 
         protected Aid()
         {
@@ -64,7 +63,6 @@ namespace Sweet.Actors
             {
                 _actor = actor;
                 _hashCode = 0;
-                _toString = null;
             }
         }
 
@@ -75,17 +73,13 @@ namespace Sweet.Actors
             {
                 _actorSystem = actorSystem;
                 _hashCode = 0;
-                _toString = null;
             }
         }
 
         public override string ToString()
         {
             //$"{_actorSystem}/{_actor}";
-
-            if (_toString == null)
-                _toString = _actorSystem + "/" + _actor;
-            return _toString;
+            return _actorSystem + "/" + _actor;
         } 
 
         public override int GetHashCode()

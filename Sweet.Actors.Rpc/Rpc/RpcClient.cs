@@ -281,7 +281,7 @@ namespace Sweet.Actors.Rpc
             Enqueue(message);
 
             if (message is RemoteRequest request)
-                return request.Completor.Task;
+                return ((IFutureMessage)request.Message).Task;
 
             return Completed;
         }
@@ -346,6 +346,11 @@ namespace Sweet.Actors.Rpc
             }
         }
 
+        protected override void StopProcessing()
+        {
+            base.StopProcessing();
+        }
+
         private IList PrepareMessagesToProcess()
         {
             IList result = EmptyMessageList;
@@ -389,7 +394,6 @@ namespace Sweet.Actors.Rpc
                     var future = request.IsFuture ? (FutureMessage)request.Message : null;
                     try
                     {
-                        request.Completor.TrySetCanceled();
                         future?.Cancel();
                     }
                     catch (Exception e)
@@ -398,7 +402,7 @@ namespace Sweet.Actors.Rpc
 
                         try
                         {
-                            future?.RespondToWithError(e, future.From);
+                            future?.RespondWithError(e, future.From);
                         }
                         catch (Exception)
                         { }
@@ -420,8 +424,6 @@ namespace Sweet.Actors.Rpc
                     if (future?.IsCanceled ?? false)
                     {
                         canSend = false;
-
-                        request.Completor.TrySetCanceled();
                         future?.Cancel();
 
                         return Canceled;
@@ -430,11 +432,7 @@ namespace Sweet.Actors.Rpc
                     if (realMessage.Expired)
                     {
                         canSend = false;
-
-                        var error = new Exception(Errors.MessageExpired);
-
-                        request.Completor.TrySetException(error);
-                        future?.RespondToWithError(error, future.From);
+                        future?.RespondWithError(new Exception(Errors.MessageExpired), future.From);
 
                         return Canceled;
                     }
@@ -448,7 +446,7 @@ namespace Sweet.Actors.Rpc
 
                     try
                     {
-                        future?.RespondToWithError(e, future.From);
+                        future?.RespondWithError(e, future.From);
                     }
                     catch (Exception)
                     { }
@@ -466,8 +464,8 @@ namespace Sweet.Actors.Rpc
                 if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L && !Disposed)
                 {
                     var outStream = _connection?.Out;
-                    if (outStream != null && (outStream?.CanWrite ?? false))
-                        outStream?.Flush();
+                    if ((outStream != null) && outStream.CanWrite)
+                        outStream.Flush();
                 }
             }
             catch (Exception)
@@ -479,7 +477,7 @@ namespace Sweet.Actors.Rpc
             try
             {
                 if (message is RemoteRequest request)
-                    request?.Completor.TrySetException(e);
+                    ((FutureMessage)request.Message)?.RespondWithError(e);
             }
             catch (Exception)
             { }

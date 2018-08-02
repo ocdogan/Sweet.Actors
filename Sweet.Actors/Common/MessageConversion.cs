@@ -33,33 +33,34 @@ namespace Sweet.Actors
 
         public static RemoteMessage ToRemoteMessage(this WireMessage message)
         {
-            IMessage msg = null;
-            var messageId = WireMessageId.Empty;
-
             if (message != null)
             {
                 switch (message.MessageType)
                 {
                     case MessageType.Default:
-                        msg = new Message(message.Data, Aid.Parse(message.From), message.Header, message.TimeoutMSec);
-                        break;
+                        return new RemoteMessage(
+                            new Message(message.Data, message.From, message.Header, message.TimeoutMSec),
+                            message?.To ?? Aid.Unknown, 
+                            message.Id ?? WireMessageId.Empty);
                     case MessageType.FutureMessage:
-                        msg = new FutureMessage(message.Data, Aid.Parse(message.From), message.Header, message.TimeoutMSec);
-                        break;
+                        return new RemoteMessage(
+                            new FutureMessage(message.Data, message.From, message.Header, message.TimeoutMSec),
+                            message?.To ?? Aid.Unknown,
+                            message.Id ?? WireMessageId.Empty);
                     case MessageType.FutureResponse:
-                        msg = new FutureResponse(message.Data, Aid.Parse(message.From), message.Header);
-                        break;
+                        return new RemoteMessage(
+                            new FutureResponse(message.Data, message.From, message.Header),
+                            message?.To ?? Aid.Unknown,
+                            message.Id ?? WireMessageId.Empty);
                     case MessageType.FutureError:
-                        msg = new FutureError(message.Exception, Aid.Parse(message.From), message.Header);
-                        break;
+                        return new RemoteMessage(
+                            new FutureError(message.Exception, message.From, message.Header),
+                            message?.To ?? Aid.Unknown,
+                            message.Id ?? WireMessageId.Empty);
                 }
-
-                WireMessageId.TryParse(message.Id, out messageId);
             }
 
-            return new RemoteMessage(msg ?? Message.Empty,
-                Aid.Parse(message?.To) ?? Aid.Unknown,
-                messageId ?? WireMessageId.Empty);
+            return RemoteMessage.Empty;
         }
 
         public static WireMessage ToWireMessage(this RemoteMessage message, Exception exception = null)
@@ -78,22 +79,22 @@ namespace Sweet.Actors
 
             return new WireMessage
             {
-                From = from?.ToString(),
-                To = to?.ToString(),
+                From = from,
+                To = to,
                 Exception = exception,
                 MessageType = faulted ? MessageType.FutureError : MessageType.FutureResponse,
-                Id = id?.ToString() ?? WireMessageId.NextAsString(),
+                Id = id ?? WireMessageId.Next(),
                 State = state
             };
         }
 
         public static WireMessage ToWireMessage(this IMessage message, Aid to, WireMessageId id = null, Exception exception = null)
         {
-            var result = new WireMessage { To = to?.ToString(), Id = id?.ToString() ?? WireMessageId.NextAsString() };
+            var result = new WireMessage { To = to, Id = id ?? WireMessageId.Next() };
             if (message != null)
             {
                 result.MessageType = message.MessageType;
-                result.From = message.From?.ToString();
+                result.From = message.From;
                 result.Data = message.Data;
                 result.TimeoutMSec = message.TimeoutMSec;
 

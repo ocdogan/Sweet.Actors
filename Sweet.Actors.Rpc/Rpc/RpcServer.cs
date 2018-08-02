@@ -216,12 +216,13 @@ namespace Sweet.Actors.Rpc
 
         private SocketAsyncEventArgs NewAcceptEventArgs()
         {
-            var acceptEventArgs = new SocketAsyncEventArgs();
+            var result = new SocketAsyncEventArgs {
+                UserToken = this
+            };
 
-            acceptEventArgs.UserToken = this;
-            acceptEventArgs.Completed += OnAcceptCompleted;
+            result.Completed += OnAcceptCompleted;
 
-            return acceptEventArgs;
+            return result;
         }
 
         private bool TryToStop()
