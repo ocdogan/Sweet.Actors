@@ -40,7 +40,10 @@ namespace Sweet.Actors.Rpc
 
         public const int WriteBufferSize = 64 * Constants.KB;
 
-        public const int MaxBulkSendLength = 10000;
-        public const int DefaultBulkSendLength = 500;
+        public const int MaxBulkMessageLength = 1000;
+        public const int DefaultBulkMessageLength = 500;
+
+        public const int MaxBulkSendLength = 10 * MaxBulkMessageLength;
+        public const int DefaultBulkSendLength = DefaultBulkMessageLength;
     }
 }

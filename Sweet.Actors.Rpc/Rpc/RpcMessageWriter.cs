@@ -30,19 +30,27 @@ using System.Threading;
 
 namespace Sweet.Actors.Rpc
 {
-    internal class RpcMessageWriter : Disposable
+    public class RpcMessageWriter : Disposable
     {
         private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
 
         private static ArraySliceCache SliceCache = new ArraySliceCache(initialCount: 20, arraySize: RpcMessageSizeOf.EachFrame);
 
+        private IRpcConnection _connnection;
+
         private int _messageIdSeed;
         private IWireSerializer _serializer;
         private byte[] _serializerKeyBytes = new byte[RpcHeaderSizeOf.SerializerKey];
 
-        public RpcMessageWriter(string serializerKey)
+        public RpcMessageWriter(IRpcConnection conn, string serializerKey)
         {
+            _connnection = conn;
             InitializeSerializer(serializerKey);
+        }
+
+        protected override void OnDispose(bool disposing)
+        {
+            Interlocked.Exchange(ref _connnection, null);
         }
 
         private void InitializeSerializer(string serializerKey)
@@ -86,7 +94,7 @@ namespace Sweet.Actors.Rpc
             outStream.Write(frameCntBytes, 0, frameCntBytes.Length);
         }
 
-        public virtual bool Write(Stream outStream, WireMessage[] messages, bool flush = true)
+        private bool Write(Stream outStream, WireMessage[] messages, bool flush = true)
         {
             ThrowIfDisposed();
 
@@ -153,31 +161,38 @@ namespace Sweet.Actors.Rpc
             return true;
         }
 
-        public virtual bool Write(Socket socket, WireMessage[] messages)
+        public virtual bool Write(WireMessage[] messages, bool flush = true)
         {
             ThrowIfDisposed();
 
-            if (socket.IsConnected())
+            var conn = _connnection;
+            if (conn != null)
             {
-                var outStream = new ChunkedStream();
-                try
+                var socket = conn.Connection;
+                // if (socket.IsConnected())
                 {
-                    if (Write(outStream, messages))
-                    {
-                        using (var slice = SliceCache.Acquire())
-                        {
-                            var buffer = slice.Array;
+                    var outStream = conn.Out;
+                    if (outStream != null)
+                        return Write(outStream, messages, flush);
 
-                            int readLen;
-                            while ((readLen = outStream.Read(buffer, 0, buffer.Length)) > 0)
-                                socket.Send(buffer, 0, readLen, SocketFlags.None);
+                    using (outStream = new ChunkedStream())
+                    {
+                        if (Write(outStream, messages))
+                        {
+                            using (var slice = SliceCache.Acquire())
+                            {
+                                var buffer = slice.Array;
+
+                                int readLen;
+                                while ((readLen = outStream.Read(buffer, 0, buffer.Length)) > 0)
+                                {
+                                    socket.Send(buffer, 0, readLen, SocketFlags.None);
+                                }
+                            }
+
+                            return true;
                         }
-                        return true;
                     }
-                }
-                finally
-                {
-                    outStream.Dispose();
                 }
             }
             return false;

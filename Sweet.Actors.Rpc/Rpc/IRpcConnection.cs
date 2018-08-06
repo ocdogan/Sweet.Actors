@@ -34,5 +34,10 @@ namespace Sweet.Actors.Rpc
         IPEndPoint RemoteEndPoint { get; }
         object State { get; }
         Stream Out { get; }
+
+        void Flush();
+
+        void Send(WireMessage message);
+        void Send(WireMessage[] messages);
     }
 }

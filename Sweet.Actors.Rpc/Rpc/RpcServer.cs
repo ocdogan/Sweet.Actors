@@ -343,7 +343,8 @@ namespace Sweet.Actors.Rpc
                 RpcConnection connection = null;
                 try
                 {
-                    connection = new RpcConnection(this, clientSocket, HandleMessage, SendMessage);
+                    connection = new RpcConnection(this, clientSocket, _options.Serializer, 
+                        RpcConstants.DefaultBulkSendLength, HandleMessage, SendMessage);
                     connection.OnDisconnect += ContextDisconnected;
 
                     _rpcConnections[connection] = clientSocket;
@@ -420,8 +421,8 @@ namespace Sweet.Actors.Rpc
             return buffer;
         }
 
-        protected abstract Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection);
+        protected abstract Task HandleMessage(RemoteMessage message, IRpcConnection rpcConnection);
 
-        protected abstract Task SendMessage(WireMessage wireMessage, IRpcConnection rpcConnection);
+        protected abstract Task SendMessage(WireMessage message, IRpcConnection rpcConnection);
     }
 }

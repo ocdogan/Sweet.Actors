@@ -36,30 +36,20 @@ namespace Sweet.Actors
         public IEnumerable<WireMessage> Deserialize(byte[] data)
         {
             if (data == null || data.Length == 0)
-                yield return null;
+                return null;
 
             using (var stream = new ChunkedStream(data))
             {
-                var messages = _serializer.Deserialize<WireMessage[]>(stream);
-                if (messages == null)
-                    yield return null;
-
-                foreach (var message in messages)
-                    yield return message;
+                return _serializer.Deserialize<WireMessage[]>(stream);
             }
         }
 
         public IEnumerable<WireMessage> Deserialize(Stream stream)
         {
             if (stream == null)
-                yield return null;
+                return null;
 
-            var messages = _serializer.Deserialize<WireMessage[]>(stream);
-            if (messages == null)
-                yield return null;
-
-            foreach (var message in messages)
-                yield return message;
+            return _serializer.Deserialize<WireMessage[]>(stream);
         }
 
         public byte[] Serialize(WireMessage[] messages)

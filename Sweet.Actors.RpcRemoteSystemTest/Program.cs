@@ -66,18 +66,26 @@ namespace Sweet.Actors.RpcRemoteSystemTest
 
                 if (count == 1)
                     sw.Restart();
-                else
+
+                if (count % 1000 == 0)
+                    Console.WriteLine("Actor: " + count);
+
+                if (count == loop)
                 {
-                    if (count % 1000 == 0)
-                        Console.WriteLine("Actor: " + count);
+                    Interlocked.Exchange(ref counter, 0);
 
-                    if (count == loop)
+                    sw.Stop();
+
+                    var elapsed = sw.ElapsedMilliseconds;
+                    if (elapsed <= 0)
                     {
-                        Interlocked.Exchange(ref counter, 0);
-
-                        sw.Stop();
-                        Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
-                        Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
+                        Console.WriteLine("Ellapsed time: 0");
+                        Console.WriteLine("Concurrency: " + loop + " call per sec");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Ellapsed time: " + elapsed);
+                        Console.WriteLine("Concurrency: " + (loop * 1000 / elapsed) + " call per sec");
                     }
                 }
 

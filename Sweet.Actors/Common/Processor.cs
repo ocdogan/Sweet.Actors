@@ -278,6 +278,26 @@ namespace Sweet.Actors
             return false;
         }
 
+        protected virtual bool TryDequeue(int count, out IList<T> list)
+        {
+            if (count <= 0)
+            {
+                list = null;
+                return false;
+            }
+
+            list = new List<T>(Math.Min(count, 100));
+            while (_queue.TryDequeue(out T item))
+            {
+                Interlocked.Add(ref _count, -1);
+                list.Add(item);
+
+                if (--count <= 0)
+                    break;
+            }
+            return list.Count > 0;
+        }
+
         protected virtual void ProcessItems()
         {
             for (var i = 0; i < SequentialInvokeLimit; i++)

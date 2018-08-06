@@ -96,7 +96,6 @@ namespace Sweet.Actors.Rpc
         private static readonly ConcurrentDictionary<string, EndPointResolver> _endPointResolvers =
             new ConcurrentDictionary<string, EndPointResolver>();
 
-        private RpcMessageWriter _writer;
         private IResponseHandler _responseHandler;
 
         private ConcurrentDictionary<RemoteEndPoint, RpcManagedClient> _rpcManagedClients = 
@@ -106,9 +105,7 @@ namespace Sweet.Actors.Rpc
 
         public RpcManager(RpcServerOptions options = null)
             : base(options)
-        {
-            _writer = new RpcMessageWriter(Options.Serializer);
-        }
+        { }
 
         protected override void OnDispose(bool disposing)
         {
@@ -246,15 +243,15 @@ namespace Sweet.Actors.Rpc
             return false;
         }
 
-        protected override Task HandleMessage(RemoteMessage remoteMessage, IRpcConnection rpcConnection)
+        protected override Task HandleMessage(RemoteMessage message, IRpcConnection rpcConnection)
         {
             ThrowIfDisposed();
 
-            var message = remoteMessage.Message;
-            if (message == null)
+            var iMessage = message.Message;
+            if (iMessage == null)
                 throw new Exception(RpcErrors.InvalidMessage);
 
-            var to = remoteMessage.To;
+            var to = message.To;
             if (to != null && to != Aid.Unknown)
             {
                 var actorSystem = to.ActorSystem?.Trim();
@@ -263,9 +260,9 @@ namespace Sweet.Actors.Rpc
                     TryGetBindedSystem(actorSystem, out ActorSystem bindedSystem) &&
                     bindedSystem.TryGetInternal(to.Actor, out Pid pid) && pid != null && pid != Aid.Unknown)
                 {
-                    var request = message as FutureMessage;
+                    var request = iMessage as FutureMessage;
                     if (request is null)
-                        return pid.Tell(message);
+                        return pid.Tell(iMessage);
 
                     var response = pid.Request(request);
                     if (response == null)
@@ -282,10 +279,10 @@ namespace Sweet.Actors.Rpc
                             var wireMessage = new WireMessage
                             {
                                 From = to,
-                                To = message.From,
+                                To = iMessage.From,
                                 Exception = faulted ? previousTask.Exception : null,
                                 MessageType = faulted ? MessageType.FutureError : MessageType.FutureResponse,
-                                Id = remoteMessage.MessageId ?? WireMessageId.Next(),
+                                Id = message.MessageId ?? WireMessageId.Empty,
                                 State = state
                             };
 
@@ -294,23 +291,20 @@ namespace Sweet.Actors.Rpc
                         }
 
                         if (previousTask.IsCompleted)
-                            SendMessage(previousTask.Result.ToWireMessage(message.From, remoteMessage.MessageId), rpcConnection);
+                            SendMessage(previousTask.Result.ToWireMessage(iMessage.From, message.MessageId), rpcConnection);
                     });
                 }
             }
             throw new Exception(RpcErrors.InvalidMessageReceiver);
         }
 
-        protected override Task SendMessage(WireMessage wireMessage, IRpcConnection conn)
+        protected override Task SendMessage(WireMessage message, IRpcConnection conn)
         {
             try
             {
                 ThrowIfDisposed();
 
-                var outStream = conn.Out;
-                if (outStream != null)
-                    _writer.Write(outStream, new WireMessage[] { wireMessage });
-                else _writer.Write(conn.Connection, new WireMessage[] { wireMessage });
+                conn.Send(message);
 
                 return Completed;
             }

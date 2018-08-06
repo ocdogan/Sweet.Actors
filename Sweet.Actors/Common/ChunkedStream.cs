@@ -34,6 +34,8 @@ namespace Sweet.Actors
 {
     public class ChunkedStream : Stream
     {
+        private static int IdSeed;
+
         private static readonly byte[] EmptyChunk = new byte[0];
         private static readonly Task<int> ReadCompleted = Task.FromResult(0);
 
@@ -396,6 +398,7 @@ namespace Sweet.Actors
             public T NewValue { get; }
         }
 
+        private int _id;
         private bool _isClosed;
 
         protected int _origin;
@@ -420,17 +423,18 @@ namespace Sweet.Actors
         private event EventHandler<ValueChangedEventArgs<long>> Changed;
 
         public ChunkedStream()
+            : this(DefaultCacheSize)
         { }
 
         public ChunkedStream(int chunkSize = -1)
         {
+            _id = Interlocked.Increment(ref IdSeed);
             InitializeCache(chunkSize);
         }
 
         public ChunkedStream(byte[] source, int chunkSize = -1)
+            : this(chunkSize)
         {
-            InitializeCache(chunkSize);
-
             if (source != null)
             {
                 var sourceLen = source.Length;
@@ -440,25 +444,16 @@ namespace Sweet.Actors
         }
 
         public ChunkedStream(IList<ArraySegment<byte>> source)
+            : this(DefaultCacheSize)
         {
             var sourceCount = source?.Count ?? 0;
             if (sourceCount > 0)
             {
-                var chunkSize = -1;
-
                 foreach (var segment in source)
                 {
                     var chunkLen = segment.Count;
                     if (chunkLen > 0)
-                    {
-                        if (chunkSize == -1)
-                        {
-                            chunkSize = chunkLen;
-                            InitializeCache(chunkSize);
-                        }
-
                         Write(segment.Array, 0, chunkLen);
-                    }
                 }
             }
         }

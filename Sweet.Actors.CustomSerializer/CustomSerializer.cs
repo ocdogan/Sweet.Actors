@@ -64,14 +64,17 @@ namespace Sweet.Actors.Rpc
             {
                 var b = reader.ReadByte();
                 if (b == NullFlag)
-                    yield return null;
+                    return null;
 
                 var count = reader.ReadInt32();
                 if (count == 0)
-                    yield return null;
+                    return null;
 
+                var result = new WireMessage[count];
                 for (var i = 0; i < count; i++)
-                    yield return Read(reader);
+                    result[i] = Read(reader);
+
+                return result;
             }
         }
 

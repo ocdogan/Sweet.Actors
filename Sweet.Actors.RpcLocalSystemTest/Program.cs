@@ -23,16 +23,21 @@
 #endregion License
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 
+using Sweet.Actors;
 using Sweet.Actors.Rpc;
 
 namespace Sweet.Actors.RpcLocalSystemTest
 {
     class Program
     {
-        // private static int counter;
+        private static int counter;
         private const int loop = 200000;
 
         private static void InitSystem(int port)
@@ -62,6 +67,33 @@ namespace Sweet.Actors.RpcLocalSystemTest
             actorSystem.FromRemote(remoteActorOptions);
         }
 
+        class DummyConnection : IRpcConnection
+        {
+            private Stream _stream;
+
+            public Socket Connection => null;
+
+            public IPEndPoint RemoteEndPoint => throw new NotImplementedException();
+
+            public object State => null;
+
+            public Stream Out => _stream;
+
+            public DummyConnection(Stream stream)
+            {
+                _stream = stream;
+            }
+
+            public void Flush()
+            { }
+
+            public void Send(WireMessage message)
+            { }
+
+            public void Send(WireMessage[] messages)
+            { }
+        }
+
         static void Call()
         {
             ActorSystem.TryGet("system-2", out ActorSystem actorSystem);
@@ -70,8 +102,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
             var sw = new Stopwatch();
             sw.Restart();
 
-            for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
+            /* for (var i = 0; i < loop; i++)
+                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000")); */
 
             /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
@@ -85,16 +117,57 @@ namespace Sweet.Actors.RpcLocalSystemTest
             /* sw.Stop();
             Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
 
-            /* for (var i = 0; i < loop; i++)
+            /* using (var stream = new ChunkedStream())
+            {
+                var writer = new RpcMessageWriter(new DummyConnection(stream), "Default");
+
+                const int cycle = 500;
+                const int bulkSize = 500;
+
+                for (var i = 0; i < cycle; i++)
+                {
+                    var list = new List<WireMessage>(bulkSize);
+                    for (var j = 0; j < bulkSize; j++)
+                    {
+                        var message = new WireMessage
+                        {
+                            State = WireMessageState.Default,
+                            MessageType = MessageType.Default,
+                            Id = WireMessageId.Next(),
+                            Data = "hello (fire & forget) - " + ((i * bulkSize) + j).ToString("000000"),
+                            From = Aid.Unknown,
+                            To = Aid.Unknown,
+                        };
+
+                        list.Add(message);
+                    }
+
+                    writer.Write(list.ToArray());
+                }
+
+                var count = 0;
+                stream.Position = 0;
+
+                while (RpcMessageParser.TryParse(stream, out IEnumerable<WireMessage> messages))
+                {
+                    foreach (var msg in messages)
+                        count++;
+                }
+
+                if (count != (cycle * bulkSize))
+                    Console.WriteLine("error");
+            } */
+
+            for (var i = 0; i < loop; i++)
             {
                 remotePid.Request("hello (fire & forget) - " + i.ToString("000000")).ContinueWith(
-                    (previousTask) => {
-                    var count = Interlocked.Increment(ref counter);
-
-                    if (count == 1)
-                        sw.Restart();
-                    else
+                    (previousTask) =>
                     {
+                        var count = Interlocked.Increment(ref counter);
+
+                        if (count == 1)
+                            sw.Restart();
+
                         if (count % 1000 == 0)
                             Console.WriteLine("Actor: " + count);
 
@@ -106,9 +179,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
                             Console.WriteLine("Ellapsed time: " + sw.ElapsedMilliseconds);
                             Console.WriteLine("Concurrency: " + (loop * 1000 / sw.ElapsedMilliseconds) + " call per sec");
                         }
-                    }
-                });
-            } */
+                    });
+            }
         }
 
         static void Main(string[] args)

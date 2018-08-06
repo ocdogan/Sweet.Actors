@@ -58,17 +58,13 @@ namespace Sweet.Actors.Rpc
         private Func<RemoteMessage, Task> _onResponse;
 
         private int _id;
-        private long _waitingToTransmit;
-
         private int _bulkSendLength = RpcConstants.DefaultBulkSendLength;
 
         // States
         private int _closing;
         private long _status = RpcClientStatus.Closed;
 
-        private RpcMessageWriter _writer;
         private RpcConnection _connection;
-
         private CircuitBreaker _circuitForConnection;
 
         static RpcClient()
@@ -90,7 +86,6 @@ namespace Sweet.Actors.Rpc
 
             _onResponse = onResponse;
             _options = options?.Clone() ?? RpcClientOptions.Default;
-            _writer = new RpcMessageWriter(_options.Serializer);
 
             _bulkSendLength = _options.BulkSendLength;
             if (_bulkSendLength < 1)
@@ -130,8 +125,8 @@ namespace Sweet.Actors.Rpc
             base.OnDispose(disposing);
             if (disposing)
             {
-                using (Interlocked.Exchange(ref _writer, null)) { }
-                using (Interlocked.Exchange(ref _connection, null)) { }
+                using (Interlocked.Exchange(ref _connection, null))
+                { }
 
                 Close();
                 return;
@@ -210,7 +205,8 @@ namespace Sweet.Actors.Rpc
                         result = new NativeSocket(addressFamily, SocketType.Stream, ProtocolType.Tcp);
                         result.Configure(_options.SendTimeoutMSec, _options.ReceiveTimeoutMSec, true, true);
 
-                        using (Interlocked.Exchange(ref _connection, new RpcConnection(this, result, HandleResponse, null)))
+                        using (Interlocked.Exchange(ref _connection, 
+                            new RpcConnection(this, result, _options.Serializer, _options.BulkSendLength, HandleResponse, null)))
                         { }
 
                         Close(Interlocked.Exchange(ref _socket, result));
@@ -338,7 +334,7 @@ namespace Sweet.Actors.Rpc
                 if ((requests?.Count ?? 0) == 0)
                     break;
 
-                if (!Transmit(requests, true))
+                if (!Transmit(requests))
                 {
                     TryToFlush();
                     CancelRequests(requests);
@@ -461,12 +457,8 @@ namespace Sweet.Actors.Rpc
         {
             try
             {
-                if (Interlocked.Exchange(ref _waitingToTransmit, 0L) > 0L && !Disposed)
-                {
-                    var outStream = _connection?.Out;
-                    if ((outStream != null) && outStream.CanWrite)
-                        outStream.Flush();
-                }
+                if (!Disposed)
+                    _connection?.Flush();
             }
             catch (Exception)
             { }
@@ -483,21 +475,21 @@ namespace Sweet.Actors.Rpc
             { }
         }
 
-        private bool Transmit(IList messages, bool flush)
+        private bool Transmit(IList messages)
         {
             if (Processing() && !Disposed)
             {
-                var requestCnt = messages?.Count ?? 0;
-                if (requestCnt > 0)
+                var messageCnt = messages?.Count ?? 0;
+                if (messageCnt > 0)
                 {
-                    var wireMessages = new WireMessage[requestCnt];
-                    for (var i = 0; i < requestCnt; i++)
+                    var wireMessages = new WireMessage[messageCnt];
+                    for (var i = 0; i < messageCnt; i++)
                     {
                         var message = (RemoteMessage)messages[i];
                         wireMessages[i] = message.Message.ToWireMessage(message.To, message.MessageId);
                     }
 
-                    if (WriteMessage(wireMessages, flush))
+                    if (WriteMessage(wireMessages))
                     {
                         BeginReceive();
                         return true;
@@ -507,33 +499,13 @@ namespace Sweet.Actors.Rpc
             return false;
         }
 
-        protected virtual bool WriteMessage(WireMessage[] messages, bool flush = true)
+        protected virtual bool WriteMessage(WireMessage[] messages)
         {
-            var result = false;
-
-            var messagesCount = messages?.Length ?? 0;
-            if (messagesCount > 0)
-            {
-                var waitingCount = 0L;
-                try
-                {
-                    waitingCount = Interlocked.Add(ref _waitingToTransmit, messagesCount);
-                    result = _writer.Write(_connection?.Out, messages, flush);
-                }
-                finally
-                {
-                    if (result && flush)
-                    {
-                        var currentCount = Interlocked.Add(ref _waitingToTransmit, -waitingCount);
-                        if (currentCount < 0)
-                            Interlocked.Add(ref _waitingToTransmit, currentCount);
-                    }
-                }
-            }
-            return result;
+            _connection?.Send(messages);
+            return true;
         }
 
-        private void BeginReceive()
+        protected void BeginReceive()
         {
             if (!Disposed)
             {

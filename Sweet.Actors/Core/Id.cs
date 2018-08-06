@@ -89,6 +89,9 @@ namespace Sweet.Actors
         private static readonly IdPart s_MinorGen;
         private static readonly IdPart s_MinorRevisionGen;
 
+        protected static readonly byte[] ProcessIdBytes = Encoding.ASCII.GetBytes(Common.ProcessId.ToString());
+        protected static readonly int ProcessIdBytesLength = ProcessIdBytes.Length;
+
         protected const int IntToStringMaxLength = 10;
 
         protected const char Dot = '.';
@@ -156,9 +159,9 @@ namespace Sweet.Actors
                 WriteIdPart(processId, buffer, Colon, ref offset);
             else
             {
-                Array.Copy(Common.ProcessIdBytes, 0, buffer, offset, Common.ProcessIdBytesLength);
+                Array.Copy(ProcessIdBytes, 0, buffer, offset, ProcessIdBytesLength);
 
-                offset += Common.ProcessIdBytesLength;
+                offset += ProcessIdBytesLength;
                 buffer[offset++] = Colon;
             }
 

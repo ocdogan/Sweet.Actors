@@ -24,7 +24,9 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -32,7 +34,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors.Rpc
 {
-    internal class RpcConnection : Disposable, IRpcConnection
+    internal class RpcConnection : Processor<WireMessage>, IRpcConnection // Disposable, IRpcConnection
     {
         private static readonly LingerOption NoLingerState = new LingerOption(true, 0);
 
@@ -133,13 +135,18 @@ namespace Sweet.Actors.Rpc
         private Socket _socket;
         private IPEndPoint _remoteEndPoint;
 
+        private RpcMessageWriter _writer;
+
         private AsyncReceiveBuffer _asyncReceiveBuffer;
         private readonly RpcReceiveBuffer _rpcReceiveBuffer;
+
+        private int _bulkSendLength = RpcConstants.DefaultBulkSendLength;
 
         private Func<WireMessage, IRpcConnection, Task> _responseHandler;
         private Func<RemoteMessage, IRpcConnection, Task> _messageHandler;
 
         public RpcConnection(object state, Socket socket, 
+            string serializer, int bulkSendLength,
             Func<RemoteMessage, IRpcConnection, Task> messageHandler,
             Func<WireMessage, IRpcConnection, Task> responseHandler)
         {
@@ -154,6 +161,12 @@ namespace Sweet.Actors.Rpc
 
             _messageHandler = messageHandler;
             _responseHandler = responseHandler;
+
+            _writer = new RpcMessageWriter(this, serializer);
+
+            _bulkSendLength = bulkSendLength;
+            if (_bulkSendLength < 1)
+                _bulkSendLength = RpcConstants.DefaultBulkSendLength;
         }
 
         public int Id => _id;
@@ -170,6 +183,7 @@ namespace Sweet.Actors.Rpc
 
         protected override void OnDispose(bool disposing)
         {
+            base.OnDispose(disposing);
             _state = null;
             if (disposing)
                 Close();
@@ -411,7 +425,7 @@ namespace Sweet.Actors.Rpc
 
         private void HandleReceivedMessages()
         {
-            while (_rpcReceiveBuffer.TryGetMessage(1000, out IList messages))
+            while (_rpcReceiveBuffer.TryGetMessage(RpcConstants.DefaultBulkMessageLength, out IList messages))
             {
                 var count = messages?.Count ?? 0;
                 if (count > 0)
@@ -451,6 +465,47 @@ namespace Sweet.Actors.Rpc
                 }
             }
             return false;
+        }
+
+        public void Flush()
+        {
+            ThrowIfDisposed();
+
+            var outStream = _outStream;
+            if (outStream?.CanWrite ?? false)
+                outStream.Flush();
+        }
+
+        public void Send(WireMessage message)
+        {
+            ThrowIfDisposed();
+
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
+
+            Enqueue(message);
+        }
+
+        public void Send(WireMessage[] messages)
+        {
+            ThrowIfDisposed();
+
+            if (messages == null)
+                throw new ArgumentNullException(nameof(messages));
+
+            Enqueue(messages);
+        }
+
+        protected override void ProcessItems()
+        {
+            for (var i = 0; i < SequentialInvokeLimit; i++)
+            {
+                if (!Processing() || !TryDequeue(_bulkSendLength, out IList<WireMessage> list))
+                    break;
+
+                if ((list?.Count ?? 0) > 0)
+                    _writer.Write(list.ToArray(), true);
+            }
         }
     }
 }

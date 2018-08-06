@@ -31,7 +31,7 @@ using System.Threading;
 
 namespace Sweet.Actors.Rpc
 {
-    internal static class RpcMessageParser
+    public static class RpcMessageParser
     {
         private class ParserContext
         {
@@ -151,10 +151,11 @@ namespace Sweet.Actors.Rpc
                 return false;
 
             context.HeaderBuffer = HeaderCache.Acquire();
-            var chunkedStream = input as ChunkedStream;
             try
             {
-                context.Message = new RpcPartitionedMessage();
+                var ctxMessage = (context.Message = new RpcPartitionedMessage());
+
+                var chunkedStream = input as ChunkedStream;
 
                 using (context.StreamReader = (IStreamReader)chunkedStream?.NewReader() ??
                                         new BinaryStreamReader(input))
@@ -166,7 +167,7 @@ namespace Sweet.Actors.Rpc
                     {
                         try
                         {
-                            var frameCount = context.Message.Header.FrameCount;
+                            var frameCount = ctxMessage.Header.FrameCount;
                             for (var i = (ushort)0; i < frameCount; i++)
                                 if (!ParseFrame(context))
                                     return false;
@@ -175,7 +176,7 @@ namespace Sweet.Actors.Rpc
                         }
                         catch (Exception)
                         {
-                            ReleaseFrames(context.Message);
+                            ReleaseFrames(ctxMessage);
                             throw;
                         }
                     }
@@ -185,7 +186,7 @@ namespace Sweet.Actors.Rpc
                 {
                     chunkedStream?.TrimLeft(context.StreamOffset);
 
-                    message = context.Message;
+                    message = ctxMessage;
                     return true;
                 }
             }

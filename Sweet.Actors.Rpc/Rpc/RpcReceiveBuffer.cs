@@ -68,31 +68,22 @@ namespace Sweet.Actors.Rpc
 
                 while (RpcMessageParser.TryParse(_stream, out IEnumerable<WireMessage> messages))
                 {
-                    if (Enqueue(messages))
-                        parsed = true;
+                    if (messages != null)
+                    {
+                        foreach (var message in messages)
+                        {
+                            if (message != null)
+                            {
+                                _messageQueue.Enqueue(message);
+                                Interlocked.Add(ref _count, 1L);
+
+                                parsed = true;
+                            }
+                        }
+                    }
                 }
             }
             return parsed;
-        }
-
-        private bool Enqueue(IEnumerable<WireMessage> messages)
-        {
-            if (messages != null)
-            {
-                var result = false;
-                foreach (var message in messages)
-                {
-                    if (message != null)
-                    {
-                        _messageQueue.Enqueue(message);
-
-                        Interlocked.Add(ref _count, 1L);
-                        result = true;
-                    }
-                }
-                return result;
-            }
-            return false;
         }
 
         public bool TryGetMessage(out WireMessage message)
@@ -106,18 +97,18 @@ namespace Sweet.Actors.Rpc
             return false;
         }
 
-        public bool TryGetMessage(int bulkSize, out IList messages)
+        public bool TryGetMessage(int count, out IList messages)
         {
             messages = null;
             if (!Disposed)
             {
-                var count = (int)Interlocked.Read(ref _count);
-                if (count > 0)
+                var queueSize = (int)Interlocked.Read(ref _count);
+                if (queueSize > 0)
                 {
-                    WireMessage message;
-                    bulkSize = Math.Min(Math.Min(1000, Math.Max(1, bulkSize)), count);
+                    count = Math.Min(Math.Min(RpcConstants.MaxBulkMessageLength, Math.Max(1, count)), queueSize);
 
-                    if (bulkSize == 1)
+                    WireMessage message;
+                    if (count == 1)
                     {
                         if (_messageQueue.TryDequeue(out message))
                         {
@@ -129,9 +120,9 @@ namespace Sweet.Actors.Rpc
                         return false;
                     }
 
-                    var list = new List<WireMessage>(bulkSize);
+                    var list = new List<WireMessage>(count);
 
-                    for (var i = 0; i < bulkSize; i++)
+                    for (var i = 0; i < count; i++)
                     {
                         if (!_messageQueue.TryDequeue(out message))
                             break;
