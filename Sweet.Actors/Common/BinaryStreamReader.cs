@@ -36,7 +36,7 @@ namespace Sweet.Actors
         private BinaryReader _reader;
 
         public BinaryStreamReader(Stream input) 
-            : this(input, new UTF8Encoding())
+            : this(input, Encoding.UTF8)
         { }
 
         public BinaryStreamReader(Stream input, Encoding encoding)
@@ -156,6 +156,18 @@ namespace Sweet.Actors
         {
             ThrowIfDisposed();
             return _reader.ReadUInt64();
+        }
+
+        public string ReadString()
+        {
+            ThrowIfDisposed();
+            return _reader.ReadString();
+        }
+
+        public byte[] ReadBytes(int count)
+        {
+            ThrowIfDisposed();
+            return _reader.ReadBytes(count);
         }
     }
 }

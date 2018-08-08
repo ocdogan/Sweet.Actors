@@ -106,7 +106,7 @@ namespace Sweet.Actors
 
         public static Aid Parse(string str)
         {
-            if (!String.IsNullOrEmpty(str))
+            if (!(String.IsNullOrEmpty(str) || (str == "/")))
             {
                 var slashPos1 = str.IndexOf('/', 0);
                 if (slashPos1 > -1)

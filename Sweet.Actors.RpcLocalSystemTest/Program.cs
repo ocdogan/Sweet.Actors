@@ -102,8 +102,8 @@ namespace Sweet.Actors.RpcLocalSystemTest
             var sw = new Stopwatch();
             sw.Restart();
 
-            /* for (var i = 0; i < loop; i++)
-                remotePid.Tell("hello (fire & forget) - " + i.ToString("000000")); */
+            // for (var i = 0; i < loop; i++)
+            //     remotePid.Tell("hello (fire & forget) - " + i.ToString("000000"));
 
             /* var task = remotePid.Request("hello (do not forget)");
             task.ContinueWith((previousTask) => {
@@ -114,15 +114,14 @@ namespace Sweet.Actors.RpcLocalSystemTest
                 Console.WriteLine(response?.Data ?? "(null response)");
             }); */
 
-            /* sw.Stop();
-            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
-
             /* using (var stream = new ChunkedStream())
             {
                 var writer = new RpcMessageWriter(new DummyConnection(stream), "Default");
 
                 const int cycle = 500;
                 const int bulkSize = 500;
+
+                var tresh = " - " + new string('x', 10000);
 
                 for (var i = 0; i < cycle; i++)
                 {
@@ -134,7 +133,7 @@ namespace Sweet.Actors.RpcLocalSystemTest
                             State = WireMessageState.Default,
                             MessageType = MessageType.Default,
                             Id = WireMessageId.Next(),
-                            Data = "hello (fire & forget) - " + ((i * bulkSize) + j).ToString("000000"),
+                            Data = "hello (fire & forget) - " + ((i * bulkSize) + j).ToString("000000"), // + tresh,
                             From = Aid.Unknown,
                             To = Aid.Unknown,
                         };
@@ -144,6 +143,11 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
                     writer.Write(list.ToArray());
                 }
+
+                sw.Stop();
+                Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
+
+                sw.Restart();
 
                 var count = 0;
                 stream.Position = 0;
@@ -156,7 +160,10 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
                 if (count != (cycle * bulkSize))
                     Console.WriteLine("error");
-            } */
+            }
+
+            sw.Stop();
+            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
 
             for (var i = 0; i < loop; i++)
             {

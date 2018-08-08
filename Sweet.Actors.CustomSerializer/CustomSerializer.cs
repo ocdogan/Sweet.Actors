@@ -28,6 +28,8 @@ using System.IO;
 using System.Text;
 using Wire;
 
+using Sweet.Actors;
+
 namespace Sweet.Actors.Rpc
 {
     public class CustomSerializer : IWireSerializer
@@ -37,7 +39,20 @@ namespace Sweet.Actors.Rpc
 
         private const int NullLengthFlag = -1;
 
+        private const int StringBufferSize = 256;
+
+        private static readonly Decoder UTF8Decoder = Encoding.UTF8.GetDecoder();
+
         private static readonly WireMessage[] EmptyWireMessages = new WireMessage[] { };
+
+        private static readonly ByteArrayCache WireBufferCache =
+            new ByteArrayCache(5, -1, WireMessageSizeOf.ConstantFields);
+
+        private static readonly ByteArrayCache StringBytesCache =
+            new ByteArrayCache(5, -1, StringBufferSize);
+
+        private static readonly CharArrayCache StringCharsCache =
+            new CharArrayCache(5, -1, StringBufferSize);
 
         private Lazy<Serializer> _wireSerializer = 
             new Lazy<Serializer>(() => new Serializer(new SerializerOptions(versionTolerance: true, preserveObjectReferences: true)));
@@ -60,7 +75,8 @@ namespace Sweet.Actors.Rpc
 
         private IEnumerable<WireMessage> DeserializeInternal(Stream stream)
         {
-            using (var reader = new BinaryReader(stream, Encoding.UTF8, true))
+            using (var reader = 
+                (IStreamReader)(stream as ChunkedStream)?.NewReader() ?? new BinaryStreamReader(stream))
             {
                 var b = reader.ReadByte();
                 if (b == NullFlag)
@@ -122,20 +138,44 @@ namespace Sweet.Actors.Rpc
             return Math.Max(-1L, stream.Position - previousPos);
         }
 
-        private WireMessage Read(BinaryReader reader)
+        private WireMessage Read(IStreamReader reader)
         {
             var dataTypeCd = reader.ReadByte() - 1;
             if (dataTypeCd > 0)
             {
                 var message = new WireMessage();
 
-                message.MessageType = (MessageType)reader.ReadByte();
+                var buffer = StringBytesCache.Acquire();
+                try
+                {
+                    reader.Read(buffer, 0, WireMessageSizeOf.ConstantFields - 1);
+
+                    message.MessageType = (MessageType)buffer[WireMessageBufferOffsetOf.MessageType - 1];
+                    message.State = (WireMessageState)buffer[WireMessageBufferOffsetOf.State - 1];
+
+                    var timeoutMSec = buffer.ToInt(WireMessageBufferOffsetOf.TimeoutMSec - 1);
+                    message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
+
+                    message.Id = new WireMessageId(
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajor - 1),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajorRevision - 1),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinor - 1),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinorRevision - 1),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdProcessId - 1)
+                        );
+                }
+                finally
+                {
+                    StringBytesCache.Release(buffer);
+                }
+
+                /* message.MessageType = (MessageType)reader.ReadByte();
                 message.State = (WireMessageState)reader.ReadByte();
 
                 var timeoutMSec = reader.ReadInt32();
                 message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
 
-                message.Id = WireMessageId.Read(reader);
+                message.Id = WireMessageId.Read(reader); */
 
                 message.From = Aid.Parse(ReadString(reader));
                 message.To = Aid.Parse(ReadString(reader));
@@ -188,7 +228,7 @@ namespace Sweet.Actors.Rpc
             return null;
         }
 
-        private void ReadData(int dataTypeCd, WireMessage message, BinaryReader reader)
+        private void ReadData(int dataTypeCd, WireMessage message, IStreamReader reader)
         {
             switch ((TypeCode)dataTypeCd)
             {
@@ -272,25 +312,74 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private string ReadString(BinaryReader reader)
+        private string ReadString(IStreamReader reader)
         {
-            var length = reader.ReadInt32();
-            if (length == 0)
+            var sLen = reader.ReadInt32(); // String length
+            if (sLen < 0)
+                return null;
+
+            if (sLen == 0)
                 return String.Empty;
 
-            if (length > 0)
-                return reader.ReadString();
+            var bLen = reader.ReadInt32(); // Byte array length
+            if (bLen == 1)
+                return new string((char)reader.ReadByte(), 1);
 
-            return null;
-        }
+            var sb = (StringBuilder)null;
+            var bytes = StringBytesCache.Acquire();
+            try
+            {
+                var chars = StringCharsCache.Acquire();
+                try
+                {
+                    var readLen = 0;
+                    var bytesLen = 0;
+                    var bytesUsed = 0;
+                    var charsUsed = 0;
+                    var completed = false;
 
-        private static void ReadBytes(BinaryWriter writer, byte[] data)
-        {
-            var length = data?.Length ?? NullLengthFlag;
+                    var remaining = bLen;
+                    do
+                    {
+                        readLen = Math.Min(StringBufferSize - bytesLen, remaining);
 
-            writer.Write(length);
-            if (length > 0)
-                writer.Write(data);
+                        readLen = reader.Read(bytes, bytesLen, readLen);
+                        if (readLen == bLen)
+                            return Encoding.UTF8.GetString(bytes, 0, bLen);
+
+                        if (readLen == 0)
+                            throw new ArgumentOutOfRangeException(nameof(readLen));
+
+                        bytesLen += readLen;
+
+                        UTF8Decoder.Convert(bytes, 0, bytesLen, chars, 0, StringBufferSize, 
+                            false, out bytesUsed, out charsUsed, out completed);
+
+                        if (charsUsed > 0)
+                        {
+                            if (sb == null)
+                                sb = new StringBuilder(sLen);
+
+                            sb.Append(chars, 0, charsUsed);
+
+                            bytesLen -= bytesUsed;
+                            if (bytesLen > 0)
+                                Array.Copy(bytes, bytesUsed, bytes, 0, bytesLen);
+                        }
+                    }
+                    while ((remaining -= readLen) > 0);
+                }
+                finally
+                {
+                    StringCharsCache.Release(chars);
+                }
+            }
+            finally
+            {
+                StringBytesCache.Release(bytes);
+            }
+
+            return sb?.ToString();
         }
 
         private void Write(BinaryWriter writer, WireMessage message)
@@ -303,13 +392,29 @@ namespace Sweet.Actors.Rpc
 
             var dataTypeCd = Type.GetTypeCode(message.Data?.GetType());
 
-            writer.Write((byte)(NotNullFlag + dataTypeCd));
-            writer.Write((byte)message.MessageType);
-            writer.Write((byte)message.State);
+            var buffer = WireBufferCache.Acquire();
+            try
+            {
+                buffer[WireMessageBufferOffsetOf.DataTypeCd] = (byte)(NotNullFlag + dataTypeCd);
+                buffer[WireMessageBufferOffsetOf.MessageType] = (byte)message.MessageType;
+                buffer[WireMessageBufferOffsetOf.State] = (byte)message.State;
 
-            writer.Write(message.TimeoutMSec ?? int.MinValue);
+                Array.Copy((message.TimeoutMSec ?? int.MinValue).ToBytes(), 0, buffer, WireMessageBufferOffsetOf.TimeoutMSec, WireMessageFieldSizeOf.TimeoutMSec);
 
-            (message.Id ?? WireMessageId.Empty).Write(writer);
+                var id = (message.Id ?? WireMessageId.Empty);
+
+                Array.Copy(id.Major.ToBytes(), 0, buffer, WireMessageBufferOffsetOf.IdMajor, WireMessageFieldSizeOf.IdMajor);
+                Array.Copy(id.MajorRevision.ToBytes(), 0, buffer, WireMessageBufferOffsetOf.IdMajorRevision, WireMessageFieldSizeOf.IdMajorRevision);
+                Array.Copy(id.Minor.ToBytes(), 0, buffer, WireMessageBufferOffsetOf.IdMinor, WireMessageFieldSizeOf.IdMinor);
+                Array.Copy(id.MinorRevision.ToBytes(), 0, buffer, WireMessageBufferOffsetOf.IdMinorRevision, WireMessageFieldSizeOf.IdMinorRevision);
+                Array.Copy(id.ProcessId.ToBytes(), 0, buffer, WireMessageBufferOffsetOf.IdProcessId, WireMessageFieldSizeOf.IdProcessId);
+
+                writer.Write(buffer, 0, WireMessageSizeOf.ConstantFields);
+            }
+            finally
+            {
+                WireBufferCache.Release(buffer);
+            }
 
             WriteString(writer, message.From?.ToString());
             WriteString(writer, message.To?.ToString());
@@ -420,20 +525,35 @@ namespace Sweet.Actors.Rpc
 
         private static void WriteString(BinaryWriter writer, string data)
         {
-            var length = data?.Length ?? NullLengthFlag;
+            if (data == null)
+                writer.Write(NullLengthFlag); // String length
+            else
+            {
+                var sLen = data.Length;
 
-            writer.Write(length);
-            if (length > 0)
-                writer.Write(data);
+                writer.Write(sLen); // String length
+                if (sLen > 0)
+                {
+                    var bytes = Encoding.UTF8.GetBytes(data);
+
+                    writer.Write(bytes.Length); // Byte array length
+                    writer.Write(bytes);
+                }
+            }
         }
 
         private static void WriteBytes(BinaryWriter writer, byte[] data)
         {
-            var length = data?.Length ?? NullLengthFlag;
+            if (data == null)
+                writer.Write(NullLengthFlag);
+            else
+            {
+                var bLen = data.Length;
 
-            writer.Write(length);
-            if (length > 0)
-                writer.Write(data);
+                writer.Write(bLen);
+                if (bLen > 0)
+                    writer.Write(data);
+            }
         }
     }
 }

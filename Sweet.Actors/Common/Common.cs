@@ -34,7 +34,7 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    internal static class Common
+    public static class Common
     {
         #region Static Members
 
@@ -235,7 +235,7 @@ namespace Sweet.Actors
             return null;
         }
 
-        internal static bool EqualTo(this byte[] bytesX, byte[] bytesY)
+        public static bool EqualTo(this byte[] bytesX, byte[] bytesY)
         {
             if (ReferenceEquals(bytesX, bytesY))
                 return true;
@@ -287,67 +287,67 @@ namespace Sweet.Actors
 
         #region ToBytes
 
-        internal static byte[] ToBytes(this string value)
+        public static byte[] ToBytes(this string value)
         {
             return (value != null) ? UTF8.GetBytes(value) : null;
         }
 
-        internal static byte[] ToBytes(this byte[] value)
+        public static byte[] ToBytes(this byte[] value)
         {
             return value;
         }
 
-        internal static byte[] ToBytes(this short value)
+        public static byte[] ToBytes(this short value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this int value)
+        public static byte[] ToBytes(this int value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this long value)
+        public static byte[] ToBytes(this long value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this ulong value)
+        public static byte[] ToBytes(this ulong value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this ushort value)
+        public static byte[] ToBytes(this ushort value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this uint value)
+        public static byte[] ToBytes(this uint value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this byte value)
+        public static byte[] ToBytes(this byte value)
         {
             return new byte[] { value };
         }
 
-        internal static byte[] ToBytes(this decimal value)
+        public static byte[] ToBytes(this decimal value)
         {
             return BitConverter.GetBytes(Convert.ToDouble(value));
         }
 
-        internal static byte[] ToBytes(this double value)
+        public static byte[] ToBytes(this double value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this float value)
+        public static byte[] ToBytes(this float value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this DateTime value)
+        public static byte[] ToBytes(this DateTime value)
         {
             var ticks = BitConverter.GetBytes(value.Ticks);
 
@@ -358,12 +358,12 @@ namespace Sweet.Actors
             return result;
         }
 
-        internal static byte[] ToBytes(this char value)
+        public static byte[] ToBytes(this char value)
         {
             return BitConverter.GetBytes(value);
         }
 
-        internal static byte[] ToBytes(this object obj)
+        public static byte[] ToBytes(this object obj)
         {
             if (obj != null)
             {
@@ -413,58 +413,58 @@ namespace Sweet.Actors
 
         #region FromBytes
 
-        internal static string ToString(this byte[] value, int index, int count)
+        public static string ToString(this byte[] value, int index, int count)
         {
             return (value != null) ? UTF8.GetString(value, index, count) : null;
         }
 
-        internal static short ToShort(this byte[] value, int offset)
+        public static short ToShort(this byte[] value, int offset)
         {
             return BitConverter.ToInt16(value, offset);
         }
 
-        internal static int ToInt(this byte[] value, int offset)
+        public static int ToInt(this byte[] value, int offset)
         {
             return BitConverter.ToInt32(value, offset);
         }
 
-        internal static long ToLong(this byte[] value, int offset)
+        public static long ToLong(this byte[] value, int offset)
         {
             return BitConverter.ToInt64(value, offset);
         }
 
-        internal static ulong ToULong(this byte[] value, int offset)
+        public static ulong ToULong(this byte[] value, int offset)
         {
             return BitConverter.ToUInt64(value, offset);
         }
 
-        internal static ushort ToUShort(this byte[] value, int offset)
+        public static ushort ToUShort(this byte[] value, int offset)
         {
             return BitConverter.ToUInt16(value, offset);
         }
 
-        internal static uint ToUInt(this byte[] value, int offset)
+        public static uint ToUInt(this byte[] value, int offset)
         {
             return BitConverter.ToUInt32(value, offset);
         }
 
-        internal static decimal ToDecimal(this byte[] value, int offset)
+        public static decimal ToDecimal(this byte[] value, int offset)
         {
             var dbl = BitConverter.ToDouble(value, offset);
             return Convert.ToDecimal(dbl);
         }
 
-        internal static double ToDouble(this byte[] value, int offset)
+        public static double ToDouble(this byte[] value, int offset)
         {
             return BitConverter.ToDouble(value, offset);
         }
 
-        internal static float ToFloat(this byte[] value, int offset)
+        public static float ToFloat(this byte[] value, int offset)
         {
             return BitConverter.ToSingle(value, offset);
         }
 
-        internal static DateTime? ToDateTime(this byte[] value, int offset)
+        public static DateTime? ToDateTime(this byte[] value, int offset)
         {
             var ticks = BitConverter.ToInt64(value, offset);
             if (value.Length >= offset + 9)
@@ -475,7 +475,7 @@ namespace Sweet.Actors
             return new DateTime(ticks);
         }
 
-        internal static char ToChar(this byte[] value, int offset)
+        public static char ToChar(this byte[] value, int offset)
         {
             return BitConverter.ToChar(value, offset);
         }

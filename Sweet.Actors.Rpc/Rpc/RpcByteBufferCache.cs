@@ -23,33 +23,15 @@
 #endregion License
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
-namespace Sweet.Actors
+namespace Sweet.Actors.Rpc
 {
-    public interface IStreamReader : IDisposable
+    internal class RpcByteBufferCache
     {
-        bool Closed { get; }
-        long Position { get; set; }
+        public static readonly ByteArrayCache FrameCache =
+            new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
 
-        int Read(byte[] buffer, int offset, int count);
-        Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-        int ReadByte();
-        bool ReadBoolean();
-        sbyte ReadSByte();
-        char ReadChar();
-        short ReadInt16();
-        ushort ReadUInt16();
-        int ReadInt32();
-        uint ReadUInt32();
-        long ReadInt64();
-        ulong ReadUInt64();
-        float ReadSingle();
-        double ReadDouble();
-        decimal ReadDecimal();
-
-        string ReadString();
-        byte[] ReadBytes(int count);
+        public static readonly ByteArrayCache HeaderCache =
+            new ByteArrayCache(5, -1, Math.Max(RpcMessageSizeOf.Header, RpcMessageSizeOf.FrameHeader));
     }
 }

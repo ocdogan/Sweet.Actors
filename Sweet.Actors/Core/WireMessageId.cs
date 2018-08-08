@@ -36,7 +36,7 @@ namespace Sweet.Actors
 
         private static readonly int EmptyLength = Empty.ToString().Length;
 
-        private WireMessageId(int major, int majorRevision, int minor, int minorRevision, int processId = -1)
+        public WireMessageId(int major, int majorRevision, int minor, int minorRevision, int processId = -1)
             : base(major, majorRevision, minor, minorRevision, processId)
         { }
 

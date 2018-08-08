@@ -63,8 +63,6 @@ namespace Sweet.Actors
             public void Generate(int[] buffer)
             {
                 var id = Interlocked.Add(ref _id, 1);
-
-                Interlocked.MemoryBarrier();
                 if (id < 0)
                 {
                     lock (_lock)

@@ -23,33 +23,40 @@
 #endregion License
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public interface IStreamReader : IDisposable
+    public sealed class CharArrayCache : ObjectCacheBase<char[]>
     {
-        bool Closed { get; }
-        long Position { get; set; }
+        public static readonly CharArrayCache Default = new CharArrayCache(20);
 
-        int Read(byte[] buffer, int offset, int count);
-        Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-        int ReadByte();
-        bool ReadBoolean();
-        sbyte ReadSByte();
-        char ReadChar();
-        short ReadInt16();
-        ushort ReadUInt16();
-        int ReadInt32();
-        uint ReadUInt32();
-        long ReadInt64();
-        ulong ReadUInt64();
-        float ReadSingle();
-        double ReadDouble();
-        decimal ReadDecimal();
+        public const int MinArraySize = 512;
+        public const int MaxArraySize = 64 * Constants.KB;
+        public const int DefaultArraySize = 8 * Constants.KB;
 
-        string ReadString();
-        byte[] ReadBytes(int count);
+        private int _arraySize;
+
+        public CharArrayCache(int initialCount = 0, int limit = DefaultLimit, int arraySize = DefaultArraySize)
+            : base(ArrayProvider, 0, limit)
+        {
+            _arraySize = (arraySize < 1) ? DefaultArraySize :
+                Math.Min(MaxArraySize, Math.Max(MinArraySize, arraySize));
+
+            for (var i = 0; i < initialCount; i++)
+                Enqueue(new char[_arraySize]);
+        }
+
+        public int ArraySize => _arraySize;
+
+        private static char[] ArrayProvider(ObjectCacheBase<char[]> cache)
+        {
+            return new char[((CharArrayCache)cache)._arraySize];
+        }
+
+        protected override void OnDispose(char[] item)
+        { }
+
+        protected override void OnEnqueue(char[] item)
+        { }
     }
 }

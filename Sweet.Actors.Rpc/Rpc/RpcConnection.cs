@@ -193,7 +193,8 @@ namespace Sweet.Actors.Rpc
         {
             try
             {
-                using (Interlocked.Exchange(ref _asyncReceiveBuffer, null)) { }
+                using (Interlocked.Exchange(ref _asyncReceiveBuffer, null))
+                { }
 
                 using (var stream = Interlocked.Exchange(ref _outStream, null))
                     stream?.Close();
@@ -329,8 +330,9 @@ namespace Sweet.Actors.Rpc
 
                             DoReceived(connection, asyncReceiveBuffer, calledSynchronously);
                         }
-                        catch (Exception)
+                        catch (Exception e)
                         {
+                            Console.WriteLine(e);
                             if (!calledSynchronously && !(connection?.Disposed ?? true))
                             {
                                 Interlocked.Exchange(ref connection._inReceiveCycle, 0L);

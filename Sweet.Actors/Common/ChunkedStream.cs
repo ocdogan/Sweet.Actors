@@ -49,6 +49,7 @@ namespace Sweet.Actors
             private int _chunkSize;
             private long _position;
 
+            private BinaryReader _reader;
             private ChunkedStream _stream;
 
             private List<byte[]> _chunks;
@@ -75,11 +76,10 @@ namespace Sweet.Actors
             protected override void OnDispose(bool disposing)
             {
                 _chunks = null;
-                if (_stream != null)
-                {
-                    _stream.Changed -= StreamChanged;
-                    _stream = null;
-                }
+
+                var stream = Interlocked.Exchange(ref _stream, null);
+                if (stream != null)
+                    stream.Changed -= StreamChanged;
             }
 
             private void StreamChanged(object sender, ValueChangedEventArgs<long> eventArgs)
@@ -194,7 +194,8 @@ namespace Sweet.Actors
                 ThrowIfDisposed();
 
                 var stream = _stream;
-                if (stream != null && !stream._isClosed && (_position < stream._length))
+                if (stream != null && 
+                    !stream._isClosed && (_position < stream._length))
                 {
                     var chunk = stream.GetChunkOf(_position);
                     if (chunk != null && chunk.Length > 0)
@@ -211,22 +212,25 @@ namespace Sweet.Actors
             public byte[] ToArray()
             {
                 var stream = _stream;
-                if (stream != null && !stream.Closed)
+                if (stream != null)
                 {
-                    var initialPos = _position;
-                    try
+                    if (!stream.Closed)
                     {
-                        _position = 0L;
-                        var length = stream._length;
+                        var initialPos = _position;
+                        try
+                        {
+                            _position = 0L;
+                            var length = stream._length;
 
-                        var result = new byte[length];
-                        Read(result, 0, (int)length);
+                            var result = new byte[length];
+                            Read(result, 0, (int)length);
 
-                        return result;
-                    }
-                    finally
-                    {
-                        _position = initialPos;
+                            return result;
+                        }
+                        finally
+                        {
+                            _position = initialPos;
+                        }
                     }
                 }
                 return EmptyChunk;
@@ -239,7 +243,7 @@ namespace Sweet.Actors
                 if (_stream._length - _position < size)
                     throw new Exception(Errors.EndOfFile);
 
-                var readLen = Read(_buffer, (int)_position, size);
+                var readLen = Read(_buffer, 0, size);
                 if (readLen < size)
                     throw new Exception(Errors.EndOfFile);
             }
@@ -321,19 +325,43 @@ namespace Sweet.Actors
                 FillBuffer(sizeof(decimal));
                 return _buffer.ToDecimal(0);
             }
+
+            public string ReadString()
+            {
+                ThrowIfDisposed();
+
+                var reader = _reader;
+                if (reader == null)
+                    reader = (_reader = new BinaryReader(_stream, Encoding.UTF8));
+
+                return reader.ReadString();
+            }
+
+            public byte[] ReadBytes(int count)
+            {
+                if (count < 0)
+                    throw new ArgumentOutOfRangeException(nameof(count));
+
+                var result = new byte[count];
+                if (count > 0)
+                {
+                    var readLen = Read(result, 0, count);
+                    if (readLen != count)
+                        throw new ArgumentOutOfRangeException(nameof(count));
+                }
+                return result;
+            }
         }
 
         public class ChunkedStreamWriter : BinaryWriter, IChunkedStreamWriter
         {
+            private bool _isClosed;
             private ChunkedStream _stream;
 
-            private bool _isClosed;
-            private BinaryWriter _writer;
-
             public ChunkedStreamWriter(ChunkedStream stream)
+                : base(stream, Encoding.UTF8, true)
             {
                 _stream = stream;
-                _writer = new BinaryWriter(stream, new UTF8Encoding(false, true), true);
             }
 
             private void ThrowIfDisposed(string name = null)
@@ -348,10 +376,7 @@ namespace Sweet.Actors
             {
                 _isClosed = true;
                 if (disposing)
-                {
                     _stream = null;
-                    using (Interlocked.Exchange(ref _writer, null)) { }
-                }
                 base.Dispose(disposing);
             }
 
@@ -399,6 +424,7 @@ namespace Sweet.Actors
         }
 
         private int _id;
+
         private bool _isClosed;
 
         protected int _origin;
@@ -502,7 +528,7 @@ namespace Sweet.Actors
             base.Dispose(disposing);
         }
 
-        public long Capacity => _isClosed ? 0L : 
+        public long Capacity => _isClosed ? 0L :
                     Math.Max(0L, (_chunkSize * (_chunks?.Count ?? 0)) - _origin);
 
         public override bool CanRead => !_isClosed;
@@ -559,7 +585,7 @@ namespace Sweet.Actors
 
                 if (chunkSize != DefaultCacheSize)
                 {
-                    _cache = 
+                    _cache =
                         GlobalByteArrayCache.GetOrAdd(chunkSize, (size) => new ByteArrayCache(10, -1, size));
 
                     _ownsCache = true;
@@ -597,7 +623,7 @@ namespace Sweet.Actors
             {
                 if (requiredCnt == 1)
                     _chunks.Add(_cache.Acquire());
-                else 
+                else
                     _chunks.AddRange(_cache.Acquire(requiredCnt));
 
                 _chunkCount = _chunks.Count;
@@ -909,10 +935,9 @@ namespace Sweet.Actors
                 return;
 
             var newOrigin = _origin + trimLength;
-            var chunksCount = _chunkCount;
 
-            var releaseCnt = Math.Min(chunksCount, (int)(newOrigin  / _chunkSize));
-            if (releaseCnt > 0 && releaseCnt >= chunksCount)
+            var releaseCnt = Math.Min(_chunkCount, (int)(newOrigin / _chunkSize));
+            if (releaseCnt > 0 && releaseCnt >= _chunkCount)
             {
                 ReleaseChunks(true);
                 return;
@@ -922,13 +947,12 @@ namespace Sweet.Actors
             var previousOrigin = _origin;
             try
             {
-                while ((releaseCnt-- > 0) && (chunksCount > 0))
+                while ((releaseCnt-- > 0) && (_chunkCount > 0))
                 {
                     var chunk = _chunks[0];
                     _chunks.RemoveAt(0);
                     _chunkCount--;
 
-                    chunksCount--;                    
                     newOrigin -= _chunkSize;
 
                     _cache.Release(chunk);

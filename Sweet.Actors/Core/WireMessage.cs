@@ -27,6 +27,7 @@ using System.Collections.Generic;
 
 namespace Sweet.Actors
 {
+    [Flags]
     public enum WireMessageState : byte
     {
         Default = 0,

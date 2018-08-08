@@ -30,9 +30,9 @@ namespace Sweet.Actors.Rpc
         public const int ProcessId = sizeof(int);
         public const int MessageId = sizeof(int);
         public const int SerializerKey = 10;
-        public const int FrameCount = sizeof(short);
-        public const int FrameId = sizeof(short);
-        public const int FrameDataSize = sizeof(short);
+        public const int FrameCount = sizeof(ushort);
+        public const int FrameId = sizeof(ushort);
+        public const int FrameDataSize = sizeof(ushort);
     }
 
     public static class RpcHeaderOffsetOf
@@ -51,7 +51,8 @@ namespace Sweet.Actors.Rpc
         public const int ProcessId = Sign + RpcHeaderSizeOf.Sign;
         public const int MessageId = ProcessId + RpcHeaderSizeOf.ProcessId;
         public const int FrameId = MessageId + RpcHeaderSizeOf.MessageId;
-        public const int FrameData = FrameId + RpcHeaderSizeOf.FrameId;
+        public const int FrameDataSize = FrameId + RpcHeaderSizeOf.FrameId;
+        public const int FrameData = FrameDataSize + RpcHeaderSizeOf.FrameDataSize;
     }
 
     public static class RpcMessageSizeOf
