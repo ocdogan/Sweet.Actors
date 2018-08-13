@@ -19,8 +19,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.SerializeTest"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.WireSerializer", "Sweet.Actors.WireSerializer\Sweet.Actors.WireSerializer.csproj", "{E99D229A-D59F-459D-8B2E-A7C08E111CCD}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.BinarySerializer", "Sweet.Actors.BinarySerializer\Sweet.Actors.BinarySerializer.csproj", "{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sweet.Actors.CustomSerializer", "Sweet.Actors.CustomSerializer\Sweet.Actors.CustomSerializer.csproj", "{A81FB365-5306-4F4B-8B23-4B0CE75329B5}"
 EndProject
 Global
@@ -61,10 +59,6 @@ Global
 		{E99D229A-D59F-459D-8B2E-A7C08E111CCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E99D229A-D59F-459D-8B2E-A7C08E111CCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E99D229A-D59F-459D-8B2E-A7C08E111CCD}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CE6F3E34-3139-4F1D-B065-4AA78B9E0B25}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A81FB365-5306-4F4B-8B23-4B0CE75329B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A81FB365-5306-4F4B-8B23-4B0CE75329B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A81FB365-5306-4F4B-8B23-4B0CE75329B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
