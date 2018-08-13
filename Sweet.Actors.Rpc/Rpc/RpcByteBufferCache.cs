@@ -28,10 +28,7 @@ namespace Sweet.Actors.Rpc
 {
     internal class RpcByteBufferCache
     {
-        public static readonly ByteArrayCache FrameCache =
-            new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
-
         public static readonly ByteArrayCache HeaderCache =
-            new ByteArrayCache(5, -1, Math.Max(RpcMessageSizeOf.Header, RpcMessageSizeOf.FrameHeader));
+            new ByteArrayCache(5, -1, RpcMessageSizeOf.Header);
     }
 }

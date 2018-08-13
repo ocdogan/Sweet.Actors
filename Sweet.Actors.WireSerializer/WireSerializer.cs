@@ -38,8 +38,9 @@ namespace Sweet.Actors
             if (data == null || data.Length == 0)
                 return null;
 
-            using (var stream = new ChunkedStream(data))
+            using (var stream = new MemoryStream(data))
             {
+                stream.Position = 0;
                 return _serializer.Deserialize<WireMessage[]>(stream);
             }
         }

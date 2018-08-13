@@ -62,8 +62,11 @@ namespace Sweet.Actors.Rpc
             if (data == null || data.Length == 0)
                 return EmptyWireMessages;
 
-            using (var stream = new ChunkedStream(data))
+            using (var stream = new MemoryStream(data))
+            {
+                stream.Position = 0;
                 return DeserializeInternal(stream);
+            }
         }
 
         public IEnumerable<WireMessage> Deserialize(Stream stream)
@@ -76,7 +79,7 @@ namespace Sweet.Actors.Rpc
         private IEnumerable<WireMessage> DeserializeInternal(Stream stream)
         {
             using (var reader = 
-                (IStreamReader)(stream as ChunkedStream)?.NewReader() ?? new BinaryStreamReader(stream))
+                (IStreamReader)(stream as ChunkedStream)?.NewReader(0) ?? new BinaryStreamReader(stream))
             {
                 var b = reader.ReadByte();
                 if (b == NullFlag)
@@ -119,7 +122,7 @@ namespace Sweet.Actors.Rpc
             }
 
             var previousPos = stream.Position;
-            using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
+            using (var writer = new BinaryStreamWriter(stream))
             {
                 writer.Write(NotNullFlag);
 
@@ -138,9 +141,14 @@ namespace Sweet.Actors.Rpc
             return Math.Max(-1L, stream.Position - previousPos);
         }
 
+        private Serializer GetSerializer()
+        {
+            return _wireSerializer.Value;
+        }
+
         private WireMessage Read(IStreamReader reader)
         {
-            var dataTypeCd = reader.ReadByte() - 1;
+            var dataTypeCd = reader.ReadByte() - NotNullFlag;
             if (dataTypeCd > 0)
             {
                 var message = new WireMessage();
@@ -148,20 +156,22 @@ namespace Sweet.Actors.Rpc
                 var buffer = StringBytesCache.Acquire();
                 try
                 {
-                    reader.Read(buffer, 0, WireMessageSizeOf.ConstantFields - 1);
+                    var sizeOfDataTypeCd = WireMessageFieldSizeOf.DataTypeCd;
 
-                    message.MessageType = (MessageType)buffer[WireMessageBufferOffsetOf.MessageType - 1];
-                    message.State = (WireMessageState)buffer[WireMessageBufferOffsetOf.State - 1];
+                    reader.Read(buffer, 0, WireMessageSizeOf.ConstantFields - sizeOfDataTypeCd);
 
-                    var timeoutMSec = buffer.ToInt(WireMessageBufferOffsetOf.TimeoutMSec - 1);
+                    message.MessageType = (MessageType)buffer[WireMessageBufferOffsetOf.MessageType - sizeOfDataTypeCd];
+                    message.State = (WireMessageState)buffer[WireMessageBufferOffsetOf.State - sizeOfDataTypeCd];
+
+                    var timeoutMSec = buffer.ToInt(WireMessageBufferOffsetOf.TimeoutMSec - sizeOfDataTypeCd);
                     message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
 
                     message.Id = new WireMessageId(
-                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajor - 1),
-                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajorRevision - 1),
-                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinor - 1),
-                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinorRevision - 1),
-                        buffer.ToInt(WireMessageBufferOffsetOf.IdProcessId - 1)
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajor - sizeOfDataTypeCd),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMajorRevision - sizeOfDataTypeCd),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinor - sizeOfDataTypeCd),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdMinorRevision - sizeOfDataTypeCd),
+                        buffer.ToInt(WireMessageBufferOffsetOf.IdProcessId - sizeOfDataTypeCd)
                         );
                 }
                 finally
@@ -180,8 +190,8 @@ namespace Sweet.Actors.Rpc
                 message.From = Aid.Parse(ReadString(reader));
                 message.To = Aid.Parse(ReadString(reader));
 
-                var h = reader.ReadByte();
-                if (h != NullFlag)
+                var isNullByte = reader.ReadByte();
+                if (isNullByte != NullFlag)
                 {
                     var header = new Dictionary<string, string>();
                     message.Header = header;
@@ -199,25 +209,30 @@ namespace Sweet.Actors.Rpc
                     }
                 }
 
-                var len = reader.ReadInt32();
-                if (len > 0)
+                isNullByte = reader.ReadByte();
+                if (isNullByte != NullFlag)
                 {
-                    using (var tempStream = new ChunkedStream())
+                    var len = reader.ReadInt32();
+                    if (len > 0)
                     {
-                        var chunkSize = tempStream.ChunkSize;
-                        while (len > 0)
+                        using (var tempStream = new ChunkedStream())
                         {
-                            var bytes = reader.ReadBytes(chunkSize);
+                            var chunkSize = tempStream.ChunkSize;
+                            while (len > 0)
+                            {
+                                var bytes = reader.ReadBytes(chunkSize);
 
-                            var readLen = bytes?.Length ?? 0;
-                            if (readLen == 0)
-                                throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
+                                var readLen = bytes?.Length ?? 0;
+                                if (readLen == 0)
+                                    throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
 
-                            len -= readLen;
-                            tempStream.Write(bytes, 0, readLen);
+                                len -= readLen;
+                                tempStream.Write(bytes, 0, readLen);
+                            }
+
+                            tempStream.Position = 0;
+                            message.Exception = GetSerializer().Deserialize<Exception>(tempStream);
                         }
-
-                        message.Exception = _wireSerializer.Value.Deserialize<Exception>(tempStream);
                     }
                 }
 
@@ -304,7 +319,8 @@ namespace Sweet.Actors.Rpc
                                     tempStream.Write(bytes, 0, readLen);
                                 }
 
-                                message.Data = _wireSerializer.Value.Deserialize(tempStream);
+                                tempStream.Position = 0;
+                                message.Data = GetSerializer().Deserialize(tempStream);
                             }
                         }
                     }
@@ -312,77 +328,7 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private string ReadString(IStreamReader reader)
-        {
-            var sLen = reader.ReadInt32(); // String length
-            if (sLen < 0)
-                return null;
-
-            if (sLen == 0)
-                return String.Empty;
-
-            var bLen = reader.ReadInt32(); // Byte array length
-            if (bLen == 1)
-                return new string((char)reader.ReadByte(), 1);
-
-            var sb = (StringBuilder)null;
-            var bytes = StringBytesCache.Acquire();
-            try
-            {
-                var chars = StringCharsCache.Acquire();
-                try
-                {
-                    var readLen = 0;
-                    var bytesLen = 0;
-                    var bytesUsed = 0;
-                    var charsUsed = 0;
-                    var completed = false;
-
-                    var remaining = bLen;
-                    do
-                    {
-                        readLen = Math.Min(StringBufferSize - bytesLen, remaining);
-
-                        readLen = reader.Read(bytes, bytesLen, readLen);
-                        if (readLen == bLen)
-                            return Encoding.UTF8.GetString(bytes, 0, bLen);
-
-                        if (readLen == 0)
-                            throw new ArgumentOutOfRangeException(nameof(readLen));
-
-                        bytesLen += readLen;
-
-                        UTF8Decoder.Convert(bytes, 0, bytesLen, chars, 0, StringBufferSize, 
-                            false, out bytesUsed, out charsUsed, out completed);
-
-                        if (charsUsed > 0)
-                        {
-                            if (sb == null)
-                                sb = new StringBuilder(sLen);
-
-                            sb.Append(chars, 0, charsUsed);
-
-                            bytesLen -= bytesUsed;
-                            if (bytesLen > 0)
-                                Array.Copy(bytes, bytesUsed, bytes, 0, bytesLen);
-                        }
-                    }
-                    while ((remaining -= readLen) > 0);
-                }
-                finally
-                {
-                    StringCharsCache.Release(chars);
-                }
-            }
-            finally
-            {
-                StringBytesCache.Release(bytes);
-            }
-
-            return sb?.ToString();
-        }
-
-        private void Write(BinaryWriter writer, WireMessage message)
+        private void Write(IStreamWriter writer, WireMessage message)
         {
             if (message is null)
             {
@@ -435,16 +381,17 @@ namespace Sweet.Actors.Rpc
             }
 
             if (message.Exception is null)
-                WriteBytes(writer, null);
+                writer.Write(NullFlag);
             else
             {
+                writer.Write(NotNullFlag);
                 using (var dataStream = new ChunkedStream())
                 {
-                    _wireSerializer.Value.Serialize(message.Exception, dataStream);
-
-                    dataStream.Position = 0L;
+                    GetSerializer().Serialize(message.Exception, dataStream);
 
                     writer.Write((int)dataStream.Length);
+
+                    dataStream.Position = 0;
                     dataStream.CopyTo(writer.BaseStream);
                 }
             }
@@ -452,7 +399,7 @@ namespace Sweet.Actors.Rpc
             WriteData(writer, dataTypeCd, message.Data);
         }
 
-        private void WriteData(BinaryWriter writer, TypeCode dataTypeCd, object data)
+        private void WriteData(IStreamWriter writer, TypeCode dataTypeCd, object data)
         {
             switch (dataTypeCd)
             {
@@ -511,11 +458,11 @@ namespace Sweet.Actors.Rpc
                     {
                         using (var dataStream = new ChunkedStream())
                         {
-                            _wireSerializer.Value.Serialize(data, dataStream);
-
-                            dataStream.Position = 0L;
+                            GetSerializer().Serialize(data, dataStream);
 
                             writer.Write((int)dataStream.Length);
+
+                            dataStream.Position = 0;
                             dataStream.CopyTo(writer.BaseStream);
                         }
                     }
@@ -523,26 +470,105 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private static void WriteString(BinaryWriter writer, string data)
+        private static void WriteString(IStreamWriter writer, string data)
         {
             if (data == null)
                 writer.Write(NullLengthFlag); // String length
             else
             {
                 var sLen = data.Length;
-
-                writer.Write(sLen); // String length
-                if (sLen > 0)
+                if (sLen == 0)
+                    writer.Write(0); // String length
+                else
                 {
                     var bytes = Encoding.UTF8.GetBytes(data);
 
-                    writer.Write(bytes.Length); // Byte array length
+                    var bLen = bytes.Length;
+                    writer.Write(bLen); // Byte array length
+
+                    if (bLen > 1)
+                        writer.Write(sLen);
+
                     writer.Write(bytes);
                 }
             }
         }
 
-        private static void WriteBytes(BinaryWriter writer, byte[] data)
+        private string ReadString(IStreamReader reader)
+        {
+            var bLen = reader.ReadInt32(); // Byte array length
+            if (bLen < 0)
+                return null;
+
+            if (bLen == 0)
+                return String.Empty;
+
+            if (bLen == 1)
+                return new String((char)reader.ReadByte(), 1);
+
+            var sLen = reader.ReadInt32(); // String length
+
+            if (sLen > bLen || bLen > 4 * sLen)
+                throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
+
+            var sb = (StringBuilder)null;
+            var bytes = StringBytesCache.Acquire();
+            try
+            {
+                var chars = StringCharsCache.Acquire();
+                try
+                {
+                    var readLen = 0;
+                    var bytesOffset = 0;
+                    var bytesUsed = 0;
+                    var charsUsed = 0;
+                    var completed = false;
+
+                    var remaining = bLen;
+                    do
+                    {
+                        readLen = Math.Min(StringBufferSize - bytesOffset, remaining);
+
+                        readLen = reader.Read(bytes, bytesOffset, readLen);
+                        if (readLen == bLen)
+                            return Encoding.UTF8.GetString(bytes, 0, readLen);
+
+                        if (readLen == 0)
+                            throw new ArgumentOutOfRangeException(nameof(readLen));
+
+                        bytesOffset += readLen;
+
+                        UTF8Decoder.Convert(bytes, 0, bytesOffset, chars, 0, StringBufferSize,
+                            false, out bytesUsed, out charsUsed, out completed);
+
+                        if (charsUsed > 0)
+                        {
+                            if (sb == null)
+                                sb = new StringBuilder(sLen);
+
+                            sb.Append(chars, 0, charsUsed);
+
+                            bytesOffset -= bytesUsed;
+                            if (bytesOffset > 0)
+                                Array.Copy(bytes, bytesUsed, bytes, 0, bytesOffset);
+                        }
+                    }
+                    while ((remaining -= readLen) > 0);
+                }
+                finally
+                {
+                    StringCharsCache.Release(chars);
+                }
+            }
+            finally
+            {
+                StringBytesCache.Release(bytes);
+            }
+
+            return sb?.ToString();
+        }
+
+        private static void WriteBytes(IStreamWriter writer, byte[] data)
         {
             if (data == null)
                 writer.Write(NullLengthFlag);
@@ -554,6 +580,27 @@ namespace Sweet.Actors.Rpc
                 if (bLen > 0)
                     writer.Write(data);
             }
+        }
+
+        private static byte[] ReadBytes(IStreamReader reader)
+        {
+            var bLen = reader.ReadInt32(); // Byte length
+            if (bLen < 0)
+                return null;
+
+            if (bLen == NullLengthFlag)
+                return null;
+
+            if (bLen == 0)
+                return new byte[0];
+
+            var result = new byte[bLen];
+
+            var readLen = reader.Read(result, 0, bLen);
+            if (readLen != bLen)
+                throw new ArgumentOutOfRangeException(nameof(readLen));
+
+            return result;
         }
     }
 }

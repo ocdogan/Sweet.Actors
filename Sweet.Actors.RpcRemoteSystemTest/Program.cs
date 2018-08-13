@@ -90,7 +90,11 @@ namespace Sweet.Actors.RpcRemoteSystemTest
                 }
 
                 if (message.MessageType == MessageType.FutureMessage)
+                {
+                    if (count == loop)
+                        Console.WriteLine("All complete");
                     ctx.RespondTo(message, "world " + count.ToString("000"));
+                }
 
                 return Completed;
             },

@@ -31,6 +31,7 @@ namespace Sweet.Actors.Rpc
         public const string InvalidMessageResponse = "Invalid message response";
         public const string InvalidMessageReceiver = "Invalid message receiver";
         public const string InvalidSerializerKey = "Invalid serializer key";
+        public const string CannotPartitionMessage = "Can not partition message";
         public const string CannotConnectToRemoteEndPoint = "Can not connect to remote end-point";
         public const string CannotResolveEndPoint = "Can not resolve end-point";
         public const string CannotStartToReceive = "Can not start to receive";

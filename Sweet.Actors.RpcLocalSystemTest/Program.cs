@@ -53,7 +53,9 @@ namespace Sweet.Actors.RpcLocalSystemTest
                 .UsingName("system-2")
                 .UsingErrorHandler(
                     (actorSys, error) => { Console.WriteLine(error); },
-                    (actorSys, process, msg, error) => { Console.WriteLine(error); });
+                    (actorSys, process, msg, error) => {
+                        Console.WriteLine(error);
+                    });
 
             var actorSystem = ActorSystem.GetOrAdd(systemOptions);
 
@@ -69,20 +71,11 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
         class DummyConnection : IRpcConnection
         {
-            private Stream _stream;
-
             public Socket Connection => null;
 
             public IPEndPoint RemoteEndPoint => throw new NotImplementedException();
 
             public object State => null;
-
-            public Stream Out => _stream;
-
-            public DummyConnection(Stream stream)
-            {
-                _stream = stream;
-            }
 
             public void Flush()
             { }
@@ -92,6 +85,22 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
             public void Send(WireMessage[] messages)
             { }
+        }
+
+        private class DummyMessageWriter : RpcMessageWriter
+        {
+            private Stream _stream;
+
+            public DummyMessageWriter(Stream stream, IRpcConnection conn, string serializerKey)
+                : base(conn, serializerKey)
+            {
+                _stream = stream;
+            }
+
+            protected override void Send(Socket socket, byte[] buffer, int bufferLen)
+            {
+                _stream.Write(buffer, 0, bufferLen);
+            }
         }
 
         static void Call()
@@ -116,24 +125,34 @@ namespace Sweet.Actors.RpcLocalSystemTest
 
             /* using (var stream = new ChunkedStream())
             {
-                var writer = new RpcMessageWriter(new DummyConnection(stream), "Default");
+                var writer = new DummyMessageWriter(stream, new DummyConnection(), "Default");
 
                 const int cycle = 500;
                 const int bulkSize = 500;
 
-                var tresh = " - " + new string('x', 10000);
+                var tresh = " - " + new string('x', 1000);
 
-                for (var i = 0; i < cycle; i++)
+                var rnd = new Random();
+
+                var total = 0;
+                var sendCount = cycle * bulkSize;
+
+                var sentList = new List<int>(sendCount);
+
+                while (sendCount > 0)
                 {
-                    var list = new List<WireMessage>(bulkSize);
-                    for (var j = 0; j < bulkSize; j++)
+                    var cnt = rnd.Next(1, bulkSize);
+                    sendCount -= cnt;
+
+                    var list = new List<WireMessage>(cnt);
+                    for (var j = 0; j < cnt; j++)
                     {
                         var message = new WireMessage
                         {
                             State = WireMessageState.Default,
                             MessageType = MessageType.Default,
                             Id = WireMessageId.Next(),
-                            Data = "hello (fire & forget) - " + ((i * bulkSize) + j).ToString("000000"), // + tresh,
+                            Data = "hello (fire & forget) - " + (total++).ToString("000000") + tresh,
                             From = Aid.Unknown,
                             To = Aid.Unknown,
                         };
@@ -158,12 +177,12 @@ namespace Sweet.Actors.RpcLocalSystemTest
                         count++;
                 }
 
-                if (count != (cycle * bulkSize))
+                if (count != total)
                     Console.WriteLine("error");
-            }
+            } */
 
             sw.Stop();
-            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds); */
+            Console.WriteLine("Ellapsed time (ms): " + sw.ElapsedMilliseconds);
 
             for (var i = 0; i < loop; i++)
             {

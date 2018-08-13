@@ -30,13 +30,18 @@ namespace Sweet.Actors
         public const int MessageType = sizeof(byte);
         public const int State = sizeof(byte);
         public const int TimeoutMSec = sizeof(int);
-        public const int Id = 5 * sizeof(int);
 
         public const int IdMajor = sizeof(int);
         public const int IdMajorRevision = sizeof(int);
         public const int IdMinor = sizeof(int);
         public const int IdMinorRevision = sizeof(int);
         public const int IdProcessId = sizeof(int);
+
+        public const int Id = IdMajor +
+            IdMajorRevision +
+            IdMinor +
+            IdMinorRevision +
+            IdProcessId;
     }
 
     public static class WireMessageBufferOffsetOf

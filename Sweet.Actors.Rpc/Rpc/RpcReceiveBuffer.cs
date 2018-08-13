@@ -36,8 +36,6 @@ namespace Sweet.Actors.Rpc
         private const int LargeBufferMultiple = 1 << 20;
         private const int MaximumBufferSize = 8 * (1 << 20);
 
-        public static readonly ByteArrayCache FrameCache = new ByteArrayCache(10, -1, RpcMessageSizeOf.EachFrameData);
-
         private long _count;
         private ConcurrentQueue<WireMessage> _messageQueue = new ConcurrentQueue<WireMessage>();
 
@@ -45,7 +43,7 @@ namespace Sweet.Actors.Rpc
 
         public RpcReceiveBuffer()
         {
-           _stream = new ChunkedStream();
+            _stream = new ChunkedStream();
         }
 
         protected override void OnDispose(bool disposing)
@@ -68,17 +66,17 @@ namespace Sweet.Actors.Rpc
 
                 while (RpcMessageParser.TryParse(_stream, out IEnumerable<WireMessage> messages))
                 {
-                    if (messages != null)
-                    {
-                        foreach (var message in messages)
-                        {
-                            if (message != null)
-                            {
-                                _messageQueue.Enqueue(message);
-                                Interlocked.Add(ref _count, 1L);
+                    if (messages == null)
+                        continue;
 
-                                parsed = true;
-                            }
+                    foreach (var message in messages)
+                    {
+                        if (message != null)
+                        {
+                            _messageQueue.Enqueue(message);
+                            Interlocked.Add(ref _count, 1L);
+
+                            parsed = true;
                         }
                     }
                 }

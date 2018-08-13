@@ -25,7 +25,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -128,9 +127,6 @@ namespace Sweet.Actors.Rpc
         private long _receiving;
         private long _inReceiveCycle;
 
-        private Stream _netStream;
-        private Stream _outStream;
-
         private object _state;
         private Socket _socket;
         private IPEndPoint _remoteEndPoint;
@@ -179,12 +175,11 @@ namespace Sweet.Actors.Rpc
 
         public bool Receiving => Interlocked.Read(ref _receiving) > 0L;
 
-        public Stream Out => _outStream;
-
         protected override void OnDispose(bool disposing)
         {
             base.OnDispose(disposing);
             _state = null;
+
             if (disposing)
                 Close();
         }
@@ -195,12 +190,6 @@ namespace Sweet.Actors.Rpc
             {
                 using (Interlocked.Exchange(ref _asyncReceiveBuffer, null))
                 { }
-
-                using (var stream = Interlocked.Exchange(ref _outStream, null))
-                    stream?.Close();
-
-                using (var stream = Interlocked.Exchange(ref _netStream, null))
-                    stream?.Close();
             }
             catch (Exception)
             { }
@@ -212,13 +201,7 @@ namespace Sweet.Actors.Rpc
         }
 
         public void OnConnect()
-        {
-            if (_socket != null && _socket.Blocking)
-            {
-                _netStream = new NetworkStream(_socket, false);
-                _outStream = new BufferedStream(_netStream, RpcConstants.WriteBufferSize);
-            }
-        }
+        { }
 
         private void CloseSocket()
         {
@@ -330,9 +313,8 @@ namespace Sweet.Actors.Rpc
 
                             DoReceived(connection, asyncReceiveBuffer, calledSynchronously);
                         }
-                        catch (Exception e)
+                        catch (Exception)
                         {
-                            Console.WriteLine(e);
                             if (!calledSynchronously && !(connection?.Disposed ?? true))
                             {
                                 Interlocked.Exchange(ref connection._inReceiveCycle, 0L);
@@ -472,10 +454,6 @@ namespace Sweet.Actors.Rpc
         public void Flush()
         {
             ThrowIfDisposed();
-
-            var outStream = _outStream;
-            if (outStream?.CanWrite ?? false)
-                outStream.Flush();
         }
 
         public void Send(WireMessage message)

@@ -23,6 +23,7 @@
 #endregion License
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,6 +33,8 @@ namespace Sweet.Actors
     {
         bool Closed { get; }
         long Position { get; set; }
+
+        Stream BaseStream { get; }
 
         int Read(byte[] buffer, int offset, int count);
         Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);

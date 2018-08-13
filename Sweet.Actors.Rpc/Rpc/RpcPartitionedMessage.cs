@@ -34,26 +34,13 @@ namespace Sweet.Actors.Rpc
 
         public string SerializerKey { get; set; }
 
-        public ushort FrameCount { get; set; }
-    }
-
-    internal class RpcPartitionedFrame
-    {
-        public int ProcessId { get; set; }
-
-        public int MessageId { get; set; }
-
-        public ushort FrameId { get; set; }
-
-        public ushort DataLength { get; set; }
-
-        public byte[] Data { get; set; }
+        public int DataSize { get; set; }
     }
 
     internal class RpcPartitionedMessage
     {
         public RpcPartitionedHeader Header { get; } = new RpcPartitionedHeader();
 
-        public IList<RpcPartitionedFrame> Frames { get; } = new List<RpcPartitionedFrame>();
+        public ChunkedStream Data { get; set; }
     }
 }

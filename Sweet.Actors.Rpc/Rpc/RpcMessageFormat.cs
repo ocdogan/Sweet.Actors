@@ -30,9 +30,7 @@ namespace Sweet.Actors.Rpc
         public const int ProcessId = sizeof(int);
         public const int MessageId = sizeof(int);
         public const int SerializerKey = 10;
-        public const int FrameCount = sizeof(ushort);
-        public const int FrameId = sizeof(ushort);
-        public const int FrameDataSize = sizeof(ushort);
+        public const int DataSize = sizeof(int);
     }
 
     public static class RpcHeaderOffsetOf
@@ -41,18 +39,7 @@ namespace Sweet.Actors.Rpc
         public const int ProcessId = Sign + RpcHeaderSizeOf.Sign;
         public const int MessageId = ProcessId + RpcHeaderSizeOf.ProcessId;
         public const int SerializerKey = MessageId + RpcHeaderSizeOf.MessageId;
-        public const int FrameCount = SerializerKey + RpcHeaderSizeOf.SerializerKey;
-        public const int FrameStart = FrameCount + RpcHeaderSizeOf.FrameCount;
-    }
-
-    public static class RpcFrameHeaderOffsetOf
-    {
-        public const int Sign = 0;
-        public const int ProcessId = Sign + RpcHeaderSizeOf.Sign;
-        public const int MessageId = ProcessId + RpcHeaderSizeOf.ProcessId;
-        public const int FrameId = MessageId + RpcHeaderSizeOf.MessageId;
-        public const int FrameDataSize = FrameId + RpcHeaderSizeOf.FrameId;
-        public const int FrameData = FrameDataSize + RpcHeaderSizeOf.FrameDataSize;
+        public const int DataSize = SerializerKey + RpcHeaderSizeOf.SerializerKey;
     }
 
     public static class RpcMessageSizeOf
@@ -62,25 +49,9 @@ namespace Sweet.Actors.Rpc
             + RpcHeaderSizeOf.ProcessId /* Process id (int) */
             + RpcHeaderSizeOf.MessageId /* Message id (int) */
             + RpcHeaderSizeOf.SerializerKey /* Serializer registry name length (byte[]) */
-            + RpcHeaderSizeOf.FrameCount /* Frame count (ushort) */;
-
-        public const int EachFrame = 8 * Constants.KB; // 8 KByte
-
-        public const int FrameHeader =
-            RpcHeaderSizeOf.Sign   /* Frame sign (byte) */
-            + RpcHeaderSizeOf.ProcessId /* Process id (int) */
-            + RpcHeaderSizeOf.MessageId /* Message id (int) */
-            + RpcHeaderSizeOf.FrameId /* Frame id (ushort) */
-            + RpcHeaderSizeOf.FrameDataSize /* Frame data size (ushort) */;
-
-        public const int EachFrameData = EachFrame - FrameHeader;
+            + RpcHeaderSizeOf.DataSize /* DataSize (int) */;
 
         public const int MaxAllowedData = 4 * Constants.MB; // 4 MByte
-    }
-
-    public static class RpcMessageCountOf
-    {
-        public const int MaxAllowedFrame = (RpcMessageSizeOf.MaxAllowedData / RpcMessageSizeOf.EachFrameData) + 1;
     }
 
     public static class RpcMessageSign

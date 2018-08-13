@@ -30,25 +30,25 @@ using System.Threading.Tasks;
 
 namespace Sweet.Actors
 {
-    public class BinaryStreamReader : Disposable, IStreamReader, IDisposable
+    public class BinaryStreamWriter : Disposable, IStreamWriter, IDisposable
     {
         private Stream _input;
-        private BinaryReader _reader;
+        private BinaryWriter _writer;
 
-        public BinaryStreamReader(Stream input) 
+        public BinaryStreamWriter(Stream input)
             : this(input, Encoding.UTF8)
         { }
 
-        public BinaryStreamReader(Stream input, Encoding encoding)
+        public BinaryStreamWriter(Stream input, Encoding encoding)
         {
             _input = input;
-            _reader = new BinaryReader(input, encoding, true);
+            _writer = new BinaryWriter(input, encoding, true);
         }
 
         protected override void OnDispose(bool disposing)
         {
             Interlocked.Exchange(ref _input, null);
-            using (Interlocked.Exchange(ref _reader, null))
+            using (Interlocked.Exchange(ref _writer, null))
             { }
         }
 
@@ -70,106 +70,106 @@ namespace Sweet.Actors
 
         public bool Closed => Disposed || !((_input?.CanRead ?? false) || (_input?.CanWrite ?? false));
 
-        public int Read(byte[] buffer, int offset, int count)
+        public virtual void Write(byte[] buffer)
         {
             ThrowIfDisposed();
-            return _reader.Read(buffer, offset, count);
+            _writer.Write(buffer);
         }
 
-        public Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        public virtual void Write(byte[] buffer, int offset, int count)
         {
             ThrowIfDisposed();
-            return _input.ReadAsync(buffer, offset, count, cancellationToken);
+            _writer.Write(buffer, offset, count);
         }
 
-        public bool ReadBoolean()
+        public virtual Task WriteAsync(byte[] buffer, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
-            return _reader.ReadBoolean();
+            throw new NotImplementedException();
         }
 
-        public int ReadByte()
+        public virtual Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
-            return _reader.ReadByte();
+            throw new NotImplementedException();
         }
 
-        public char ReadChar()
+        public virtual void Write(byte value)
         {
             ThrowIfDisposed();
-            return _reader.ReadChar();
+            _writer.Write(value);
         }
 
-        public decimal ReadDecimal()
+        public virtual void Write(bool value)
         {
             ThrowIfDisposed();
-            return _reader.ReadDecimal();
+            _writer.Write(value);
         }
 
-        public double ReadDouble()
+        public virtual void Write(sbyte value)
         {
             ThrowIfDisposed();
-            return _reader.ReadDouble();
+            _writer.Write(value);
         }
 
-        public short ReadInt16()
+        public virtual void Write(char value)
         {
             ThrowIfDisposed();
-            return _reader.ReadInt16();
+            _writer.Write(value);
         }
 
-        public int ReadInt32()
+        public virtual void Write(short value)
         {
             ThrowIfDisposed();
-            return _reader.ReadInt32();
+            _writer.Write(value);
         }
 
-        public long ReadInt64()
+        public virtual void Write(ushort value)
         {
             ThrowIfDisposed();
-            return _reader.ReadInt64();
+            _writer.Write(value);
         }
 
-        public sbyte ReadSByte()
+        public virtual void Write(int value)
         {
             ThrowIfDisposed();
-            return _reader.ReadSByte();
+            _writer.Write(value);
         }
 
-        public float ReadSingle()
+        public virtual void Write(uint value)
         {
             ThrowIfDisposed();
-            return _reader.ReadSingle();
+            _writer.Write(value);
         }
 
-        public ushort ReadUInt16()
+        public virtual void Write(long value)
         {
             ThrowIfDisposed();
-            return _reader.ReadUInt16();
+            _writer.Write(value);
         }
 
-        public uint ReadUInt32()
+        public virtual void Write(ulong value)
         {
             ThrowIfDisposed();
-            return _reader.ReadUInt32();
+            _writer.Write(value);
         }
 
-        public ulong ReadUInt64()
+        public virtual void Write(float value)
         {
             ThrowIfDisposed();
-            return _reader.ReadUInt64();
+            _writer.Write(value);
         }
 
-        public string ReadString()
+        public virtual void Write(double value)
         {
             ThrowIfDisposed();
-            return _reader.ReadString();
+            _writer.Write(value);
         }
 
-        public byte[] ReadBytes(int count)
+        public virtual void Write(decimal value)
         {
             ThrowIfDisposed();
-            return _reader.ReadBytes(count);
+            _writer.Write(value);
         }
     }
 }

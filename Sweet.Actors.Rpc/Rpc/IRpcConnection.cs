@@ -33,7 +33,6 @@ namespace Sweet.Actors.Rpc
         Socket Connection { get; }
         IPEndPoint RemoteEndPoint { get; }
         object State { get; }
-        Stream Out { get; }
 
         void Flush();
 
