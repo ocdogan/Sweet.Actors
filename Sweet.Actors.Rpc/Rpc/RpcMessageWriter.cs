@@ -34,7 +34,7 @@ namespace Sweet.Actors.Rpc
     {
         private static readonly byte[] ProcessIdBytes = Common.ProcessId.ToBytes();
 
-        private static ByteArrayCache SliceCache = new ByteArrayCache(initialCount: 20, arraySize: RpcConstants.WriteBufferSize);
+        private const int SendRetryTreshold = 100;
 
         private IRpcConnection _connnection;
 
@@ -97,7 +97,7 @@ namespace Sweet.Actors.Rpc
             }
         }
 
-        private bool Write(Stream outStream, WireMessage[] messages, bool flush = true)
+        private bool Write(ChunkedStream outStream, WireMessage[] messages, bool flush = true)
         {
             ThrowIfDisposed();
 
@@ -110,7 +110,7 @@ namespace Sweet.Actors.Rpc
                 {
                     var dataSize = (int)_serializer.Serialize(messages, dataStream);
                     if (dataSize > RpcMessageSizeOf.MaxAllowedData)
-                        throw new Exception(Errors.MaxAllowedDataSizeExceeded);
+                        return false;
 
                     /* Header */
                     WriteHeader(outStream, dataSize, out byte[] messageId);
@@ -118,7 +118,10 @@ namespace Sweet.Actors.Rpc
                     if (dataSize == 0)
                         return true;
 
-                    var buffer = SliceCache.Acquire();
+                    dataStream.Position = 0;
+                    outStream.ReadFrom(dataStream, dataSize);
+
+                    /* var buffer = ByteArrayCache.Default.Acquire();
                     try
                     {
                         var bufferLen = buffer.Length;
@@ -143,8 +146,8 @@ namespace Sweet.Actors.Rpc
                     }
                     finally
                     {
-                        SliceCache.Release(buffer);
-                    }
+                        ByteArrayCache.Default.Release(buffer);
+                    } */
                 }
                 finally
                 {
@@ -160,48 +163,85 @@ namespace Sweet.Actors.Rpc
             ThrowIfDisposed();
 
             var conn = _connnection;
-            if (conn != null)
-            {
-                var socket = conn.Connection;
-                if (socket.IsConnected())
-                {
-                    using (var bufferStream = new ChunkedStream())
-                    {
-                        if (Write(bufferStream, messages))
-                        {
-                            var buffer = SliceCache.Acquire();
-                            try
-                            {
-                                var bufferLen = buffer.Length;
+            if (conn == null)
+                return false;
 
-                                using (var reader = bufferStream.NewReader(0))
-                                {
-                                    int readLen;
-                                    while ((readLen = reader.Read(buffer, 0, bufferLen)) > 0)
-                                    {
-                                        Send(socket, buffer, readLen);
-                                    }
-                                }
-                            }
-                            finally
-                            {
-                                SliceCache.Release(buffer);
-                            }
-                            return true;
+            var socket = conn.Connection;
+            if (!socket.IsConnected())
+                return false;
+
+            using (var stream = new ChunkedStream())
+            {
+                if (!Write(stream, messages))
+                    return false;
+
+                var buffer = ByteArrayCache.Default.Acquire();
+                try
+                {
+                    var bufferLen = buffer.Length;
+
+                    using (var reader = stream.NewReader(0))
+                    {
+                        int readLen;
+                        while ((readLen = reader.Read(buffer, 0, bufferLen)) > 0)
+                        {
+                            Send(socket, buffer, readLen);
                         }
                     }
                 }
+                finally
+                {
+                    ByteArrayCache.Default.Release(buffer);
+                }
             }
-            return false;
+            return true;
         }
 
         protected virtual void Send(Socket socket, byte[] buffer, int bufferLen)
         {
-            int sendLen, offset = 0;
+            int sendLen;
+            var offset = 0;
+            var retryCount = 0;
+            SocketError errorCode;
+
             while (offset < bufferLen)
             {
-                sendLen = socket.Send(buffer, 0, bufferLen, SocketFlags.None);
+                try
+                {
+                    sendLen = socket.Send(buffer, offset, bufferLen - offset, SocketFlags.None, out errorCode);
+                }
+                catch (SocketException se)
+                {
+                    errorCode = se.SocketErrorCode;
+                    if (errorCode != SocketError.WouldBlock)
+                        throw;
+                    sendLen = 0;
+                }
+
+                if (errorCode != SocketError.Success)
+                {
+                    if (errorCode == SocketError.WouldBlock)
+                    {
+                        if (sendLen > 0)
+                        {
+                            offset += sendLen;
+                            continue;
+                        }
+
+                        if (retryCount++ < SendRetryTreshold)
+                        {
+                            if (retryCount > 1)
+                                Thread.Sleep(retryCount > 50 ? 1 : 0);
+                            continue;
+                        }
+                    }
+
+                    throw new SocketException((int)errorCode);
+                }
+
                 offset += sendLen;
+                if (retryCount > 0)
+                    retryCount = 0;
             }
         }
     }

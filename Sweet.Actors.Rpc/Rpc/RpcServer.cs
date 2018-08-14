@@ -322,6 +322,9 @@ namespace Sweet.Actors.Rpc
                 if (acceptEventArgs.UserToken is RpcServer server)
                 {
                     var socket = acceptEventArgs.AcceptSocket;
+
+                    socket.Blocking = true;
+
                     if (socket.IsConnected())
                         ThreadPool.QueueUserWorkItem((asyncResult) => server.StartReceiveAsync(socket));
 

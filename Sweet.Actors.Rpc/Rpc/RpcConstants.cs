@@ -38,7 +38,7 @@ namespace Sweet.Actors.Rpc
         public const int MinConnectionTimeout = 100;
         public const int MaxConnectionTimeout = 30000;
 
-        public const int WriteBufferSize = 64 * Constants.KB;
+        public const int WriteBufferSize = 8 * Constants.KB;
 
         public const int MaxBulkMessageLength = 1000;
         public const int DefaultBulkMessageLength = 500;

@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -177,7 +178,7 @@ namespace Sweet.Actors
             private TimeoutEvent _tail;
 
             private ReaderWriterLockSlim _syncRoot = new ReaderWriterLockSlim();
-            private readonly Dictionary<object, TimeoutEvent> _events = new Dictionary<object, TimeoutEvent>();
+            private readonly ConcurrentDictionary<object, TimeoutEvent> _events = new ConcurrentDictionary<object, TimeoutEvent>();
 
             public int Count => _count;
 
@@ -237,48 +238,45 @@ namespace Sweet.Actors
                     _syncRoot.EnterUpgradeableReadLock();
                     try
                     {
-                        if (_events.TryGetValue(state, out TimeoutEvent tmpEvent))
+                        if (_events.TryRemove(state, out TimeoutEvent tmpEvent))
                         {
                             _syncRoot.EnterWriteLock();
                             try
                             {
-                                if (_events.Remove(state))
+                                Interlocked.Add(ref _count, -1);
+
+                                @event = tmpEvent;
+
+                                var prev = @event.Prev;
+                                var next = @event.Next;
+
+                                if (@event == _head)
                                 {
-                                    Interlocked.Add(ref _count, -1);
-
-                                    @event = tmpEvent;
-
-                                    var prev = @event.Prev;
-                                    var next = @event.Next;
-
-                                    if (@event == _head)
-                                    {
-                                        _head = next;
-                                        if (@event == _tail)
-                                            _tail = prev;
-
-                                        if (next != null)
-                                            next.Prev = null;
-                                    }
-                                    else if (@event == _tail)
-                                    {
+                                    _head = next;
+                                    if (@event == _tail)
                                         _tail = prev;
-                                        if (prev != null)
-                                            prev.Next = null;
-                                    }
-                                    else
-                                    {
-                                        if (prev != null)
-                                            prev.Next = next;
 
-                                        if (next != null)
-                                            next.Prev = prev;
-                                    }
-
-                                    @event.Clear();
-
-                                    return true;
+                                    if (next != null)
+                                        next.Prev = null;
                                 }
+                                else if (@event == _tail)
+                                {
+                                    _tail = prev;
+                                    if (prev != null)
+                                        prev.Next = null;
+                                }
+                                else
+                                {
+                                    if (prev != null)
+                                        prev.Next = next;
+
+                                    if (next != null)
+                                        next.Prev = prev;
+                                }
+
+                                @event.Clear();
+
+                                return true;
                             }
                             finally
                             {
