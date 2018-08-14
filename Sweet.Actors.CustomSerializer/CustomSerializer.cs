@@ -41,6 +41,8 @@ namespace Sweet.Actors.Rpc
 
         private const int StringBufferSize = 256;
 
+        private const int MaxAllowedStringLength = 16 * Constants.MB;
+
         private static readonly Decoder UTF8Decoder = Encoding.UTF8.GetDecoder();
 
         private static readonly WireMessage[] EmptyWireMessages = new WireMessage[] { };
@@ -178,14 +180,6 @@ namespace Sweet.Actors.Rpc
                 {
                     StringBytesCache.Release(buffer);
                 }
-
-                /* message.MessageType = (MessageType)reader.ReadByte();
-                message.State = (WireMessageState)reader.ReadByte();
-
-                var timeoutMSec = reader.ReadInt32();
-                message.TimeoutMSec = timeoutMSec != int.MinValue ? timeoutMSec : (int?)null;
-
-                message.Id = WireMessageId.Read(reader); */
 
                 message.From = Aid.Parse(ReadString(reader));
                 message.To = Aid.Parse(ReadString(reader));
@@ -481,6 +475,9 @@ namespace Sweet.Actors.Rpc
                     writer.Write(0); // String length
                 else
                 {
+                    if (sLen > MaxAllowedStringLength)
+                        throw new Exception(SerializationErrors.StringLengthExceededAllowedLimit);
+
                     var bytes = Encoding.UTF8.GetBytes(data);
 
                     var bLen = bytes.Length;
@@ -510,6 +507,9 @@ namespace Sweet.Actors.Rpc
 
             if (sLen > bLen || bLen > 4 * sLen)
                 throw new Exception(SerializationErrors.StreamNotContainingValidWireMessage);
+
+            if (sLen > MaxAllowedStringLength)
+                throw new Exception(SerializationErrors.StringLengthExceededAllowedLimit);
 
             var sb = (StringBuilder)null;
             var bytes = StringBytesCache.Acquire();

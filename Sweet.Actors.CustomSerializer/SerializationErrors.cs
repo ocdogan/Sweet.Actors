@@ -26,6 +26,7 @@ namespace Sweet.Actors
 {
     public static class SerializationErrors
     {
+        public const string StringLengthExceededAllowedLimit = "String length exceeded allowed limit.";
         public const string StreamNotContainingValidWireMessage = "Stream is not containing valid wire message.";
     }
 }
