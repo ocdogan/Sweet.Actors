@@ -26,6 +26,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace Sweet.Actors
 {
